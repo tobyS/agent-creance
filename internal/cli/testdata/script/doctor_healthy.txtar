@@ -1,0 +1,23 @@
+# `agent-creance doctor` against a healthy host. We stub agent-safehouse and
+# mitmproxy as tiny shell scripts on PATH that print the tested versions, so the
+# whole scenario runs with no real prerequisites installed.
+
+# Make the stubs executable and put them first on PATH. ${:} is testscript's
+# OS-specific path-list separator.
+chmod 0755 bin/agent-safehouse
+chmod 0755 bin/mitmproxy
+env PATH=$WORK/bin${:}$PATH
+
+agent-creance doctor
+stdout 'Version compatibility:'
+stdout 'agent-safehouse'
+stdout 'mitmproxy'
+stdout '✓'
+! stdout 'not installed'
+
+-- bin/agent-safehouse --
+#!/bin/sh
+echo 'agent-safehouse 1.4.2'
+-- bin/mitmproxy --
+#!/bin/sh
+echo 'Mitmproxy: 12.0.1'

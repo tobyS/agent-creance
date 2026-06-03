@@ -116,7 +116,7 @@ network:
     # may escalate to the user if it really needs them).
     allow:
       - host: api.github.com
-        paths: ["/repos/schlitt/this-project/"]
+        paths: ["/repos/tobyS/this-project/"]
         methods: [GET, POST]
 
     # Hard denies. The agent gets a different response type for these
@@ -184,7 +184,7 @@ First `agent-creance run` on a new project with 50 npm direct deps: ~10 second o
 **Visibility.** Generated rules are part of the compiled policy but flagged with their source. `agent-creance policy show` dumps the full resolved policy with each rule annotated:
 
 ```
-[explicit]                         allow github.com /repos/schlitt/this-project/
+[explicit]                         allow github.com /repos/tobyS/this-project/
 [generated:package_json:react]     allow react.dev (any path)
 [generated:package_json:react]     allow github.com /facebook/react/
 [generated:composer_json:laravel/framework]  allow laravel.com (any path)

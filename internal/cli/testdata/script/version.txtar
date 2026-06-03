@@ -1,0 +1,9 @@
+# `agent-creance version` prints the version banner and the tested-against tools.
+# No external tools are needed, so this scenario is trivially hermetic.
+
+agent-creance version
+stdout 'agent-creance dev'
+stdout 'tested against:'
+stdout 'agent-safehouse'
+stdout 'mitmproxy'
+! stderr .

@@ -1,0 +1,13 @@
+# `agent-creance doctor` when prerequisites are absent: it prints the report,
+# then the actionable install block, and exits non-zero.
+#
+# $CREANCE_BIN (set by the test's Setup hook) holds only the agent-creance
+# command, so this PATH finds the CLI but neither agent-safehouse nor mitmproxy
+# — a hermetic "nothing installed" host regardless of the developer's machine.
+env PATH=$CREANCE_BIN
+
+# The leading ! asserts a non-zero exit code.
+! agent-creance doctor
+stdout 'not installed'
+stdout 'requires the following tools'
+stdout 'brew install mitmproxy'

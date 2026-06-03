@@ -1,0 +1,25 @@
+#!/bin/sh
+# agent-creance pre-commit hook — the local equivalent of a CI gate.
+#
+# Enable it once with `make hooks` (sets core.hooksPath to .githooks). It blocks
+# a commit when code is unformatted, fails `go vet`, or fails the fast tests.
+# It deliberately does NOT run golangci-lint (slower) or the integration tests —
+# keep the commit-time check fast; run `make lint` / `make test-integration`
+# before pushing.
+set -e
+
+echo "pre-commit: gofmt check"
+unformatted=$(gofmt -s -l .)
+if [ -n "$unformatted" ]; then
+	echo "These files are not gofmt-clean. Run \`make fmt\`:" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+
+echo "pre-commit: go vet"
+go vet ./...
+
+echo "pre-commit: go test (race)"
+go test -race ./...
+
+echo "pre-commit: OK"

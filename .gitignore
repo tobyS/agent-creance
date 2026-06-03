@@ -1,1 +1,6 @@
 .claude-commit
+
+# Build & test artifacts
+/bin/
+coverage.out
+
