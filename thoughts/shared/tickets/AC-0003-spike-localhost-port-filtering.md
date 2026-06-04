@@ -1,9 +1,10 @@
 # AC-0003: Spike S3 — Seatbelt port-level localhost filtering across address families (WP-0.3)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
+**Resolution:** `thoughts/shared/research/2026-06-04-s3-localhost-ports.md`
 **Plan reference:** WP-0.3 / Spike S3 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** none
 **Spike gate:** gates AC-0014 (WP-2.5), AC-0020 (WP-3.4)
@@ -24,10 +25,10 @@ A findings note proving (or disproving) that with IPv4 pinned end-to-end, a non-
 
 ## Acceptance Criteria
 
-- [ ] Research note exists at `thoughts/shared/research/2026-06-DD-s3-localhost-ports.md`.
-- [ ] The note records PASS/FAIL for: allowlisted `127.0.0.1:<allowed>` reachable; non-allowlisted `127.0.0.1:<other>` refused; non-allowlisted `[::1]:<other>` refused; (and `[::1]:<allowed>` refused when only v4 is allowed).
-- [ ] A `Decision:` line confirms IPv4-pinning is sufficient, or specifies the additional rule needed.
-- [ ] The reproducible self-test commands are captured for reuse in AC-0014's shipped self-test.
+- [x] Research note exists at `thoughts/shared/research/2026-06-04-s3-localhost-ports.md`.
+- [x] The note records PASS/FAIL for: allowlisted `127.0.0.1:<allowed>` reachable (PASS); non-allowlisted `127.0.0.1:<other>` refused (PASS, EPERM); non-allowlisted `[::1]:<other>` refused (PASS, EPERM); `[::1]:<allowed>` "refused when only v4 is allowed" — **MOOT/overturned** (a v4-only rule is unbuildable; literal IPs do not compile, so the only writable rule, `localhost:<allowed>`, deliberately covers `::1`).
+- [x] A `Decision:` line specifies the rule needed: emit `(remote tcp "localhost:N")` (literal-IP "force IPv4" is impossible and unnecessary; `localhost` spans both families, port-enforced).
+- [x] The reproducible self-test commands are captured for reuse in AC-0014's shipped self-test.
 
 ## Verification & Test Steps
 
@@ -53,7 +54,7 @@ Phase 0. Gates AC-0014 and AC-0020.
 
 ## Questions for Research/Planning
 
-- [ ] Should the shipped self-test run on every `run`, only on `setup`/`doctor`, or once-and-cache?
+- [x] Should the shipped self-test run on every `run`, only on `setup`/`doctor`, or once-and-cache? → **Decided: run on `setup` and every `doctor`, uncached** (always fresh, no `run`-path latency).
 
 ## References
 
@@ -66,3 +67,14 @@ Phase 0. Gates AC-0014 and AC-0020.
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Gating spike.
+
+### 2026-06-04 — Resolved
+Ran the probe matrix on macOS 26.5. Findings note:
+`thoughts/shared/research/2026-06-04-s3-localhost-ports.md`. Headline: the
+port-level localhost guarantee **holds over both v4 and v6**, but the design's
+literal-IP rule form (`127.0.0.1:N`) **does not compile** — the only buildable
+per-port rule is `(remote tcp "localhost:N")`, which spans both families with the
+port strictly enforced (non-allowlisted port → EPERM on v4 and v6). `localhost` =
+all of this machine's addresses (loopback + interface IPs), never external hosts.
+Design corrections flagged for AC-0014/AC-0020; AC-0014 must emit `localhost:N` (never
+`*:N`) and ship the captured self-test on `setup`/`doctor`.
