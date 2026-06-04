@@ -16,10 +16,11 @@ A single command (`agent-creance`) that starts Claude Code (or any other coding 
 
 These are load-bearing assumptions that haven't been validated against the real tools yet. Each one can invalidate part of the architecture, so they get spiked **before** implementation starts, not discovered during it.
 
-- **S1 — CA trust / certificate pinning.** The whole egress story depends on the agent and its toolchain accepting mitmproxy's CA for TLS interception. If Claude Code pins `api.anthropic.com` (or `npm`/`pip`/`git` pin their registries), MITM fails and that path breaks. Verify a caged request to `api.anthropic.com`, the npm/PyPI registries, and `github.com` all validate against the injected CA. If Claude pins, the design needs a CONNECT-passthrough (no-intercept) path for `api.anthropic.com` specifically.
+- **S1 — CA trust / certificate pinning.** The whole egress story depends on the agent and its toolchain accepting mitmproxy's CA for TLS interception. If Claude Code pins `api.anthropic.com` (or `npm`/`pip`/`git` pin their registries), MITM fails and that path breaks. Verify a caged request to `api.anthropic.com`, the npm/PyPI registries, and `github.com` all validate against the injected CA. This spike *picks the default enforcement mode for `api.anthropic.com`* (see "Per-host enforcement modes"): if interception works, ship it as a host-wide `intercept` rule so the channel stays audited; if Claude pins, ship it as `mode: passthrough`. Either outcome is a one-line change to the global baseline, not an architectural one — the mode framework absorbs the result.
 - **S2 — Keychain access from inside the sandbox + concurrent refresh.** On macOS the OAuth token lives in the login Keychain, not a file. Confirm a `sandbox-exec`-confined process can read and refresh the specific Anthropic Keychain item without an interactive auth prompt or denial, and that two concurrent caged sessions sharing the one item don't break each other's refresh-token rotation. Pin down the exact service/item name the Seatbelt profile must allow.
 - **S3 — Seatbelt port-level localhost filtering across address families.** Confirm `(remote tcp "127.0.0.1:N")` allow rules genuinely refuse a non-allowlisted localhost port over *both* IPv4 and IPv6, with proxy and services pinned to one family. The "even on localhost" guarantee rests entirely on this.
 - **S4 — Proxy-env-var coverage.** Confirm the tools the agent actually uses (Claude Code, `npm`, `pip`, `git` over HTTPS, `go`) all honor `HTTPS_PROXY` and route through mitmproxy; tools that ignore it hard-fail under the deny-all baseline. Note up front: `git` over SSH (`git@github.com:`) cannot traverse an HTTP proxy and is unsupported in v0.1 — HTTPS remotes only.
+- **S5 — Appended-profile network narrowing.** The entire network model assumes an `--append-profile` fragment can *narrow* Safehouse's "network: open by default" base stance: the fragment denies `network*` and then re-allows only the proxy and host-service ports. This rests on three stacked assumptions about Seatbelt (SBPL) and Safehouse's append behavior — that the fragment is concatenated *after* Safehouse's base `(allow network*)`, that Seatbelt's last-match-wins precedence lets the fragment's `(deny network*)` override that base allow, and that the fragment's subsequent specific `(allow …)` rules re-open only the intended ports. S3 tests the *precision* of those allow rules but assumes the deny baseline is already in effect; this spike validates that the deny baseline takes effect at all through `--append-profile`. If it doesn't compose this way, the network model needs a different composition strategy (e.g. a full generated profile rather than an append).
 
 ## Goals
 
@@ -64,7 +65,7 @@ The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates
 - Supply-chain attacks via allowed toolchains: a malicious `npm install <package>` runs with the same allowlist the legitimate install gets.
 - Exfiltration via whitelisted host services: a dev database or cache you expose (`mysql`, `redis`, …) is reached by raw TCP that bypasses the proxy, and several such services can themselves open outbound connections (Redis `REPLICAOF`/`MIGRATE`, MySQL `FEDERATED`/`LOAD DATA`). A prompt-injected agent could use a whitelisted service as a confused deputy to reach the network around the egress filter. This is inherent to giving the agent your dev data store — hiding it would make debugging useless — so agent-creance accepts and documents it rather than pretending the cage covers it.
 - Sandbox escapes: `sandbox-exec` is not a VM. Determined adversarial code execution is out of scope.
-- Claude's own OAuth token — the agent has to use it, so it lives in a file the agent can read (in a redirected, ephemeral config dir; the real `~/.claude` is never writable — see "The proxy and the credential story"). A prompt injection can therefore still exfiltrate the token, but only through an allowlisted destination, since direct egress is blocked. Note this is *every* allowlisted host that accepts an agent-controlled body (e.g. a `POST` to the GitHub API), not just `api.anthropic.com`: the allowlist *narrows* the exfil surface to your allowed POST targets, it does not eliminate it. (What the ephemeral-config-dir approach *does* fully close is config-persistence — the agent cannot plant a hook, MCP server, or skill that fires on your next un-caged Claude run.)
+- Claude's own OAuth token — the agent has to use it, so it's reachable by the agent (on macOS via a Seatbelt-granted ACL to the one login-Keychain item, not a file in the config dir — see "The proxy and the credential story"; the real `~/.claude` is never writable). A prompt injection can therefore still exfiltrate the token, but only through an allowlisted destination, since direct egress is blocked. Note this is *every* allowlisted host that accepts an agent-controlled body (e.g. a `POST` to the GitHub API), not just `api.anthropic.com`: the allowlist *narrows* the exfil surface to your allowed POST targets, it does not eliminate it. A `mode: passthrough` host is the *least* observable target of all — uninspectable by design — so the audit log cannot even record what was sent there; this is the deliberate trade for not intercepting it. (What the ephemeral-config-dir approach *does* fully close is config-persistence — the agent cannot plant a hook, MCP server, or skill that fires on your next un-caged Claude run.)
 
 For the "agent goes full YOLO and walks away" use case, this is good enough on macOS — the practical damage is confined to the project files plus whatever the whitelist explicitly permits. For genuinely untrusted code execution where the agent is adversarial, you'd want a VM, which this isn't trying to be.
 
@@ -96,10 +97,16 @@ include:
   - .agent-creance/team-shared.yaml
 
 network:
-  # Host services reachable from inside the cage.
-  # These open both a Seatbelt network-allow and a host_services
-  # entry; the cage does NOT block other host services bound to 0.0.0.0
-  # — the user must bind those to 127.0.0.1 themselves.
+  # Host services reachable from inside the cage. The `<label>:<port>`
+  # form's label is cosmetic — the address is ALWAYS forced to the IPv4
+  # literal 127.0.0.1, because the Seatbelt rule must name the exact
+  # address the socket connects to (see "address family" caveat below).
+  # Consequence the user must know: caged tooling must address these
+  # services as 127.0.0.1, NOT `localhost` — `localhost` may resolve to
+  # ::1 (IPv6), which the IPv4-pinned rule denies. Each entry opens both
+  # a Seatbelt network-allow and a host_services entry; the cage does
+  # NOT block other host services bound to 0.0.0.0 — the user must bind
+  # those to 127.0.0.1 themselves.
   host_services:
     - mysql:3306
     - redis:6379
@@ -202,6 +209,44 @@ First `agent-creance run` on a new project with 50 npm direct deps: ~10 second o
 
 None of these are in v0.1. The schema accommodates them when they land.
 
+## Per-host enforcement modes
+
+Not every allowed host wants the same enforcement style. A rule carries an optional `mode:` (default `intercept`) that selects how the proxy handles it:
+
+```yaml
+network:
+  egress:
+    allow:
+      # Mode A — filtered intercept (default). TLS-terminated, matched on
+      # host + path + method, full audit (path/method/status).
+      - host: api.github.com
+        paths: ["/repos/tobyS/this-project/"]
+        methods: [GET, POST]
+
+      # Mode B — host-wide intercept. TLS-terminated, any path/method on
+      # the host, still fully audited, still subject to path-based
+      # deny_always (e.g. **/.env). Just omit paths/methods.
+      - host: react.dev
+        mode: intercept
+
+      # Mode C — passthrough. The proxy tunnels raw bytes (CONNECT
+      # passthrough) and never terminates TLS. Used for hosts that pin
+      # their certificate, or hosts the user trusts enough to not inspect.
+      - host: api.anthropic.com
+        mode: passthrough
+```
+
+**Passthrough is host-granularity only, by construction** — without TLS termination the proxy sees only the CONNECT target. Its rules and limits:
+
+- `paths`/`methods` on a passthrough rule are meaningless and are **rejected at compile time** (a clear error, not a silent ignore).
+- The host **allow/deny decision still happens** at CONNECT time, so a `deny_always` on a passthrough host is still enforced (the tunnel is refused). But **path-based denies cannot apply** — e.g. `deny_always` with `paths: ["**/.env"]` will *not* be caught on a passthrough host. This is a real hole the user accepts per passthrough host, which is why passthrough is a deliberate, explicit choice rather than a default.
+- **Audit degrades** for passthrough hosts to host + timestamp + byte counts — no path, method, or response status.
+- **Soft-deny is unaffected.** Every non-passthrough host is intercepted, so the structured 403 path (below) is intact; a passthrough host is always an `allow` by definition and never produces a 403.
+
+**Visibility.** Because each passthrough host is an audit blind spot, `agent-creance policy show` flags passthrough rules distinctly (the same way generated rules are annotated), so the blind spots are visible at a glance rather than buried.
+
+`api.anthropic.com` is the canonical passthrough candidate: it's Claude's own backend, the OAuth token *belongs* there, and interception buys near-zero security value (there's no meaningful policy to enforce on Claude-talking-to-Anthropic) while carrying all of [S1](#open-spikes-resolve-before-build)'s certificate-pinning risk. Whether the shipped global baseline sets it to `intercept` (keep the audit) or `passthrough` (dodge pinning) is exactly what S1 decides.
+
 ## Network refusal handling
 
 The proxy distinguishes three response types so the agent can react appropriately without being trained to ask about every block:
@@ -243,18 +288,22 @@ The skill explains all three response types to Claude. It activates automaticall
 
 ![[agent-creance-policy-flow.svg]]
 
-`agent-creance` hashes the inputs (the project YAML + all transitively-included files + the implicit global + the manifests referenced by enabled generators) on every invocation. When the hash matches the cached one, it skips regeneration entirely — same-config runs are near-instant. When inputs changed, it runs the configured generators and produces the compiled artifacts in the project's **state directory** — `~/.cache/agent-creance/projects/<hash>/`, where `<hash>` derives from the canonical project path (the same identity scheme the lock file uses).
+`agent-creance` hashes the inputs (the project YAML + all transitively-included files + the implicit global + the manifests referenced by enabled generators + the session-overlay file holding any `allow --once` rules, see "Session-scoped allows") on every invocation. When the hash matches the cached one, it skips regeneration entirely — same-config runs are near-instant. When inputs changed, it runs the configured generators and produces the compiled artifacts in the project's **state directory** — `~/.cache/agent-creance/projects/<hash>/`, where `<hash>` derives from the canonical project path (the same identity scheme the lock file uses).
 
 The state directory lives *outside* the source tree on purpose. The agent runs with the project mounted read-write, so anything security-critical kept inside `./` would be editable by the very process it constrains — and because mitmproxy hot-reloads its policy on mtime change, an in-tree `policy.json` could be rewritten by a prompt-injected agent to allow itself anything. Keeping the compiled policy, the enforcer, the lock, and the audit log out-of-tree means the agent cannot rewrite its own controls; none of these files are mounted into the cage at all. Only host-side processes read them — the CLI, mitmproxy, and safehouse-at-launch.
 
-- **`network.sb`** — a Seatbelt profile that gets passed to Safehouse via `--append-profile`. Contains the `deny network*` baseline plus the narrow allow rules derived from `network.host_services` and the proxy port.
+- **`network.sb`** — a Seatbelt profile that gets passed to Safehouse via `--append-profile`. Contains the `deny network*` baseline plus the narrow allow rules derived from `network.host_services` and the proxy port. **This file is exempt from the input-hash cache: it is regenerated on every launch from the live proxy port read out of the lock file.** The port is ephemeral (`:0`-allocated — see "Multi-agent lifecycle") and can differ from run to run, so it cannot be baked into an artifact whose cache key is the config inputs. The `.sb` is a few lines of text, so regenerating it every launch is free; the input-hash cache exists to skip the *expensive* part — the `policy.json` generator registry fetches — not this.
 - **`policy.json`** — the mitmproxy enforcer addon reads this on every request. Compact representation of the unioned `allow` and `deny_always` rules (explicit + generator output + included files). Mitmproxy's addon polls the file's mtime and reloads on change, so `agent-creance allow ...` from another terminal propagates within milliseconds. Because the file lives out-of-tree and unmounted, only the host-side CLI can write it — the agent cannot.
 
 The mitmproxy addon itself (`enforcer.py`) is shipped embedded in the agent-creance binary and extracted to the state directory on first run — it's a constant, not a per-project file. Only the policy JSON it reads is per-project.
 
 The one thing that stays in the source tree is the human-authored config (`.agent-creance.yaml` and any `include:`d files) — it's version-controlled input, and the agent editing it changes nothing until the next `agent-creance run` recompiles, which the agent inside the cage cannot trigger. The live policy the proxy enforces is always the out-of-tree compiled artifact.
 
-## Prerequisites and version handling
+### Session-scoped allows
+
+`agent-creance allow --once URL` adds a rule that lives only for the current project session, without touching the committed `.agent-creance.yaml`. It is written to a **session-overlay file in the project's state directory** (out-of-tree, like everything else security-critical), and the compiler unions it on top of the YAML inputs exactly as it unions an `include:`d file. Because the overlay is part of the compilation inputs, adding a `--once` rule recompiles `policy.json` and the running proxy hot-reloads it within milliseconds.
+
+Its scope is the **project session, not a single invocation**: with the shared refcounted proxy, every agent attached to the project sees the rule (they share one `policy.json`). The overlay is **purged on last-agent-exit teardown** — when the trap handler removes the final PID and tears the proxy down, it deletes the overlay so the rule does not silently survive into the next session. (Explicit `agent-creance clean` also removes it, for the orphan-cleanup path where no live teardown ran.)
 
 agent-creance requires two tools installed on the host: `agent-safehouse` and `mitmproxy`. It does **not** auto-install them — installing other people's software silently is overreach, especially for a security tool. When either is missing, agent-creance refuses to run and prints actionable install instructions:
 
@@ -316,7 +365,7 @@ agent-creance run                   # starts the cage and the agent; if setup ha
                                     #   failing with a stack trace
 
 agent-creance allow URL             # append a soft-allow rule to .agent-creance.yaml
-agent-creance allow --once URL      # session-scoped allow; removed on agent-creance clean
+agent-creance allow --once URL      # project-session-scoped allow (see "Session-scoped allows")
 agent-creance allow --global URL    # append to ~/.config/agent-creance.yaml instead
 agent-creance deny URL              # append a deny_always rule (optionally with --reason)
 
@@ -359,6 +408,10 @@ On any exit (clean, SIGINT, crash), the wrapper's trap handler reacquires the fl
 
 For two projects with different policies running concurrently, each gets its own mitmproxy on its own port. Port allocation binds mitmproxy to `:0` and lets the OS assign a free ephemeral port, which is then recorded in the lock file; subsequent runs of the same project read the port back from the lock. There's no need to hash the path into a port range and step on collisions — the lock is already the single source of truth for the port, so the deterministic-hashing scheme was just complexity without payoff.
 
+**Crash recovery and the port.** An already-running agent's Seatbelt profile is frozen at *its own* launch — it cannot be rewritten mid-flight. So if mitmproxy crashes while agents are attached and is restarted on a *different* port, those surviving agents are stranded: their `network.sb` only allows the old port, and there is no way to amend it without relaunching them. To avoid that, a restart **attempts to reclaim the recorded port** (best-effort `bind` to the same number); if it succeeds, the attached agents recover transparently. Reclaim cannot be guaranteed — ephemeral ports are exactly the range the OS hands to any process binding `:0`, so another process (often another project's proxy) may already hold it; `SO_REUSEADDR` does not help against a live holder.
+
+**agent-creance never kills attached agents to recover** — that could disrupt important in-flight sessions. When the port could not be reclaimed *and* agents are still attached, the restarting `agent-creance run` emits a loud warning naming the affected session PIDs ("proxy restarted on port N (was M); attached agents <pids> will see egress failures and should be relaunched"), and `doctor`/`status` surface the same condition. **Honest limitation:** a stranded agent's next request hits a dead port and gets a raw connection-refused error — *not* a structured cage refusal, because there is no proxy there to return the `X-Cage-Reason` JSON. The shipped skill therefore won't engage for this case; to the agent it looks like a generic network outage.
+
 ## Audit log
 
 mitmproxy writes a JSONL file at `egress.jsonl` in the project's state directory (`~/.cache/agent-creance/projects/<hash>/`), mode `0600`, with sensitive headers (`Authorization`, `Cookie`, `X-Api-Key`, etc.) filtered before logging. Each entry records timestamp, method, URL, decision (allow / soft-deny / hard-deny), matching rule, and response status. Keeping the log out-of-tree matters for integrity: the agent runs with `./` writable, so an in-tree audit log could be truncated or doctored by the very process it records. `agent-creance logs` is how you read it — it never needs to live in the repo.
@@ -367,7 +420,7 @@ mitmproxy writes a JSONL file at `egress.jsonl` in the project's state directory
 
 **Tooling.** `agent-creance logs --follow` is rotation-aware (implemented natively in Go via `fsnotify`, not `tail -f`). `agent-creance logs --summary` reads `.1` and the current file in order, treating them as one logical stream.
 
-**Gitignore.** With all runtime, compiled, and session state living out-of-tree, there's nothing for agent-creance to add to `.gitignore` — the only in-tree files are the human-authored config you commit deliberately. (`agent-creance init` no longer writes a gitignore block; session-scoped `allow --once` rules are written to the state directory and removed on `clean`, so they never touch the repo either.)
+**Gitignore.** With all runtime, compiled, and session state living out-of-tree, there's nothing for agent-creance to add to `.gitignore` — the only in-tree files are the human-authored config you commit deliberately. (`agent-creance init` no longer writes a gitignore block; session-scoped `allow --once` rules are written to the state directory and purged on last-agent-exit teardown — see "Session-scoped allows" — so they never touch the repo either.)
 
 ## The proxy and the credential story
 
@@ -380,7 +433,9 @@ Mitmproxy is a normal host daemon — installed via Homebrew, runs as your user,
 **Executable config and the credential need opposite handling.** Mounting `~/.claude` read-write would expose far more than the token — `settings.json`, hooks, MCP server definitions, and `skills/` are all *executable config* that fires on the user's next, un-caged Claude run. The token, by contrast, is shared state that every session must read *and* write. So agent-creance splits them:
 
 - **Executable config is redirected and ephemeral.** The caged agent is pointed at a throwaway config directory via `CLAUDE_CONFIG_DIR`, in the project's state directory (`~/.cache/agent-creance/projects/<hash>/claude/`), seeded with a minimal sanitized settings file and mounted read-write. The real `~/.claude` is mounted read-only or not at all. This **fully closes the config-persistence vector** — a prompt-injected agent cannot plant a hook, MCP server, or skill that survives into a later session.
-- **The credential stays in the one shared store.** On macOS, Claude Code does *not* keep the OAuth token in a config file — there is no `~/.claude/.credentials.json` on the machine — it lives in the login **Keychain**, keyed by service name, independent of `CLAUDE_CONFIG_DIR`. agent-creance deliberately does **not** clone it per project; every caged session uses the same Keychain item, exactly as un-caged Claude Code does. The generated Seatbelt profile grants the cage access to that one item (mach-lookup to `securityd` plus the item's ACL).
+- **The credential stays in the one shared store.** On macOS, Claude Code normally does *not* keep the OAuth token in a config file — typically there is no `~/.claude/.credentials.json` on the machine — it lives in the login **Keychain**, keyed by service name, independent of `CLAUDE_CONFIG_DIR` (the file-based exception is handled below). agent-creance deliberately does **not** clone it per project; every caged session uses the same Keychain item, exactly as un-caged Claude Code does. The generated Seatbelt profile grants the cage access to that one item (mach-lookup to `securityd` plus the item's ACL).
+
+**File-based credential fallback (out of scope for v0.1).** The split above assumes the token is in the Keychain — the macOS default. Some setups instead keep a file-based `~/.claude/.credentials.json` (older versions, managed configs, CI-style machines). v0.1 does **not** support that case: with the real `~/.claude` mounted read-only, a file-based token can be neither refreshed nor rotated, so the credential model would fail closed. Rather than silently break, v0.1 should **detect** the situation (Keychain item absent but a credentials file present) at `run`/`doctor` and refuse with a clear message — "caged sessions require a Keychain-stored credential; run `claude` login on the host" — instead of a confusing mid-session TLS/auth failure. Supporting file-based credentials properly is deferred to a later version.
 
 **Why not clone the credential per project (the concurrency reason).** OAuth refresh rotates: a successful refresh typically issues a new refresh token and invalidates the old one. If each project cloned the credential into its own config dir and refreshed on its own cycle, the first project to refresh would rotate the token out from under all the others, and a sync-back-on-exit step would be a last-writer-wins race that clobbers good tokens with stale ones. Keeping a single shared Keychain item makes the store itself the synchronization point — whoever refreshes writes the rotated token back to the one place everyone reads. Any residual race (two sessions refreshing in the same instant) is a narrow, pre-existing window identical to running two un-caged Claude sessions at once, not something agent-creance introduces. **Spike [S2](#open-spikes-resolve-before-build) validates both the sandboxed Keychain access and the concurrent-refresh behavior before we build on this.**
 
@@ -420,7 +475,7 @@ This isn't on the v0.1 roadmap — but the schema includes a `plugins:` block fr
 
 ## v0.1 → v1.0 roadmap
 
-- **v0.1:** core orchestration — Safehouse invocation, mitmproxy lifecycle with refcounting, network `.sb` and `policy.json` compilation, two built-in generators (`package_json`, `composer_json`), three-response-type enforcement, skill install, `agent-creance allow`/`deny`/`policy` commands, JSONL audit log with rotation, CA bootstrap with post-install verification, prerequisite check (refuse-and-suggest) with tested-version warnings, `doctor` command, process-group signal forwarding.
+- **v0.1:** core orchestration — Safehouse invocation, mitmproxy lifecycle with refcounting, network `.sb` and `policy.json` compilation, two built-in generators (`package_json`, `composer_json`), per-host enforcement modes (`intercept`/`passthrough`), three-response-type enforcement, skill install, `agent-creance allow`/`deny`/`policy` commands, JSONL audit log with rotation, CA bootstrap with post-install verification, prerequisite check (refuse-and-suggest) with tested-version warnings, `doctor` command, process-group signal forwarding.
 - **v0.2:** secret injection (1Password, env), DNS resolver in the proxy with blocklists (Hagezi, OISD), structured deny-decision log alongside the main audit log, additional ecosystem generators (`pyproject_toml`, `cargo_toml`, etc.) as contributions arrive.
 - **v0.3:** Haiku-as-judge for ambiguous URLs (optional, requires API key; default off so the proxy needs no credentials to operate); agent-driven documentation-host expansion (prompt the user's running agent to enrich each library's allowlist beyond just the registry-stated homepage).
 - **v0.4:** config-driven process plugins (the `~/.config/agent-creance/processes.d/` mechanism above); community policy bundles via `bundle:` references in the schema; per-generator options (transitive-deps, custom paths, etc.).
