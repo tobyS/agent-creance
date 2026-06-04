@@ -1,5 +1,8 @@
 .claude-commit
 
+# Personal Claude Code settings (shared config lives in .claude/settings.json and .claude/tce/)
+.claude/settings.local.json
+
 # Build & test artifacts
 /bin/
 coverage.out

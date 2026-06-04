@@ -1,0 +1,6 @@
+# tce project config — read by the ticket scripts. Keep this machine-readable
+# (simple KEY=VALUE lines; it is sourced by the shell).
+#
+# TICKET_PREFIX is the project's ticket prefix (short, uppercase, e.g. MYAPP).
+# Tickets are named <PREFIX>-0001, <PREFIX>-0002, … and sub-tickets <PREFIX>-0001a.
+TICKET_PREFIX=AC
