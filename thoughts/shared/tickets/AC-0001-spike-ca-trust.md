@@ -1,6 +1,7 @@
 # AC-0001: Spike S1 — CA trust / certificate pinning (WP-0.1)
 
-**Status:** Open
+**Status:** Done
+**Decision:** `api.anthropic.com` → `intercept` (resolved 2026-06-04)
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -24,11 +25,11 @@ A findings note that records, per target host, whether a request through the tru
 
 ## Acceptance Criteria
 
-- [ ] A research note exists at `thoughts/shared/research/2026-06-DD-s1-ca-trust.md`.
-- [ ] The note records a PASS/FAIL (interception validates / host pins) for each of: `api.anthropic.com`, `registry.npmjs.org`, `pypi.org` + `files.pythonhosted.org`, `github.com`, `codeload.github.com`, `raw.githubusercontent.com`.
-- [ ] The note records whether Claude Code itself reaches its API with `HTTPS_PROXY` set and the CA trusted.
-- [ ] A `Decision:` line states the shipped default `mode` for `api.anthropic.com` (`intercept` or `passthrough`) with rationale.
-- [ ] If the decision is `passthrough` (or any host pins on the critical path), `docs/design.md` is updated to reflect the chosen composition.
+- [x] A research note exists at `thoughts/shared/research/2026-06-04-s1-ca-trust.md`.
+- [x] The note records a PASS/FAIL (interception validates / host pins) for each of: `api.anthropic.com`, `registry.npmjs.org`, `pypi.org` + `files.pythonhosted.org`, `github.com`, `codeload.github.com`, `raw.githubusercontent.com`. (All PASS — none pinned.)
+- [x] The note records whether Claude Code itself reaches its API with `HTTPS_PROXY` set and the CA trusted. (Yes — `POST /v1/messages` returned `200 OK` TLS-terminated through the proxy.)
+- [x] A `Decision:` line states the shipped default `mode` for `api.anthropic.com` (`intercept` or `passthrough`) with rationale. (`intercept`.)
+- [x] If the decision is `passthrough` (or any host pins on the critical path), `docs/design.md` is updated to reflect the chosen composition. (N/A — decision is `intercept`, nothing pinned; design.md S1 bullet updated to record the resolution.)
 
 ## Verification & Test Steps
 
@@ -69,3 +70,17 @@ Phase 0. Run first / in parallel with other spikes. Gates AC-0017, AC-0026, and 
 
 ### 2026-06-04
 Created from the v0.1 technical specification. This is a gating spike — no dependent enforcement code merges before its decision is recorded.
+
+### 2026-06-04 — Resolved
+Ran the experiments (mitmproxy 12.2.3, curl 8.7.1, Claude Code 2.1.162). All seven baseline
+hosts validated through the trusted mitmproxy CA (`ssl_verify_result 0`); none pinned. A real
+Claude Code inference call (`POST /v1/messages`) returned `200 OK` TLS-terminated through the
+proxy — Claude Code does not pin `api.anthropic.com`. **Decision: `intercept`** (keeps the
+channel audited; follows design rule). The `passthrough` path in WP-3.1/AC-0017 is therefore
+**optional**, not load-bearing (resolves spec §14 risk). Findings note:
+`thoughts/shared/research/2026-06-04-s1-ca-trust.md`. `docs/design.md` S1 bullet updated to
+record the resolution (no fallback/composition change needed). Incidental: Claude also reaches
+`mcp-proxy.anthropic.com` — flagged for the baseline-config ticket (AC-0017).
+
+Gates released: AC-0017 (WP-3.1), AC-0026 (WP-5.1), and the global baseline default for
+`api.anthropic.com` may now proceed on the `intercept` assumption.
