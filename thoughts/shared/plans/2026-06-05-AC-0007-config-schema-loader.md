@@ -300,10 +300,10 @@ the boolean validation logic, plus golden tests for rendered messages:
 ### Success criteria
 
 #### Automated
-- [ ] Full `make test`, `go build ./...`, `make lint` green at HEAD.
+- [x] Full `make test`, `go build ./...`, `make lint` green at HEAD.
 
 #### Manual
-- [ ] Ticket marked Done with both open questions answered.
+- [x] Ticket marked Done with both open questions answered.
 
 ---
 

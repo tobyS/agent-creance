@@ -30,5 +30,9 @@ Status: done (commit pending)
   Surfaced to user; out of scope.
 
 ## Phase 3 — Close-out
-Status: not started
+Status: done (commit pending)
+
+- Ticket AC-0007 marked Done; acceptance criteria ticked; both open questions
+  answered inline; implementation plan + dated note added.
+- Plan success criteria ticked. Final verification green (see below).
 </content>
