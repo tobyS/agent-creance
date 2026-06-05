@@ -1,0 +1,5 @@
+network:
+  egress:
+    allow:
+      - host: react.dev
+        bogus: true

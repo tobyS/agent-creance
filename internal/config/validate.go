@@ -7,9 +7,48 @@ import (
 )
 
 // validate checks cross-field schema constraints, recording every problem on verr
-// (it does not stop at the first). Rule-level validation lands in Phase 2.
+// (it does not stop at the first). It runs after applyDefaults, so every rule Mode is
+// already non-empty.
 func (c *Config) validate(verr *ValidationError) {
-	_ = verr
+	validateRules(c.Network.Egress.Allow, "allow", verr)
+	validateRules(c.Network.Egress.DenyAlways, "deny_always", verr)
+}
+
+// validateRules checks one allow/deny list. The mode is validated uniformly across
+// both lists: the Rule shape is uniform, so a stray mode: on a deny rule is better
+// caught than silently ignored.
+func validateRules(rules []Rule, list string, verr *ValidationError) {
+	for i, r := range rules {
+		ref := ruleRef(i, r)
+		if r.Host == "" {
+			verr.add("egress %s rule %s is missing a host", list, ref)
+		}
+		switch r.Mode {
+		case ModeIntercept:
+			// Fully intercepted: paths/methods are allowed (and optional).
+		case ModePassthrough:
+			// A passthrough host is a raw CONNECT tunnel with no TLS termination, so
+			// path/method matching is impossible — carrying them is a config error,
+			// not a silent no-op (docs/design.md "Per-host enforcement modes").
+			if r.Paths != nil {
+				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry paths", list, ref)
+			}
+			if r.Methods != nil {
+				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry methods", list, ref)
+			}
+		default:
+			verr.add("egress %s rule %s has unknown mode %q (want %q or %q)", list, ref, r.Mode, ModeIntercept, ModePassthrough)
+		}
+	}
+}
+
+// ruleRef names a rule for an error message: by host when it has one, else by its
+// 1-based position in the list.
+func ruleRef(i int, r Rule) string {
+	if r.Host != "" {
+		return fmt.Sprintf("for host %q", r.Host)
+	}
+	return fmt.Sprintf("#%d", i+1)
 }
 
 // parseHostService parses a "label:port" entry into a typed HostService. The label

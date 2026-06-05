@@ -1,0 +1,6 @@
+network:
+  egress:
+    allow:
+      - host: api.anthropic.com
+        mode: passthrough
+        paths: ["/v1/messages"]

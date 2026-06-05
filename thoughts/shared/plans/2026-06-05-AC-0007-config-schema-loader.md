@@ -265,19 +265,26 @@ the boolean validation logic, plus golden tests for rendered messages:
 ### Success criteria
 
 #### Automated
-- [ ] `go test -race ./internal/config/...` passes (table + golden).
-- [ ] `go test ./internal/config -run TestValidate` green.
-- [ ] `make golden` produces the expected golden files and no *unexpected* diff
-      (review `git diff testdata/`).
-- [ ] `go test -race ./...` (full suite) green.
-- [ ] `make lint` clean.
+- [x] `go test -race ./internal/config/...` passes (table + golden).
+- [x] `go test ./internal/config -run TestValidate` green.
+- [x] Golden files regenerate with no *unexpected* diff. NOTE: repo-wide
+      `make golden` (= `go test ./... -update`) has a **pre-existing** defect — the
+      custom `-update` flag is only defined in packages with golden tests, so the
+      `cli`/`state`/`sysdep` binaries reject it (`internal/state`, from AC-0006 and
+      untouched here, fails identically). Verified via the scoped
+      `go test ./internal/config -update`; all `testdata/*.golden` are new (no
+      existing golden modified). The Makefile papercut is surfaced to the user,
+      out of scope for AC-0007.
+- [x] `go test -race ./...` (full suite) green.
+- [x] `make lint` clean.
 
 #### Manual
-- [ ] `mode: passthrough` with `paths` and with `methods` each produce a clear,
+- [x] `mode: passthrough` with `paths` and with `methods` each produce a clear,
       host-named error (design:241).
-- [ ] An unknown top-level key and an unknown nested key both error (strict policy).
-- [ ] Golden messages are human-readable and contain **no** Go type names.
-- [ ] Error messages would let an operator fix the config without reading source.
+- [x] An unknown top-level key and an unknown nested key both error (strict policy;
+      nested-key case proves KnownFields penetrates list-element Rule structs).
+- [x] Golden messages are human-readable and contain **no** Go type names.
+- [x] Error messages would let an operator fix the config without reading source.
 
 ---
 

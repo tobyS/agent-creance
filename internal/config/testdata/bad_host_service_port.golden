@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - host_services entry "mysql:99999" has port 99999 out of range 1-65535

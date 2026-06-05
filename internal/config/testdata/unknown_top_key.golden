@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - line 3: unknown key "bogus"

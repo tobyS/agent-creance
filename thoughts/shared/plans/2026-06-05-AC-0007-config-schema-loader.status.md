@@ -17,7 +17,17 @@ Status: done (commit pending)
 - go build / go test -race ./internal/config / make lint all green.
 
 ## Phase 2 — Validation + golden error messages
-Status: not started
+Status: done (commit pending)
+
+- validate.go: validate() rejects passthrough+paths/methods, unknown mode, empty
+  host (uniform across allow + deny_always); reformat() turns yaml errors into
+  type-name-free messages.
+- 7 golden fixtures + .golden files; TestValidate table test; TestGoldenErrors;
+  TestValidate_ReportsAllIssues (accumulates, not fail-fast).
+- go test -race ./... green; make lint clean.
+- NOTE: repo-wide `make golden` has a pre-existing -update flag defect (cli/state/
+  sysdep lack the flag); goldens verified via `go test ./internal/config -update`.
+  Surfaced to user; out of scope.
 
 ## Phase 3 — Close-out
 Status: not started

@@ -1,0 +1,3 @@
+network:
+  host_services:
+    - mysql:99999

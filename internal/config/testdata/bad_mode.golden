@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - egress allow rule for host "react.dev" has unknown mode "observe" (want "intercept" or "passthrough")

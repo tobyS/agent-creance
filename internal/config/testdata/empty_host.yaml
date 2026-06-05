@@ -1,0 +1,4 @@
+network:
+  egress:
+    deny_always:
+      - reason: "a rule with no host"

@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - egress deny_always rule #1 is missing a host

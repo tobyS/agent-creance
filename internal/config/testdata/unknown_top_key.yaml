@@ -1,0 +1,3 @@
+agent:
+  workdir: .
+bogus: true
