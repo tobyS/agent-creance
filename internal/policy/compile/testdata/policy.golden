@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "input_hash": "02c3f8990f8181bf49c2d3aa767927779a03598387edb3cb6097a91840ffecd8",
+  "allow": [
+    {
+      "host": "api.anthropic.com",
+      "mode": "passthrough",
+      "source": "global"
+    },
+    {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/tobyS/x/"
+      ],
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "mode": "intercept",
+      "source": "explicit"
+    },
+    {
+      "host": "react.dev",
+      "mode": "intercept",
+      "source": "generated:package_json:react"
+    },
+    {
+      "host": "github.com",
+      "paths": [
+        "/facebook/react/"
+      ],
+      "mode": "intercept",
+      "source": "generated:package_json:react"
+    },
+    {
+      "host": "objects.githubusercontent.com",
+      "mode": "intercept",
+      "source": "generated:package_json:react",
+      "lower_trust": true
+    },
+    {
+      "host": "docs.somelib.io",
+      "paths": [
+        "/v2/"
+      ],
+      "mode": "intercept",
+      "source": "once"
+    }
+  ],
+  "deny_always": [
+    {
+      "host": "w3schools.com",
+      "mode": "intercept",
+      "reason": "low quality",
+      "source": "global"
+    },
+    {
+      "host": "*",
+      "paths": [
+        "**/.env"
+      ],
+      "mode": "intercept",
+      "reason": "secrets",
+      "source": "explicit"
+    }
+  ]
+}

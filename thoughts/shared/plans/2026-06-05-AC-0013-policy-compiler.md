@@ -240,9 +240,9 @@ in the layout root, and a `package.json`; configure the fake path resolver so
    (no error).
 
 ### Success criteria
-- [ ] `go build ./...`; `go test -race ./internal/policy/...` green (incl. golden).
-- [ ] `make golden` diff reviewed; `make lint` clean.
-- [ ] Cache-hit test proves runner call-count == 0; cache-miss covers YAML, manifest,
+- [x] `go build ./...`; `go test -race ./internal/policy/...` green (incl. golden).
+- [x] `make golden` diff reviewed; `make lint` clean.
+- [x] Cache-hit test proves runner call-count == 0; cache-miss covers YAML, manifest,
       and overlay mutations; C4 guard proves no in-tree write.
 
 ---
