@@ -8,7 +8,7 @@ started: 2026-06-05
 
 - [x] Phase 1 — Pure renderers + unit/golden tests
 - [x] Phase 2 — Compiler (write network.sb out-of-tree)
-- [ ] Phase 3 — Integration test (S3 localhost-refusal self-test)
+- [x] Phase 3 — Integration test (S3 localhost-refusal self-test)
 - [ ] Phase 4 — Doc corrections + close ticket
 
 ## Log
@@ -21,4 +21,12 @@ started: 2026-06-05
   each time, missing-config error. `make test`/`make lint` green. Note: New returns
   *Compiler (no error) — nothing fallible at construction, a minor deviation from the
   plan's (*Compiler, error) signature.
+- 2026-06-05: Phase 3 done — live_integration_test.go ships the S3 probes against the
+  generated rules via sandbox-exec (EPERM on a non-allowlisted port over v4+v6,
+  allowlisted port reachable). Added a preflight that SKIPS when the environment can't
+  apply nested sandbox profiles (this dev box can't — even (allow default) hits
+  "sandbox_apply: Operation not permitted"). Verified out-of-band that our generated
+  localhost:N profile COMPILES (reaches sandbox_apply) while the old literal 127.0.0.1:N
+  form is rejected at compile time ("host must be * or localhost") — confirms the spike
+  correction. Lints clean under -build-tags=integration.
 </content>
