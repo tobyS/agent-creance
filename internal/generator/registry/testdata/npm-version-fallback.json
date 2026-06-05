@@ -1,0 +1,15 @@
+{
+  "name": "hoist-lagged",
+  "dist-tags": { "latest": "3.1.0" },
+  "versions": {
+    "3.1.0": {
+      "name": "hoist-lagged",
+      "version": "3.1.0",
+      "homepage": "https://hoist-lagged.example/docs",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/example/hoist-lagged.git"
+      }
+    }
+  }
+}

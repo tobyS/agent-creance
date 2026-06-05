@@ -1,0 +1,12 @@
+{
+  "name": "stringy",
+  "dist-tags": { "latest": "2.0.0" },
+  "homepage": "https://stringy.example/",
+  "repository": "https://github.com/example/stringy.git",
+  "versions": {
+    "2.0.0": {
+      "name": "stringy",
+      "version": "2.0.0"
+    }
+  }
+}

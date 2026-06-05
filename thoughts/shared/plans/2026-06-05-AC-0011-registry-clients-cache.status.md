@@ -8,7 +8,7 @@ started: 2026-06-05
 
 - [x] Phase 1 — HTTP seam in `sysdep`
 - [x] Phase 2 — `state.RegistriesRoot()` helper
-- [ ] Phase 3 — registry client core + npm/Packagist sources
+- [x] Phase 3 — registry client core + npm/Packagist sources
 - [ ] Phase 4 — live integration test + ticket close
 
 ## Notes
