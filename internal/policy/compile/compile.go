@@ -63,6 +63,10 @@ var manifestFiles = map[string]string{
 // without HTTP (the generators are already covered by their own package's tests).
 type generatorRunner interface {
 	Run(ctx context.Context, name string, manifest []byte) ([]generator.Rule, error)
+	// Invalidate clears the named generator's cached state for manifest (its output
+	// cache and each dependency's registry entry), returning what it cleared. It is the
+	// invalidation half `policy refresh` drives before forcing a rebuild.
+	Invalidate(name string, manifest []byte) (generator.InvalidationStats, error)
 }
 
 // realGenerators is the production generatorRunner: it constructs the named generator
@@ -81,6 +85,14 @@ func (r realGenerators) Run(ctx context.Context, name string, manifest []byte) (
 		return nil, err
 	}
 	return g.Generate(ctx, manifest)
+}
+
+func (r realGenerators) Invalidate(name string, manifest []byte) (generator.InvalidationStats, error) {
+	g, err := generator.New(name, r.fs, r.clock, r.getter, r.registriesRoot, r.generatorsRoot)
+	if err != nil {
+		return generator.InvalidationStats{}, err
+	}
+	return g.Invalidate(manifest)
 }
 
 // Compiler compiles a project's effective config into its out-of-tree policy.json.
@@ -127,78 +139,181 @@ type Result struct {
 	DenyCount  int
 }
 
-// Compile resolves projectDir's effective config and writes its policy.json, skipping
-// regeneration when the input hash matches the cached artifact. Nothing is ever written
-// inside the project tree — the artifact lives under the out-of-tree state directory.
-func (c *Compiler) Compile(ctx context.Context, projectDir string) (Result, error) {
+// GeneratorRefresh reports what Refresh cleared for one generator: the packages it
+// considered, how many had a cached registry entry actually removed, and whether its
+// output-cache entry existed and was removed.
+type GeneratorRefresh struct {
+	Name                string
+	Packages            int
+	CacheEntriesCleared int
+	OutputCacheCleared  bool
+}
+
+// RefreshResult reports what Refresh did: the per-generator invalidation detail and the
+// rule counts of the freshly recompiled policy.json.
+type RefreshResult struct {
+	PolicyPath string
+	Generators []GeneratorRefresh
+	AllowCount int
+	DenyCount  int
+}
+
+// compileInputs is everything resolve() derives from a project directory before the
+// cache gate: the resolved layout, the three config layers, the validated generator
+// list, the referenced manifest bytes, and the input hash. Compile and Refresh share it.
+type compileInputs struct {
+	layout    state.Layout
+	global    *config.Config
+	project   *config.Config
+	overlay   *config.Config
+	gens      []string
+	manifests map[string][]byte
+	hash      string
+}
+
+// resolve loads projectDir's effective config layers, validates and merges the generator
+// list, reads the referenced manifests, and computes the input hash — the shared prelude
+// to Compile (which then checks the cache gate) and Refresh (which invalidates then
+// rebuilds).
+func (c *Compiler) resolve(projectDir string) (compileInputs, error) {
 	layout, err := c.state.Resolve(projectDir)
 	if err != nil {
-		return Result{}, err
+		return compileInputs{}, err
 	}
 
 	globalPath, err := c.loader.GlobalPath()
 	if err != nil {
-		return Result{}, err
+		return compileInputs{}, err
 	}
 	global, err := c.loader.ResolveLayer(globalPath, true /*optional*/)
 	if err != nil {
-		return Result{}, fmt.Errorf("compile: load global: %w", err)
+		return compileInputs{}, fmt.Errorf("compile: load global: %w", err)
 	}
 	project, err := c.loader.ResolveLayer(filepath.Join(layout.Canonical, projectConfigName), false /*required*/)
 	if err != nil {
-		return Result{}, fmt.Errorf("compile: load project: %w", err)
+		return compileInputs{}, fmt.Errorf("compile: load project: %w", err)
 	}
 	overlay, err := c.loadOverlay(layout.SessionOverlay())
 	if err != nil {
-		return Result{}, err
+		return compileInputs{}, err
 	}
 
 	gens := mergeGenerators(global.Network.Egress.Generators, project.Network.Egress.Generators)
 	for _, name := range gens {
 		if !generator.Known(name) {
-			return Result{}, fmt.Errorf("compile: unknown generator %q", name)
+			return compileInputs{}, fmt.Errorf("compile: unknown generator %q", name)
 		}
 	}
 
 	manifests, err := c.readManifests(layout.Canonical, gens)
 	if err != nil {
-		return Result{}, err
+		return compileInputs{}, err
 	}
 
 	hash, err := inputHash(global, project, overlay, manifests)
+	if err != nil {
+		return compileInputs{}, err
+	}
+
+	return compileInputs{
+		layout:    layout,
+		global:    global,
+		project:   project,
+		overlay:   overlay,
+		gens:      gens,
+		manifests: manifests,
+		hash:      hash,
+	}, nil
+}
+
+// Compile resolves projectDir's effective config and writes its policy.json, skipping
+// regeneration when the input hash matches the cached artifact. Nothing is ever written
+// inside the project tree — the artifact lives under the out-of-tree state directory.
+func (c *Compiler) Compile(ctx context.Context, projectDir string) (Result, error) {
+	in, err := c.resolve(projectDir)
 	if err != nil {
 		return Result{}, err
 	}
 
 	// Cache check precedes the generator run: a hit makes zero registry calls and leaves
 	// the existing policy.json (and its mtime) in place so the proxy does not hot-reload.
-	if existing, ok := c.readCompiled(layout.PolicyJSON()); ok &&
-		existing.Version == policy.CompiledVersion && existing.InputHash == hash {
+	if existing, ok := c.readCompiled(in.layout.PolicyJSON()); ok &&
+		existing.Version == policy.CompiledVersion && existing.InputHash == in.hash {
 		return Result{
-			PolicyPath: layout.PolicyJSON(),
-			InputHash:  hash,
+			PolicyPath: in.layout.PolicyJSON(),
+			InputHash:  in.hash,
 			Skipped:    true,
 			AllowCount: len(existing.Allow),
 			DenyCount:  len(existing.DenyAlways),
 		}, nil
 	}
 
-	rs, err := c.buildRuleSet(ctx, global, project, overlay, gens, manifests)
+	return c.build(ctx, in)
+}
+
+// Refresh forces a re-fetch of generator metadata and a recompile (WP-2.7): it
+// invalidates each configured generator's cached state (output cache + the registry
+// entries of its dependencies), then rebuilds policy.json unconditionally — bypassing
+// the input-hash gate, since the inputs are unchanged but the caches were just cleared,
+// so the rebuild re-runs the generators and re-hits the registry. Only this project's
+// packages are touched; the cross-project registry/generator caches for other packages
+// are left intact. It does not require the cage to be running.
+func (c *Compiler) Refresh(ctx context.Context, projectDir string) (RefreshResult, error) {
+	in, err := c.resolve(projectDir)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+
+	var refreshed []GeneratorRefresh
+	for _, name := range in.gens {
+		manifest, ok := in.manifests[name]
+		if !ok {
+			continue // no manifest on disk → nothing was ever cached for this generator
+		}
+		stats, err := c.runner.Invalidate(name, manifest)
+		if err != nil {
+			return RefreshResult{}, fmt.Errorf("compile: refresh generator %q: %w", name, err)
+		}
+		refreshed = append(refreshed, GeneratorRefresh{
+			Name:                name,
+			Packages:            stats.Packages,
+			CacheEntriesCleared: stats.CacheEntriesCleared,
+			OutputCacheCleared:  stats.OutputCacheCleared,
+		})
+	}
+
+	res, err := c.build(ctx, in)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	return RefreshResult{
+		PolicyPath: res.PolicyPath,
+		Generators: refreshed,
+		AllowCount: res.AllowCount,
+		DenyCount:  res.DenyCount,
+	}, nil
+}
+
+// build runs the generators, unions every source into the rule set, and writes
+// policy.json — the shared tail of Compile (on a cache miss) and Refresh (always). It
+// never consults the cache gate; the caller decides whether to skip it.
+func (c *Compiler) build(ctx context.Context, in compileInputs) (Result, error) {
+	rs, err := c.buildRuleSet(ctx, in.global, in.project, in.overlay, in.gens, in.manifests)
 	if err != nil {
 		return Result{}, err
 	}
 
 	compiled := policy.Compiled{
 		Version:   policy.CompiledVersion,
-		InputHash: hash,
+		InputHash: in.hash,
 		RuleSet:   rs,
 	}
-	if err := c.write(layout, compiled); err != nil {
+	if err := c.write(in.layout, compiled); err != nil {
 		return Result{}, err
 	}
 	return Result{
-		PolicyPath: layout.PolicyJSON(),
-		InputHash:  hash,
+		PolicyPath: in.layout.PolicyJSON(),
+		InputHash:  in.hash,
 		Skipped:    false,
 		AllowCount: len(rs.Allow),
 		DenyCount:  len(rs.DenyAlways),

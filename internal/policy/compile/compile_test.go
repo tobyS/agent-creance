@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
@@ -15,6 +18,9 @@ import (
 	"github.com/tobyS/agent-creance/internal/state"
 	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
 )
+
+// baseTime is the frozen "now" for the real-stack refresh test's fake clock.
+var baseTime = time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 
 // update regenerates the golden artifact: `go test ./... -update` (make golden).
 var update = flag.Bool("update", false, "regenerate golden files")
@@ -24,16 +30,27 @@ const (
 	projDir  = "/proj"
 )
 
-// fakeRunner is a hermetic generatorRunner: it returns canned rules per generator name
-// and counts calls so cache-hit tests can assert zero generator work.
+// fakeRunner is a hermetic generatorRunner: it returns canned rules per generator name,
+// counts Run calls (so cache-hit tests can assert zero generator work), serves canned
+// invalidation stats, and logs the operation order so Refresh tests can assert
+// "invalidate before rebuild".
 type fakeRunner struct {
 	rules map[string][]generator.Rule
 	calls int
+
+	stats map[string]generator.InvalidationStats
+	log   []string // "invalidate:<name>" / "run:<name>", in call order
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, _ []byte) ([]generator.Rule, error) {
 	f.calls++
+	f.log = append(f.log, "run:"+name)
 	return f.rules[name], nil
+}
+
+func (f *fakeRunner) Invalidate(name string, _ []byte) (generator.InvalidationStats, error) {
+	f.log = append(f.log, "invalidate:"+name)
+	return f.stats[name], nil
 }
 
 // fixture wires a Compiler over in-memory fakes seeded with the given path→contents map,
@@ -285,6 +302,96 @@ func TestCompile_Annotations(t *testing.T) {
 	if len(wantDeny) != 0 {
 		t.Errorf("missing annotated deny rules: %v", wantDeny)
 	}
+}
+
+// TestRefresh_InvalidatesThenRebuilds checks the orchestration with a fake runner: even
+// when an identical policy.json already exists (a Compile would be a cache hit), Refresh
+// invalidates each generator first, then forces a rebuild — bypassing the gate — and
+// propagates the invalidation stats.
+func TestRefresh_InvalidatesThenRebuilds(t *testing.T) {
+	files := representativeFiles()
+	runner := representativeRunner()
+	runner.stats = map[string]generator.InvalidationStats{
+		generator.GeneratorPackageJSON: {Packages: 1, CacheEntriesCleared: 1, OutputCacheCleared: true},
+	}
+	c, fsys := fixture(t, files, runner)
+
+	// Prime the artifact so a plain Compile would now be a cache hit.
+	res0, err := c.Compile(context.Background(), projDir)
+	require.NoError(t, err)
+	require.False(t, res0.Skipped)
+	hit, err := c.Compile(context.Background(), projDir)
+	require.NoError(t, err)
+	require.True(t, hit.Skipped, "second compile should be a cache hit")
+
+	primed := append([]byte(nil), fsys.Files[res0.PolicyPath]...)
+	runner.log = nil
+	runner.calls = 0
+
+	rr, err := c.Refresh(context.Background(), projDir)
+	require.NoError(t, err)
+
+	// Invalidate ran before the rebuild, for the one configured generator.
+	require.Equal(t, []string{"invalidate:package_json", "run:package_json"}, runner.log)
+
+	// Stats propagated into the result.
+	require.Len(t, rr.Generators, 1)
+	require.Equal(t, generator.GeneratorPackageJSON, rr.Generators[0].Name)
+	require.Equal(t, 1, rr.Generators[0].Packages)
+	require.Equal(t, 1, rr.Generators[0].CacheEntriesCleared)
+	require.True(t, rr.Generators[0].OutputCacheCleared)
+
+	// policy.json was rebuilt despite the matching input hash (gate bypassed).
+	require.Equal(t, res0.PolicyPath, rr.PolicyPath)
+	require.Greater(t, rr.AllowCount, 0)
+	require.Equal(t, string(primed), string(fsys.Files[rr.PolicyPath]), "identical inputs → byte-identical rebuild")
+}
+
+// TestRefresh_RealStackRefetchesRegistry is the hermetic realization of AC verification
+// step 2: wired over the REAL generator/registry stack (only HTTP/FS/clock are fakes), a
+// fresh cache is normally reused, but Refresh clears it and the rebuild re-hits the
+// "registry" (the fake HTTP getter) — proving the metadata is actually re-fetched.
+func TestRefresh_RealStackRefetchesRegistry(t *testing.T) {
+	fsys := sysdeptest.NewFakeFileSystem()
+	paths := sysdeptest.NewFakePathResolver()
+	paths.HomeDir = testHome
+	clk := sysdeptest.NewFakeClock(baseTime)
+	http := sysdeptest.NewFakeHTTPGetter()
+	http.WithResponse("https://registry.npmjs.org/react", 200, []byte(`{"homepage":"https://react.dev/"}`))
+
+	fsys.Files[projDir+"/.agent-creance.yaml"] = []byte("network:\n  egress:\n    generators:\n      - package_json\n")
+	fsys.Files[projDir+"/package.json"] = []byte(`{"dependencies":{"react":"^18"}}`)
+
+	c, err := New(fsys, paths, clk, http)
+	require.NoError(t, err)
+
+	registriesRoot, err := state.New(paths).RegistriesRoot()
+	require.NoError(t, err)
+	reactCache := registriesRoot + "/npm/react.json"
+
+	// First compile fetches react once and caches it.
+	_, err = c.Compile(context.Background(), projDir)
+	require.NoError(t, err)
+	require.Len(t, http.Calls, 1, "first compile fetches once")
+	require.Contains(t, fsys.Files, reactCache, "registry cache entry written")
+
+	// Second compile is a cache hit (gate + fresh registry cache) — no fetch.
+	_, err = c.Compile(context.Background(), projDir)
+	require.NoError(t, err)
+	require.Len(t, http.Calls, 1, "fresh cache must not re-fetch")
+
+	// Refresh clears the cache and rebuilds → re-fetches react.
+	rr, err := c.Refresh(context.Background(), projDir)
+	require.NoError(t, err)
+	require.Len(t, http.Calls, 2, "refresh must re-hit the registry")
+	require.Contains(t, fsys.Files, reactCache, "registry cache entry rewritten after refresh")
+
+	require.Len(t, rr.Generators, 1)
+	require.Equal(t, generator.GeneratorPackageJSON, rr.Generators[0].Name)
+	require.Equal(t, 1, rr.Generators[0].Packages)
+	require.Equal(t, 1, rr.Generators[0].CacheEntriesCleared, "react's entry existed and was cleared")
+	require.True(t, rr.Generators[0].OutputCacheCleared)
+	require.Greater(t, rr.AllowCount, 0)
 }
 
 func TestCompile_UnknownGeneratorErrors(t *testing.T) {
