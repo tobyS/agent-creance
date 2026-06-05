@@ -7,7 +7,7 @@ started: 2026-06-05
 # Implementation status — AC-0014
 
 - [x] Phase 1 — Pure renderers + unit/golden tests
-- [ ] Phase 2 — Compiler (write network.sb out-of-tree)
+- [x] Phase 2 — Compiler (write network.sb out-of-tree)
 - [ ] Phase 3 — Integration test (S3 localhost-refusal self-test)
 - [ ] Phase 4 — Doc corrections + close ticket
 
@@ -16,4 +16,9 @@ started: 2026-06-05
 - 2026-06-05: Phase 1 done — internal/profile renderers + golden (network.golden:
   localhost:N, no forbidden literals). `go test -race ./internal/profile/...` green,
   `go build ./...` clean.
+- 2026-06-05: Phase 2 done — Compiler (New/Compile/Result) writes network.sb atomically
+  to layout.NetworkSB(); no cache. Tests: write+perm, C4 no-in-tree-write, regenerate
+  each time, missing-config error. `make test`/`make lint` green. Note: New returns
+  *Compiler (no error) — nothing fallible at construction, a minor deviation from the
+  plan's (*Compiler, error) signature.
 </content>
