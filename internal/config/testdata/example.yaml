@@ -1,0 +1,42 @@
+# Copied from docs/design.md "The configuration" — the canonical example config.
+# AC-0007 verification step 5: this real example must load without error.
+agent:
+  command: ["claude", "--dangerously-skip-permissions"]
+  workdir: .
+
+safehouse:
+  add_dirs_rw: [.]
+  add_dirs_ro: [~/.config/git]
+  enable: [shell-init]
+
+include:
+  - .agent-creance/team-shared.yaml
+
+network:
+  host_services:
+    - mysql:3306
+    - redis:6379
+    - mailpit:1025
+
+  egress:
+    generators:
+      - package_json
+      - composer_json
+
+    allow:
+      - host: api.github.com
+        paths: ["/repos/tobyS/this-project/"]
+        methods: [GET, POST]
+
+    deny_always:
+      - host: w3schools.com
+        reason: "Known low-quality source. Use MDN or official docs instead."
+      - host: "*.medium.com"
+        paths: ["/@*"]
+        reason: "User-published Medium posts are unreliable for technical content."
+      - host: "*"
+        paths: ["**/.env", "**/.git/config"]
+        reason: "Secrets path."
+
+env:
+  GIT_AUTHOR_NAME: "Toby (caged)"

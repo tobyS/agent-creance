@@ -206,15 +206,15 @@ assert internal behaviour like defaults). Tests:
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `go test -race ./internal/config/...` passes.
-- [ ] `go mod tidy` leaves `gopkg.in/yaml.v3` as a direct require (no `// indirect`),
+- [x] `go build ./...` compiles.
+- [x] `go test -race ./internal/config/...` passes.
+- [x] `go mod tidy` leaves `gopkg.in/yaml.v3` as a direct require (no `// indirect`),
       and `git diff go.mod go.sum` is limited to that promotion.
-- [ ] `make lint` clean.
+- [x] `make lint` clean.
 
 #### Manual
-- [ ] The example fixture is a faithful copy of `docs/design.md`'s config block.
-- [ ] `Network.HostServices` is the typed `{Label, Port}` form, not raw strings.
+- [x] The example fixture is a faithful copy of `docs/design.md`'s config block.
+- [x] `Network.HostServices` is the typed `{Label, Port}` form, not raw strings.
 
 ---
 
