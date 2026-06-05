@@ -1,6 +1,7 @@
 # AC-0005: Spike S5 — Appended-profile network narrowing (WP-0.5)
 
-**Status:** Open
+**Status:** Done
+**Outcome:** PASS — `--append-profile` narrowing holds; v0.1 keeps the append strategy
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +24,10 @@ A findings note proving whether `--append-profile` yields a working deny-all-the
 
 ## Acceptance Criteria
 
-- [ ] Research note exists at `thoughts/shared/research/2026-06-DD-s5-append-profile.md`.
-- [ ] The note records PASS/FAIL: with the append fragment in place, arbitrary egress is denied while the proxy port + a host-service port are reachable.
-- [ ] The exact working `.sb` fragment (or the failure evidence) is captured.
-- [ ] A `Decision:` line states whether v0.1 uses `--append-profile` or a fully-generated profile (reshaping AC-0014).
+- [x] Research note exists at `thoughts/shared/research/2026-06-05-s5-append-profile.md`.
+- [x] The note records PASS/FAIL: **PASS** — with the append fragment in place, arbitrary egress is denied (EPERM) while the proxy port + a host-service port are reachable.
+- [x] The exact working `.sb` fragment (`localhost:<port>` form) is captured; the ticket's literal-IP form is captured as the failure case.
+- [x] A `Decision:` line states v0.1 uses `--append-profile` (NOT a fully-generated profile; AC-0014 unchanged).
 
 ## Verification & Test Steps
 
@@ -65,3 +66,25 @@ Phase 0. Highest-leverage spike on the critical path — gates AC-0014 and AC-00
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Gating spike; a FAIL reshapes AC-0014.
+
+### 2026-06-05 — Resolved (PASS)
+Ran the spike against real Agent Safehouse 0.10.1 + sandbox-exec on macOS 26.5.
+Findings: `thoughts/shared/research/2026-06-05-s5-append-profile.md`.
+
+- **PASS.** `safehouse --append-profile fragment.sb` with `(deny network*)` + per-port
+  `(allow network* (remote tcp "localhost:<port>"))` narrows the base `(allow network*)`:
+  external `1.1.1.1:443` and DNS are EPERM/blocked, while the proxy port and a
+  host-service port stay reachable and a request flows end-to-end through the proxy
+  (HTTP 200). A non-allowlisted local port is EPERM-refused (control proved its
+  listener up).
+- **Decision:** v0.1 keeps `--append-profile`. AC-0014 (WP-2.5) and AC-0023 (WP-4.2)
+  are NOT reshaped — no fully-generated profile needed.
+- **Carry-over from S3:** the ticket's literal `(remote tcp "127.0.0.1:P")` form does
+  NOT compile (even inside the append fragment); AC-0014 must emit `localhost:<port>`.
+- Corroborating evidence: Safehouse's own base policy already relies on
+  `(deny network-outbound …)` blocks placed *after* its `(allow network*)` (docker/ssh
+  socket denies), proving last-match-wins deny-after-allow on this exact compile path.
+- Open questions answered: append lands "after generated rules" (confirmed at source
+  line 1098, after the 1094-line base); a wholesale-profile fallback exists if ever
+  needed (`safehouse --stdout`/`--output` + `sandbox-exec -f`).
+- **S5 was the last open spike** → all five spikes (S1–S5) now resolved; M0 milestone met.
