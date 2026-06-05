@@ -32,6 +32,7 @@ import (
 const (
 	appCacheSubdir     = "agent-creance"
 	projectsSubdir     = "projects"
+	registriesSubdir   = "registries"
 	policyJSONName     = "policy.json"
 	networkSBName      = "network.sb"
 	proxyLockName      = "proxy.lock"
@@ -103,6 +104,21 @@ func (r *Resolver) projectRoot(hash string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(cache, appCacheSubdir, projectsSubdir, hash), nil
+}
+
+// RegistriesRoot returns <cache>/agent-creance/registries — the cross-project home
+// of per-package registry metadata caches (npm, Packagist). Unlike the project
+// state dir, this is a sibling of projects/<hash>/ and is intentionally
+// project-independent: a fetched package's homepage/repository is the same for
+// every project, so the cache survives across them (see docs/design.md,
+// "Allowlist generators" → Caching). The registry client owns the per-registry
+// and per-package path segments beneath this root.
+func (r *Resolver) RegistriesRoot() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, registriesSubdir), nil
 }
 
 // cacheRoot returns the base cache directory, honouring XDG_CACHE_HOME when set and
