@@ -130,13 +130,13 @@ absolute; assert `UserHomeDir`/`Getenv` delegate. (`"os"` is allowed here, unlik
 ### Success criteria
 
 **Automated:**
-- [ ] `go build ./...` compiles (incl. the `var _ PathResolver` assertion).
-- [ ] `go vet ./...` clean.
-- [ ] `go test -race ./internal/sysdep/...` passes.
-- [ ] `make lint` reports no new findings.
+- [x] `go build ./...` compiles (incl. the `var _ PathResolver` assertion).
+- [x] `go vet ./...` clean.
+- [x] `go test -race ./internal/sysdep/...` passes.
+- [x] `make lint` reports no new findings.
 
 **Manual:**
-- [ ] `Commander` and its existing tests remain untouched/green (additive only).
+- [x] `Commander` and its existing tests remain untouched/green (additive only).
 
 ---
 
@@ -231,18 +231,18 @@ Cases:
 ### Success criteria
 
 **Automated:**
-- [ ] `go build ./...` compiles.
-- [ ] `go test -race ./internal/state/...` passes (all table cases).
-- [ ] Grep guard exits 0:
+- [x] `go build ./...` compiles.
+- [x] `go test -race ./internal/state/...` passes (all table cases).
+- [x] Grep guard exits 0:
       `! grep -rnE '"os"|os\.(Open|Stat|MkdirAll|ReadFile|WriteFile)' internal/state/*.go`
-- [ ] `make lint` reports no new findings.
-- [ ] `make test` green overall.
+- [x] `make lint` reports no new findings.
+- [x] `make test` green overall.
 
 **Manual:**
-- [ ] Every Acceptance-Criteria accessor exists and is rooted at `projects/<hash>/`:
+- [x] Every Acceptance-Criteria accessor exists and is rooted at `projects/<hash>/`:
       `policy.json`, `network.sb`, `proxy.lock`, `egress.jsonl`, `claude/`,
       session-overlay.
-- [ ] Symlink-collapse and distinct-dir properties verified by the table tests.
+- [x] Symlink-collapse and distinct-dir properties verified by the table tests.
 
 ---
 

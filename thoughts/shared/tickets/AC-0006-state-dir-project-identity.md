@@ -1,9 +1,9 @@
 # AC-0006: State directory & project identity (WP-1.1)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-05
 **Plan reference:** WP-1.1 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** AC-0009 (WP-1.4, for the filesystem seam) — may proceed in parallel and wire the seam when it lands
 **Spike gate:** none
@@ -23,10 +23,10 @@ A pure `internal/state` package that, given a project directory, returns a stabl
 
 ## Acceptance Criteria
 
-- [ ] `internal/state` resolves a directory to its canonical absolute path (`realpath`-style) and a deterministic `<hash>`.
-- [ ] Two paths that resolve to the same physical directory (incl. via symlink) produce the same hash; different directories produce different hashes.
-- [ ] The package exposes typed accessors for every state-dir artifact: `policy.json`, `network.sb`, `proxy.lock`, `egress.jsonl`, `claude/`, and the session-overlay file, all under `~/.cache/agent-creance/projects/<hash>/`.
-- [ ] All filesystem access goes through the `internal/sysdep` seam (no direct `os` calls in logic).
+- [x] `internal/state` resolves a directory to its canonical absolute path (`realpath`-style) and a deterministic `<hash>`.
+- [x] Two paths that resolve to the same physical directory (incl. via symlink) produce the same hash; different directories produce different hashes.
+- [x] The package exposes typed accessors for every state-dir artifact: `policy.json`, `network.sb`, `proxy.lock`, `egress.jsonl`, `claude/`, and the session-overlay file, all under `~/.cache/agent-creance/projects/<hash>/`.
+- [x] All filesystem access goes through the `internal/sysdep` seam (no direct `os` calls in logic).
 
 ## Verification & Test Steps
 
@@ -47,8 +47,8 @@ Phase 1. Foundation for AC-0013, AC-0014, AC-0020, AC-0021. Can start immediatel
 
 ## Questions for Research/Planning
 
-- [ ] Which hash (FNV/SHA-256-truncated) and what length keeps paths short but collision-safe?
-- [ ] How should the package behave on iCloud/SMB paths (defer the warning to `doctor`, AC-0031)?
+- [x] Which hash (FNV/SHA-256-truncated) and what length keeps paths short but collision-safe? → **SHA-256 truncated to the first 8 bytes / 16 hex chars (64-bit)**.
+- [x] How should the package behave on iCloud/SMB paths (defer the warning to `doctor`, AC-0031)? → **Deferred to `doctor`; `internal/state` only resolves, it performs no reliability checks.**
 
 ## References
 
@@ -61,3 +61,24 @@ Phase 1. Foundation for AC-0013, AC-0014, AC-0020, AC-0021. Can start immediatel
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-05
+Implemented via `/tce:work`.
+
+- Research: `thoughts/shared/research/2026-06-05-AC-0006-state-dir-project-identity.md`.
+- Plan: `thoughts/shared/plans/2026-06-05-AC-0006-state-dir-project-identity.md`.
+- Key finding: AC-0009's planned file-I/O `FileSystem` does **not** cover the
+  path-canonicalisation + cache-root derivation this package needs, so there was no
+  real blocking dependency — only a "where does the seam live" choice. Resolved by
+  adding a narrow `sysdep.PathResolver` seam now (distinct from AC-0009's
+  `FileSystem`).
+- Delivered:
+  - `internal/sysdep.PathResolver` (+ `OSPathResolver`, `sysdeptest.FakePathResolver`,
+    real-impl smoke tests) — commit `07fb82a`.
+  - `internal/state` (`Resolver`/`Layout`/`Resolve`/hash/accessors) with hermetic
+    table tests — commit `b002c4e`.
+- Decisions: hash = SHA-256-trunc-16-hex; cache root honours `XDG_CACHE_HOME` then
+  `$HOME/.cache`; session-overlay file named `session-overlay.yaml`. No `cli.App`
+  wiring (no consumer command yet — wired when `run`/`policy` arrive).
+- Verification: `go build ./...`, `make test` (race), `make lint`, and the no-`os`
+  grep guard on `internal/state/*.go` all green.
