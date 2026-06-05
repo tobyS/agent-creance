@@ -1,6 +1,7 @@
 package sysdep
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 )
@@ -68,4 +69,25 @@ func (OSFileSystem) Remove(name string) error {
 
 func (OSFileSystem) Rename(oldpath, newpath string) error {
 	return os.Rename(oldpath, newpath)
+}
+
+// RemoveIfPresent removes name when it exists, reporting whether it did. It papers
+// over the gap between os.Remove (which errors on a missing path) and a caller that
+// treats "already gone" as success: a Stat establishes existence first, so the
+// returned boolean is a reliable "was it there?" — an absent path is (false, nil),
+// and a genuine Stat or Remove failure is surfaced. The cache-invalidation paths
+// (`policy refresh`) use it to count exactly the entries they actually cleared,
+// independent of whether the FileSystem is the OS or the in-memory test fake (whose
+// Remove is a no-op on a missing path).
+func RemoveIfPresent(fsys FileSystem, name string) (bool, error) {
+	if _, err := fsys.Stat(name); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := fsys.Remove(name); err != nil {
+		return false, err
+	}
+	return true, nil
 }

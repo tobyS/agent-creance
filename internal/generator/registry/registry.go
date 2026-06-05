@@ -137,6 +137,19 @@ func (c *Client) Lookup(ctx context.Context, pkg string) (Metadata, error) {
 	return md, nil
 }
 
+// Invalidate removes pkg's cached metadata entry, if present, so the next Lookup
+// re-fetches it regardless of the refresh window. It reports whether an entry
+// actually existed (false when the cache held nothing for pkg). The package name is
+// validated the same way Lookup validates it, so a crafted name can never delete a
+// file outside the cache tree.
+func (c *Client) Invalidate(pkg string) (bool, error) {
+	path, err := c.cachePath(pkg)
+	if err != nil {
+		return false, err
+	}
+	return sysdep.RemoveIfPresent(c.fs, path)
+}
+
 // cachePath is <registriesRoot>/<registry>/<pkg>.json, after validating pkg can
 // not escape the cache directory.
 func (c *Client) cachePath(pkg string) (string, error) {

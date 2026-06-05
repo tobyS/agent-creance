@@ -172,6 +172,32 @@ func TestLookupRejectsPathTraversal(t *testing.T) {
 	require.Empty(t, http.Calls, "invalid names never reach the network")
 }
 
+func TestInvalidateRemovesPresentEntry(t *testing.T) {
+	c, fsys, _, _ := newNPMTest()
+	seedCache(t, fsys, npmPath, baseTime, Metadata{Homepage: "https://cached/"})
+
+	existed, err := c.Invalidate(npmPkg)
+	require.NoError(t, err)
+	require.True(t, existed, "a seeded entry must report existed")
+	require.NotContains(t, fsys.Files, npmPath, "cache entry removed")
+}
+
+func TestInvalidateAbsentEntryIsNoOp(t *testing.T) {
+	c, _, _, _ := newNPMTest()
+
+	existed, err := c.Invalidate(npmPkg)
+	require.NoError(t, err)
+	require.False(t, existed, "an absent entry reports not-existed, not an error")
+}
+
+func TestInvalidateRejectsPathTraversal(t *testing.T) {
+	c, _, _, _ := newNPMTest()
+	for _, pkg := range []string{"../evil", "", "/abs", "a/../../b"} {
+		_, err := c.Invalidate(pkg)
+		require.Error(t, err, "pkg %q", pkg)
+	}
+}
+
 func TestPackagistClientUsesPackagistCachePath(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
 	clk := sysdeptest.NewFakeClock(baseTime)
