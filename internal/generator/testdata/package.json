@@ -1,0 +1,14 @@
+{
+  "name": "fixture-app",
+  "version": "0.0.0",
+  "dependencies": {
+    "react": "^18.0.0",
+    "barehome": "^1.0.0",
+    "pageddocs": "^2.0.0",
+    "norepo": "^1.0.0",
+    "@scope/tool": "^1.0.0"
+  },
+  "devDependencies": {
+    "gitlablib": "^1.0.0"
+  }
+}

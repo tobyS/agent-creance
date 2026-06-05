@@ -1,0 +1,133 @@
+[
+  {
+    "rule": {
+      "host": "scope.example"
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/scope/tool/"
+      ]
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/scope/tool/"
+      ]
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/scope/tool/"
+      ]
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
+      "host": "scope.github.io",
+      "paths": [
+        "/tool/"
+      ]
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:package_json:@scope/tool",
+    "lower_trust": true
+  },
+  {
+    "rule": {
+      "host": "barehome.example"
+    },
+    "source": "generated:package_json:barehome"
+  },
+  {
+    "rule": {
+      "host": "gitlab.com",
+      "paths": [
+        "/group/gitlablib/"
+      ]
+    },
+    "source": "generated:package_json:gitlablib"
+  },
+  {
+    "rule": {
+      "host": "group.gitlab.io",
+      "paths": [
+        "/gitlablib/"
+      ]
+    },
+    "source": "generated:package_json:gitlablib"
+  },
+  {
+    "rule": {
+      "host": "someuser.github.io",
+      "paths": [
+        "/pageddocs/"
+      ]
+    },
+    "source": "generated:package_json:pageddocs"
+  },
+  {
+    "rule": {
+      "host": "react.dev"
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/facebook/react/"
+      ]
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/facebook/react/"
+      ]
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/facebook/react/"
+      ]
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "facebook.github.io",
+      "paths": [
+        "/react/"
+      ]
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:package_json:react",
+    "lower_trust": true
+  }
+]

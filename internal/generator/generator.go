@@ -1,0 +1,101 @@
+package generator
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/tobyS/agent-creance/internal/generator/registry"
+	"github.com/tobyS/agent-creance/internal/sysdep"
+)
+
+// lookuper is the registry seam a Generator depends on: it resolves a package name to
+// its homepage + repository metadata. *registry.Client satisfies it; unit tests
+// substitute a call-counting fake so the generator is exercised without HTTP or the
+// per-package cache.
+type lookuper interface {
+	Lookup(ctx context.Context, pkg string) (registry.Metadata, error)
+}
+
+// Generator turns one ecosystem's manifest into annotated allow rules, caching the
+// emitted rule set by manifest hash (see cache.go).
+type Generator struct {
+	eco            ecosystem
+	lookup         lookuper
+	fs             sysdep.FileSystem
+	generatorsRoot string
+}
+
+// Known reports whether name is a recognised generator (one this package can build).
+func Known(name string) bool {
+	switch name {
+	case GeneratorPackageJSON, GeneratorComposerJSON:
+		return true
+	default:
+		return false
+	}
+}
+
+// New constructs the generator for name, wiring the matching registry client. An
+// unknown name is an error (the caller is responsible for validating a configured
+// generators: list, e.g. with Known). registriesRoot is state.RegistriesRoot();
+// generatorsRoot is state.GeneratorsRoot().
+func New(name string, fs sysdep.FileSystem, clock sysdep.Clock, getter sysdep.HTTPGetter, registriesRoot, generatorsRoot string) (*Generator, error) {
+	switch name {
+	case GeneratorPackageJSON:
+		return newGenerator(packageJSON{}, registry.NewNPM(fs, clock, getter, registriesRoot), fs, generatorsRoot), nil
+	case GeneratorComposerJSON:
+		return newGenerator(composerJSON{}, registry.NewPackagist(fs, clock, getter, registriesRoot), fs, generatorsRoot), nil
+	default:
+		return nil, fmt.Errorf("generator: unknown generator %q", name)
+	}
+}
+
+func newGenerator(eco ecosystem, lookup lookuper, fs sysdep.FileSystem, generatorsRoot string) *Generator {
+	return &Generator{eco: eco, lookup: lookup, fs: fs, generatorsRoot: generatorsRoot}
+}
+
+// Generate returns the annotated allow rules for the manifest's direct dependencies,
+// serving a cached rule set when this exact manifest has been generated before (see
+// cache.go) and otherwise walking the dependencies via generate and caching the
+// result.
+func (g *Generator) Generate(ctx context.Context, manifest []byte) ([]Rule, error) {
+	return g.generate(ctx, manifest)
+}
+
+// generate is the uncached dependency walk. For each dependency it looks up the
+// package metadata and emits a homepage rule (when present) and the repository +
+// forge-companion rules (when present); a missing homepage/repository, or a package
+// the registry does not know (ErrNotFound), simply contributes no rule rather than
+// failing the run. The output is ordered deterministically: dependencies sorted, then
+// homepage before repository, then forge hosts in table order.
+func (g *Generator) generate(ctx context.Context, manifest []byte) ([]Rule, error) {
+	deps, err := g.eco.deps(manifest)
+	if err != nil {
+		return nil, err
+	}
+	var rules []Rule
+	for _, pkg := range deps {
+		md, err := g.lookup.Lookup(ctx, pkg)
+		if err != nil {
+			if errors.Is(err, registry.ErrNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("generator: lookup %q: %w", pkg, err)
+		}
+		src := source(g.eco.name(), pkg)
+		if md.Homepage != "" {
+			if r, ok := homepageRule(md.Homepage, src); ok {
+				rules = append(rules, r)
+			}
+		}
+		rules = append(rules, repositoryRules(md.Repository, src)...)
+	}
+	return rules, nil
+}
+
+// source renders the provenance annotation for a rule produced by generator gen for
+// package pkg: "generated:<gen>:<pkg>", matching the design's `policy show` format.
+func source(gen, pkg string) string {
+	return "generated:" + gen + ":" + pkg
+}

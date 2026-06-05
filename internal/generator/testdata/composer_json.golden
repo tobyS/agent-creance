@@ -1,0 +1,143 @@
+[
+  {
+    "rule": {
+      "host": "laravel.com"
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/laravel/framework/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/laravel/framework/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/laravel/framework/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
+      "host": "laravel.github.io",
+      "paths": [
+        "/framework/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:composer_json:laravel/framework",
+    "lower_trust": true
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/Seldaek/monolog/"
+      ]
+    },
+    "source": "generated:composer_json:monolog/monolog"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/Seldaek/monolog/"
+      ]
+    },
+    "source": "generated:composer_json:monolog/monolog"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/Seldaek/monolog/"
+      ]
+    },
+    "source": "generated:composer_json:monolog/monolog"
+  },
+  {
+    "rule": {
+      "host": "seldaek.github.io",
+      "paths": [
+        "/monolog/"
+      ]
+    },
+    "source": "generated:composer_json:monolog/monolog"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:composer_json:monolog/monolog",
+    "lower_trust": true
+  },
+  {
+    "rule": {
+      "host": "phpunit.de"
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/sebastianbergmann/phpunit/"
+      ]
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/sebastianbergmann/phpunit/"
+      ]
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/sebastianbergmann/phpunit/"
+      ]
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
+      "host": "sebastianbergmann.github.io",
+      "paths": [
+        "/phpunit/"
+      ]
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:composer_json:phpunit/phpunit",
+    "lower_trust": true
+  }
+]
