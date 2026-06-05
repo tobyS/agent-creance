@@ -1,0 +1,138 @@
+// Package policy is the egress matcher: given an in-memory rule set and a request
+// (host, path, method), it returns the cage's decision — allow, soft-deny, or
+// hard-deny — plus the carried enforcement mode and the rule the decision is
+// attributed to. It is deliberately pure: no filesystem, no clock, no OS. Reading
+// rules off a compiled policy.json on disk is the compiler's job (AC-0013); this
+// package matches an already-in-memory RuleSet.
+//
+// The decision model is fixed by docs/design.md ("Network refusal handling") and is
+// exhaustive: a request that matches a deny_always rule is a hard-deny; otherwise a
+// request that matches an allow rule is an allow (carrying that rule's mode);
+// otherwise it is a soft-deny. There is no separate "default" — soft-deny *is* the
+// default. deny_always shadows allow.
+//
+// This logic exists twice — here in Go (for `policy explain`) and in Python (for the
+// mitmproxy enforcer, AC-0017). They must never disagree. The guardrail is the
+// language-neutral corpus under testdata/decision-vectors/ (cross-cutting C1): plain
+// JSON `(ruleset, request) -> expected {decision, mode, matched_rule}` vectors that
+// both implementations run. No change to this matcher is complete without adding or
+// updating vectors.
+//
+// Matching semantics (the contract the Python side must reproduce exactly):
+//
+//   - Host: case-insensitive. "*" matches any host; "*.suffix" matches any host
+//     with at least one label before ".suffix" (the bare apex is NOT matched); else
+//     exact equality.
+//   - Path: prefix-by-default. Pattern and request path are trimmed of leading and
+//     trailing "/" and split into segments. A pattern matches when its segments match
+//     a *prefix* of the request's segments (remaining request segments are "under"
+//     the prefix and still match). Within a segment, "*" matches any run of
+//     characters; "?" and everything else are literal. A whole-segment "**" matches
+//     zero or more segments (the only token that crosses "/"); "**" glued to other
+//     characters degrades to "*". A rule with no paths (nil) matches any path; a
+//     rule with paths matches if any one pattern matches.
+//   - Method: a rule with no methods (nil) matches any method; otherwise the request
+//     method must be a verbatim member of the list.
+//   - Most-specific-wins: when several rules in the same list match, the reported
+//     rule and carried mode come from the most specific one (host exact > *.suffix >
+//     *; then path constrained > host-wide, more literal segments, more segments;
+//     then method constrained > any), with a deterministic fallback for exact ties.
+//     This is order-independent — allow/deny_always lists union across include: files.
+//   - Passthrough blind spot: a path-scoped deny_always is *suppressed* when the
+//     request's most-specific matching allow is mode: passthrough, because the proxy
+//     never sees the path on a passthrough host (docs/design.md). A host-level
+//     deny_always (no paths) still hard-denies a passthrough host.
+package policy
+
+import "github.com/tobyS/agent-creance/internal/config"
+
+// Decision is the cage's verdict on a request. The three values are exhaustive.
+const (
+	DecisionAllow    = "allow"
+	DecisionSoftDeny = "soft-deny"
+	DecisionHardDeny = "hard-deny"
+)
+
+// Enforcement modes a rule may carry. These mirror config.ModeIntercept /
+// config.ModePassthrough but are duplicated as plain strings so the corpus (and any
+// Python reader) need not know about the config package.
+const (
+	ModeIntercept   = "intercept"
+	ModePassthrough = "passthrough"
+)
+
+// Rule is one egress allow/deny entry as the matcher sees it. Unlike config.Rule it
+// uses plain []string (nil == "key omitted") and json tags, so it decodes straight
+// from the language-neutral decision-vector corpus and carries no yaml/`*[]string`
+// baggage from the loader.
+type Rule struct {
+	Host    string   `json:"host"`
+	Paths   []string `json:"paths,omitempty"`
+	Methods []string `json:"methods,omitempty"`
+	Mode    string   `json:"mode,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
+}
+
+// RuleSet is the compiled, in-memory policy the matcher evaluates: the unioned
+// soft-allow and hard-deny lists.
+type RuleSet struct {
+	Allow      []Rule `json:"allow,omitempty"`
+	DenyAlways []Rule `json:"deny_always,omitempty"`
+}
+
+// Request is the single egress attempt being decided.
+type Request struct {
+	Host   string `json:"host"`
+	Path   string `json:"path"`
+	Method string `json:"method"`
+}
+
+// MatchedRule identifies the rule a decision is attributed to: which list, and its
+// index within that list. It is nil for a soft-deny (nothing matched). The list/index
+// form is language-neutral — it survives two rules sharing a host, where a host
+// string alone would be ambiguous.
+type MatchedRule struct {
+	List  string `json:"list"` // "allow" or "deny_always"
+	Index int    `json:"index"`
+}
+
+// Result is the matcher's verdict: the decision, the carried enforcement mode (the
+// matched rule's mode; "" for a soft-deny), and the matched rule (nil for a
+// soft-deny).
+type Result struct {
+	Decision string       `json:"decision"`
+	Mode     string       `json:"mode"`
+	Matched  *MatchedRule `json:"matched_rule"`
+}
+
+// FromConfig converts a validated config.Egress into a matcher RuleSet, dereferencing
+// the loader's *[]string Paths/Methods (a nil pointer stays a nil slice — "key
+// omitted"). It is the bridge a later `policy explain` / compiler (AC-0013) uses to
+// build a RuleSet from parsed config.
+func FromConfig(e config.Egress) RuleSet {
+	return RuleSet{
+		Allow:      rulesFromConfig(e.Allow),
+		DenyAlways: rulesFromConfig(e.DenyAlways),
+	}
+}
+
+func rulesFromConfig(in []config.Rule) []Rule {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]Rule, len(in))
+	for i, r := range in {
+		out[i] = Rule{
+			Host:   r.Host,
+			Mode:   r.Mode,
+			Reason: r.Reason,
+		}
+		if r.Paths != nil {
+			out[i].Paths = *r.Paths
+		}
+		if r.Methods != nil {
+			out[i].Methods = *r.Methods
+		}
+	}
+	return out
+}

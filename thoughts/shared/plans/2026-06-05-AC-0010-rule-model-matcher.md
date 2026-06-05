@@ -150,7 +150,7 @@ canonical `host|paths|methods|mode` string (smallest wins) for determinism.
 
 ---
 
-## Phase 1 — Core types, matcher, unit tests
+## Phase 1 — Core types, matcher, unit tests ✅
 
 ### Changes
 
