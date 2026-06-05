@@ -143,8 +143,8 @@ Give the compiler per-layer access without touching the fused `Load` or `merge`.
 - `GlobalPath` returns the expected path via the fake home dir.
 
 ### Success criteria
-- [ ] New methods exist; `Load`'s behavior is unchanged (existing loader tests green).
-- [ ] `go test -race ./internal/config/...`, build, lint clean.
+- [x] New methods exist; `Load`'s behavior is unchanged (existing loader tests green).
+- [x] `go test -race ./internal/config/...`, build, lint clean.
 
 ---
 

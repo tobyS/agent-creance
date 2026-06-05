@@ -70,6 +70,38 @@ func (l *Loader) Load(projectPath string) (*Config, error) {
 	return &eff, nil
 }
 
+// GlobalPath reports the implicit global config path (~/.config/agent-creance.yaml) —
+// the baseline Load merges under every project. It is exported so the policy compiler
+// can load that layer on its own (Load fuses it into the project and discards which
+// rules came from where).
+func (l *Loader) GlobalPath() (string, error) {
+	home, err := l.paths.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("config: locate home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "agent-creance.yaml"), nil
+}
+
+// ResolveLayer resolves a single config file and its include: chain into one Config,
+// *without* merging the implicit global. It is what the policy compiler uses to keep the
+// global / project / session-overlay layers separate so each rule can be annotated with
+// its source — the fused Load() flattens that provenance away. optional=true makes a
+// not-exist file yield an empty Config (used for the global baseline and the overlay,
+// both of which may be absent); optional=false makes a missing file an error. The
+// returned Config has Include cleared (it is fully resolved).
+func (l *Loader) ResolveLayer(path string, optional bool) (*Config, error) {
+	home, err := l.paths.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("config: locate home directory: %w", err)
+	}
+	cfg, err := l.resolve(path, home, optional, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Include = nil
+	return cfg, nil
+}
+
 // resolve reads, parses, and recursively resolves one config file into a fully-merged
 // Config. stack holds the canonical paths currently on the resolution path (for cycle
 // detection); depth counts include nesting. When optional is true a not-exist file

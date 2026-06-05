@@ -231,6 +231,56 @@ func TestLoad_Deterministic(t *testing.T) {
 	}
 }
 
+func TestGlobalPath(t *testing.T) {
+	l, _ := newLoader(nil)
+	got, err := l.GlobalPath()
+	if err != nil {
+		t.Fatalf("GlobalPath: %v", err)
+	}
+	if got != globalPath {
+		t.Errorf("GlobalPath = %q, want %q", got, globalPath)
+	}
+}
+
+func TestResolveLayer_FileAndIncludesNoImplicitGlobal(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		// A global exists, but ResolveLayer must NOT pull it in.
+		globalPath:                  "network:\n  egress:\n    allow:\n      - host: global.example\n",
+		"/proj/.agent-creance.yaml": "include:\n  - team.yaml\n" + "network:\n  egress:\n    allow:\n      - host: project.example\n",
+		"/proj/team.yaml":           "network:\n  egress:\n    allow:\n      - host: team.example\n",
+	})
+	cfg, err := l.ResolveLayer("/proj/.agent-creance.yaml", false)
+	if err != nil {
+		t.Fatalf("ResolveLayer: %v", err)
+	}
+	// include resolved (team then own), but the implicit global is absent.
+	wantHosts := []string{"team.example", "project.example"}
+	if hosts := allowHosts(cfg); !reflect.DeepEqual(hosts, wantHosts) {
+		t.Errorf("allow hosts = %v, want %v (no implicit global)", hosts, wantHosts)
+	}
+	if cfg.Include != nil {
+		t.Errorf("Include = %v, want nil (resolved away)", cfg.Include)
+	}
+}
+
+func TestResolveLayer_OptionalMissingIsEmpty(t *testing.T) {
+	l, _ := newLoader(nil) // nothing on disk
+	cfg, err := l.ResolveLayer("/no/such/overlay.yaml", true)
+	if err != nil {
+		t.Fatalf("ResolveLayer optional: %v", err)
+	}
+	if !reflect.DeepEqual(*cfg, Config{}) {
+		t.Errorf("cfg = %+v, want empty Config (optional missing)", *cfg)
+	}
+}
+
+func TestResolveLayer_RequiredMissingIsError(t *testing.T) {
+	l, _ := newLoader(nil)
+	if _, err := l.ResolveLayer("/no/such/file.yaml", false); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want fs.ErrNotExist", err)
+	}
+}
+
 func allowHosts(c *Config) []string {
 	var hosts []string
 	for _, r := range c.Network.Egress.Allow {
