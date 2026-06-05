@@ -28,5 +28,23 @@ Status: done (commit pending)
 - go test -race ./internal/config + go vet green.
 
 ## Phase 3 — Loader: include resolution, cycle detection, depth limit
-Status: in progress
+Status: done (commit pending)
+
+- internal/config/errors.go: ErrIncludeCycle / ErrMaxIncludeDepth sentinels (wrapped
+  with path/chain, errors.Is-checkable).
+- internal/config/load.go: Loader{fs, paths}, NewLoader, Load (implicit global +
+  project), resolve (read → canonicalise → cycle check → Parse → recurse includes →
+  merge own last), resolveIncludePath (~/ expand, abs, relative-to-declaring-dir),
+  renderCycle. maxIncludeDepth = 10. Missing global = no-op; missing project/include =
+  error. Package doc states the low→high precedence + determinism guarantee.
+- load_test.go: global present/absent, recursive include + precedence, union+dedupe
+  across global/include, env merge, cycle (+ symlink-disguised), depth limit, missing
+  include, missing project, invalid included file surfaces (path-prefixed), determinism.
+- go build / go vet / make lint / make test all green; make golden produces no diff
+  (no schema change).
+
+## Final verification
+- `go build ./...` ✓  `go vet ./...` ✓  `make lint` ✓  `make test` (race) ✓
+- `make golden` → no diff ✓ (no new/changed golden files)
+- All ticket acceptance criteria + verification steps satisfied (see ticket).
 </content>

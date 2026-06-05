@@ -120,13 +120,13 @@ fs.ErrNotExist)`. (Fake exercised thoroughly in Phase 3.)
 ### Success criteria
 
 **Automated**
-- [ ] `go build ./...` compiles (incl. the `var _ FileSystem` assertion)
-- [ ] `go vet ./...` clean
-- [ ] `go test -race ./internal/sysdep/...` passes
-- [ ] Grep guard: `grep -l FileSystem internal/sysdep/sysdeptest/*.go` returns the fake
+- [x] `go build ./...` compiles (incl. the `var _ FileSystem` assertion)
+- [x] `go vet ./...` clean
+- [x] `go test -race ./internal/sysdep/...` passes
+- [x] Grep guard: `grep -l FileSystem internal/sysdep/sysdeptest/*.go` returns the fake
 
 **Manual**
-- [ ] Interface carries only `ReadFile` (no scope creep into AC-0009's surface)
+- [x] Interface carries only `ReadFile` (no scope creep into AC-0009's surface)
 
 ---
 
@@ -170,11 +170,11 @@ Per-field wiring exactly per the "Agreed semantics" table.
 ### Success criteria
 
 **Automated**
-- [ ] `go test -race ./internal/config/...` passes (new merge tests green)
-- [ ] `go build ./...`, `go vet ./...` clean
+- [x] `go test -race ./internal/config/...` passes (new merge tests green)
+- [x] `go build ./...`, `go vet ./...` clean
 
 **Manual**
-- [ ] Dedupe keeps first occurrence and is order-stable across all unioned lists
+- [x] Dedupe keeps first occurrence and is order-stable across all unioned lists
 
 ---
 
@@ -268,15 +268,15 @@ Drive `NewLoader(FakeFileSystem, FakePathResolver)` with in-memory layered fixtu
 ### Success criteria
 
 **Automated**
-- [ ] `go test -race ./internal/config/...` passes (all loader cases green)
-- [ ] `go test -race ./...` (`make test`) green — no regressions in cli/prereq/state/sysdep
-- [ ] `go build ./...` clean
-- [ ] `make lint` (`go vet` + `golangci-lint`) clean
+- [x] `go test -race ./internal/config/...` passes (all loader cases green)
+- [x] `go test -race ./...` (`make test`) green — no regressions in cli/prereq/state/sysdep
+- [x] `go build ./...` clean
+- [x] `make lint` (`go vet` + `golangci-lint`) clean
 
 **Manual**
-- [ ] Re-read `Load`/`resolve` for the cycle-before-infinite-recursion property and the
+- [x] Re-read `Load`/`resolve` for the cycle-before-infinite-recursion property and the
       optional-global vs required-include error split
-- [ ] Merge order documented in the `load.go` package/Load doc comment (precedence
+- [x] Merge order documented in the `load.go` package/Load doc comment (precedence
       low→high) so the determinism guarantee is reviewable
 
 ---

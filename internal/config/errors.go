@@ -9,6 +9,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Sentinels for the loader's include-resolution failures (AC-0008). They are wrapped
+// with the offending path/chain for the human-readable message and are
+// errors.Is-checkable so tests (and callers) can branch on the failure kind without
+// matching on message text.
+var (
+	// ErrIncludeCycle is returned when include: resolution revisits a file already on
+	// the current resolution path (an A→B→A loop).
+	ErrIncludeCycle = errors.New("config: include cycle")
+	// ErrMaxIncludeDepth is returned when an include: chain nests deeper than
+	// maxIncludeDepth, guarding against pathological (acyclic) chains.
+	ErrMaxIncludeDepth = errors.New("config: include depth limit exceeded")
+)
+
 // ValidationError aggregates one or more human-readable problems with a config
 // document. Its message is stable and free of Go type names so it can be
 // golden-tested and so an operator can fix the config without reading source.
