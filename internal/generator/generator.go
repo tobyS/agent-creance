@@ -10,11 +10,14 @@ import (
 )
 
 // lookuper is the registry seam a Generator depends on: it resolves a package name to
-// its homepage + repository metadata. *registry.Client satisfies it; unit tests
-// substitute a call-counting fake so the generator is exercised without HTTP or the
-// per-package cache.
+// its homepage + repository metadata, and (for `policy refresh`) invalidates a
+// package's cached entry. *registry.Client satisfies it; unit tests substitute a
+// call-counting fake so the generator is exercised without HTTP or the per-package
+// cache.
 type lookuper interface {
 	Lookup(ctx context.Context, pkg string) (registry.Metadata, error)
+	// Invalidate removes pkg's cached metadata entry, reporting whether one existed.
+	Invalidate(pkg string) (bool, error)
 }
 
 // Generator turns one ecosystem's manifest into annotated allow rules, caching the
@@ -75,6 +78,48 @@ func (g *Generator) Generate(ctx context.Context, manifest []byte) ([]Rule, erro
 		return nil, err
 	}
 	return rules, nil
+}
+
+// InvalidationStats reports what one Invalidate call cleared for a manifest: how many
+// direct dependencies it considered (Packages), how many of those had a cached
+// registry entry that was actually removed (CacheEntriesCleared), and whether this
+// generator's own output-cache entry for the manifest existed and was removed.
+type InvalidationStats struct {
+	Packages            int
+	CacheEntriesCleared int
+	OutputCacheCleared  bool
+}
+
+// Invalidate clears the cached state this generator would consult for manifest so the
+// next Generate re-fetches from the registry: its own output-cache entry (keyed by the
+// manifest hash) and each direct dependency's registry metadata entry. It walks the
+// same dependency set as Generate, so refresh and a following compile agree on scope.
+// A dependency whose registry entry was already absent is counted in Packages but not
+// CacheEntriesCleared.
+func (g *Generator) Invalidate(manifest []byte) (InvalidationStats, error) {
+	var stats InvalidationStats
+
+	cleared, err := sysdep.RemoveIfPresent(g.fs, g.cachePath(manifest))
+	if err != nil {
+		return InvalidationStats{}, err
+	}
+	stats.OutputCacheCleared = cleared
+
+	deps, err := g.eco.deps(manifest)
+	if err != nil {
+		return InvalidationStats{}, err
+	}
+	for _, pkg := range deps {
+		stats.Packages++
+		existed, err := g.lookup.Invalidate(pkg)
+		if err != nil {
+			return InvalidationStats{}, fmt.Errorf("generator: invalidate %q: %w", pkg, err)
+		}
+		if existed {
+			stats.CacheEntriesCleared++
+		}
+	}
+	return stats, nil
 }
 
 // generate is the uncached dependency walk. For each dependency it looks up the

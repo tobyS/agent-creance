@@ -27,6 +27,11 @@ type fakeLookuper struct {
 	meta     map[string]registry.Metadata
 	notFound map[string]bool
 	Calls    int
+
+	// Invalidate scripting: present marks packages whose cache entry "exists"
+	// (so Invalidate reports existed==true); invalidated records the calls in order.
+	present     map[string]bool
+	invalidated []string
 }
 
 func (f *fakeLookuper) Lookup(_ context.Context, pkg string) (registry.Metadata, error) {
@@ -39,6 +44,11 @@ func (f *fakeLookuper) Lookup(_ context.Context, pkg string) (registry.Metadata,
 		return registry.Metadata{}, fmt.Errorf("unscripted package %q", pkg)
 	}
 	return md, nil
+}
+
+func (f *fakeLookuper) Invalidate(pkg string) (bool, error) {
+	f.invalidated = append(f.invalidated, pkg)
+	return f.present[pkg], nil
 }
 
 func newTestGenerator(eco ecosystem, lookup lookuper) *Generator {
@@ -127,6 +137,49 @@ func TestGenerate_LookupErrorIsSurfaced(t *testing.T) {
 
 	_, err := newTestGenerator(packageJSON{}, lookup).Generate(context.Background(), manifest)
 	require.Error(t, err)
+}
+
+func TestInvalidate(t *testing.T) {
+	fsys := sysdeptest.NewFakeFileSystem()
+	lookup := &fakeLookuper{present: map[string]bool{"a": true, "c": true}} // "b" absent
+	g := newGenerator(packageJSON{}, lookup, fsys, "/gen")
+
+	manifest := []byte(`{"dependencies":{"b":"1","a":"1"},"devDependencies":{"c":"1"}}`)
+
+	// Seed this generator's output-cache entry so Invalidate clears it.
+	outPath := g.cachePath(manifest)
+	fsys.Files[outPath] = []byte(`{"rules":[]}`)
+
+	stats, err := g.Invalidate(manifest)
+	require.NoError(t, err)
+	require.True(t, stats.OutputCacheCleared)
+	require.NotContains(t, fsys.Files, outPath, "output cache entry removed")
+	require.Equal(t, 3, stats.Packages)                           // a, b, c
+	require.Equal(t, 2, stats.CacheEntriesCleared)                // a, c present; b absent
+	require.Equal(t, []string{"a", "b", "c"}, lookup.invalidated) // sorted dep order
+}
+
+func TestInvalidate_SkipsComposerPlatformKeys(t *testing.T) {
+	fsys := sysdeptest.NewFakeFileSystem()
+	lookup := &fakeLookuper{present: map[string]bool{"vendor/a": true}}
+	g := newGenerator(composerJSON{}, lookup, fsys, "/gen")
+
+	stats, err := g.Invalidate([]byte(`{"require":{"php":">=8","ext-json":"*","vendor/a":"1"}}`))
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.Packages) // only vendor/a; php & ext-json are not Packagist packages
+	require.Equal(t, 1, stats.CacheEntriesCleared)
+	require.Equal(t, []string{"vendor/a"}, lookup.invalidated)
+	require.False(t, stats.OutputCacheCleared) // no output cache was seeded
+}
+
+func TestInvalidate_AbsentEverythingIsAllZero(t *testing.T) {
+	g := newGenerator(packageJSON{}, &fakeLookuper{}, sysdeptest.NewFakeFileSystem(), "/gen")
+
+	stats, err := g.Invalidate([]byte(`{"dependencies":{"a":"1"}}`))
+	require.NoError(t, err)
+	require.False(t, stats.OutputCacheCleared)
+	require.Equal(t, 1, stats.Packages)
+	require.Equal(t, 0, stats.CacheEntriesCleared)
 }
 
 func TestKnownAndNew(t *testing.T) {
