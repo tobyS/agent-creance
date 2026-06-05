@@ -58,9 +58,23 @@ func newGenerator(eco ecosystem, lookup lookuper, fs sysdep.FileSystem, generato
 // Generate returns the annotated allow rules for the manifest's direct dependencies,
 // serving a cached rule set when this exact manifest has been generated before (see
 // cache.go) and otherwise walking the dependencies via generate and caching the
-// result.
+// result. A cache hit makes zero registry lookups.
 func (g *Generator) Generate(ctx context.Context, manifest []byte) ([]Rule, error) {
-	return g.generate(ctx, manifest)
+	path := g.cachePath(manifest)
+	if rules, ok, err := g.readCache(path); err != nil {
+		return nil, err
+	} else if ok {
+		return rules, nil
+	}
+
+	rules, err := g.generate(ctx, manifest)
+	if err != nil {
+		return nil, err
+	}
+	if err := g.writeCache(path, rules); err != nil {
+		return nil, err
+	}
+	return rules, nil
 }
 
 // generate is the uncached dependency walk. For each dependency it looks up the
