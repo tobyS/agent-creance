@@ -9,7 +9,7 @@ started: 2026-06-05
 - [x] Phase 1 — Pure renderers + unit/golden tests
 - [x] Phase 2 — Compiler (write network.sb out-of-tree)
 - [x] Phase 3 — Integration test (S3 localhost-refusal self-test)
-- [ ] Phase 4 — Doc corrections + close ticket
+- [x] Phase 4 — Doc corrections + close ticket
 
 ## Log
 - 2026-06-05: research + plan committed (9461b76, 1b246d2). Starting Phase 1.
@@ -29,4 +29,9 @@ started: 2026-06-05
   localhost:N profile COMPILES (reaches sandbox_apply) while the old literal 127.0.0.1:N
   form is rejected at compile time ("host must be * or localhost") — confirms the spike
   correction. Lints clean under -build-tags=integration.
+- 2026-06-05: Phase 4 done — corrected design.md (~53 address-family caveat, ~100
+  host_services comment, ~295 network.sb two-fragment split), config.go HostService doc,
+  and the spec WP-2.5 bullet to the localhost-token form. Ticket marked Done; all ACs
+  checked with spike corrections noted. Final battery green (build/test/lint/golden).
+  COMPLETE.
 </content>

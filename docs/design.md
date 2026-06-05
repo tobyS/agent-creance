@@ -50,7 +50,7 @@ The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates
 **Prevented (kernel-enforced by Seatbelt):**
 - Agent reading host files outside `./` and its redirected Claude config dir — SSH keys, AWS creds, 1Password state, browser cookies, and the *real* `~/.claude` are all denied.
 - Agent making arbitrary outbound connections — the only network destination available is the mitmproxy.
-- Agent reaching host services *not* on the whitelist — even on localhost. Apple's Seatbelt is precise about `(remote tcp "localhost:N")`, so `127.0.0.1:8123` (proxy) and `127.0.0.1:3306` (whitelisted MySQL) work while `127.0.0.1:8080` (some unrelated host service) does not. **Caveat — address family:** `localhost` is both `127.0.0.1` (IPv4) and `::1` (IPv6), and a Seatbelt rule matches the literal address the socket actually connects to. The port-level guarantee only holds if a single family is pinned end-to-end, so agent-creance forces IPv4 (`127.0.0.1`) for both the proxy and host-service rules and ships a self-test that confirms a non-allowlisted localhost port is genuinely refused over *both* v4 and v6 before trusting the guarantee.
+- Agent reaching host services *not* on the whitelist — even on localhost. Apple's Seatbelt is precise about `(remote tcp "localhost:N")`, so `127.0.0.1:8123` (proxy) and `127.0.0.1:3306` (whitelisted MySQL) work while `127.0.0.1:8080` (some unrelated host service) does not. **Caveat — address family (validated by spike S3/AC-0003):** the rule names a host *token*, not a literal address — only `localhost` and `*` compile (`(remote tcp "127.0.0.1:N")` and `[::1]:N` are rejected with "host must be `*` or localhost"). `localhost` spans **both** `127.0.0.1` (IPv4) and `::1` (IPv6), and the **port** is the discriminator, so the port-level guarantee is *family-agnostic*: a non-allowlisted localhost port is refused (EPERM) over v4 and v6 alike — no IPv4-pinning is needed (and none is possible). The compiler emits `(remote tcp "localhost:N")` per allowlisted port and **never `*:N`** (which would permit external egress). One nuance: `localhost` matches *every* address assigned to this machine (loopback plus interface IPs like `192.168.0.65`), not loopback-only — an intra-machine widening, never external; scoping a service strictly to loopback is the app's job (bind it to `127.0.0.1`). A shipped self-test (`internal/profile` integration test, the S3 probes) confirms a non-allowlisted localhost port is genuinely refused over both v4 and v6.
 - Anything spawned by the agent: Seatbelt's sandbox profile is inherited by child processes. When Claude runs `npm install`, `php artisan tinker`, or any other subcommand, those processes get the same filesystem and network restrictions. The cage isn't "the Claude process" — it's "every process descended from the wrapper's invocation."
 
 **Prevented (proxy-enforced):**
@@ -98,15 +98,14 @@ include:
 
 network:
   # Host services reachable from inside the cage. The `<label>:<port>`
-  # form's label is cosmetic — the address is ALWAYS forced to the IPv4
-  # literal 127.0.0.1, because the Seatbelt rule must name the exact
-  # address the socket connects to (see "address family" caveat below).
-  # Consequence the user must know: caged tooling must address these
-  # services as 127.0.0.1, NOT `localhost` — `localhost` may resolve to
-  # ::1 (IPv6), which the IPv4-pinned rule denies. Each entry opens both
-  # a Seatbelt network-allow and a host_services entry; the cage does
-  # NOT block other host services bound to 0.0.0.0 — the user must bind
-  # those to 127.0.0.1 themselves.
+  # form's label is cosmetic — the Seatbelt rule keys on the PORT, via
+  # the `localhost` host token (the only loopback token that compiles; a
+  # literal 127.0.0.1/::1 is rejected). `localhost` covers BOTH IPv4 and
+  # IPv6, so caged tooling may address these services as `localhost` or
+  # `127.0.0.1` — either works, and only the listed ports are reachable
+  # (see the "address family" caveat under "What the cage prevents").
+  # The cage does NOT block other host services bound to 0.0.0.0 — the
+  # user must bind those to 127.0.0.1 themselves.
   host_services:
     - mysql:3306
     - redis:6379
@@ -292,7 +291,7 @@ The skill explains all three response types to Claude. It activates automaticall
 
 The state directory lives *outside* the source tree on purpose. The agent runs with the project mounted read-write, so anything security-critical kept inside `./` would be editable by the very process it constrains — and because mitmproxy hot-reloads its policy on mtime change, an in-tree `policy.json` could be rewritten by a prompt-injected agent to allow itself anything. Keeping the compiled policy, the enforcer, the lock, and the audit log out-of-tree means the agent cannot rewrite its own controls; none of these files are mounted into the cage at all. Only host-side processes read them — the CLI, mitmproxy, and safehouse-at-launch.
 
-- **`network.sb`** — a Seatbelt profile that gets passed to Safehouse via `--append-profile`. Contains the `deny network*` baseline plus the narrow allow rules derived from `network.host_services` and the proxy port. **This file is exempt from the input-hash cache: it is regenerated on every launch from the live proxy port read out of the lock file.** The port is ephemeral (`:0`-allocated — see "Multi-agent lifecycle") and can differ from run to run, so it cannot be baked into an artifact whose cache key is the config inputs. The `.sb` is a few lines of text, so regenerating it every launch is free; the input-hash cache exists to skip the *expensive* part — the `policy.json` generator registry fetches — not this.
+- **`network.sb`** — a Seatbelt profile *fragment* passed to Safehouse via `--append-profile` (it narrows Safehouse's base `allow network*`; validated by spike S5/AC-0005, so it carries no `(version 1)`/`(deny default)` header of its own). Contains the `deny network*` baseline plus the narrow `(remote tcp "localhost:<port>")` allow rules derived from `network.host_services`. **It is exempt from the input-hash cache — regenerated on every launch.** The `.sb` is a few lines of text, so regenerating it is free; the input-hash cache exists to skip the *expensive* part — the `policy.json` generator registry fetches — not this. The **live proxy port** is supplied as a *separate* launch-time fragment, appended after `network.sb` (the port is ephemeral — `:0`-allocated, see "Multi-agent lifecycle" — and read from the lock file at launch, so it cannot be baked into a config-hash-keyed artifact). Both fragments use the `localhost` host token, never a literal IP (which does not compile) and never `*:N`.
 - **`policy.json`** — the mitmproxy enforcer addon reads this on every request. Compact representation of the unioned `allow` and `deny_always` rules (explicit + generator output + included files). Mitmproxy's addon polls the file's mtime and reloads on change, so `agent-creance allow ...` from another terminal propagates within milliseconds. Because the file lives out-of-tree and unmounted, only the host-side CLI can write it — the agent cannot.
 
 The mitmproxy addon itself (`enforcer.py`) is shipped embedded in the agent-creance binary and extracted to the state directory on first run — it's a constant, not a per-project file. Only the policy JSON it reads is per-project.

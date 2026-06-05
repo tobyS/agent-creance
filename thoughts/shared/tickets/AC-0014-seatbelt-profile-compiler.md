@@ -1,6 +1,6 @@
 # AC-0014: Seatbelt profile compiler → network.sb (WP-2.5)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -24,11 +24,11 @@ The cage's network isolation is a generated Seatbelt profile: deny-all baseline 
 
 ## Acceptance Criteria
 
-- [ ] Generated `.sb` contains a `deny network*` baseline and `(remote tcp "127.0.0.1:<port>")` allows for each `host_services` entry (address forced to IPv4 `127.0.0.1` regardless of the entry's label).
-- [ ] The proxy-port allow is produced by a separate function that takes a port argument and is **not** part of the input-hash-cached body (regenerated each launch).
-- [ ] Output is deterministic and golden-tested for a representative `host_services` set.
-- [ ] (Per S3 outcome) ships/asserts the localhost-refusal self-test design from AC-0003.
-- [ ] Composition strategy matches the S5 decision (`--append-profile` fragment vs fully-generated profile).
+- [x] Generated `.sb` contains a `deny network*` baseline and per-`host_services` allows. **Corrected (S3/S5):** the rule is `(remote tcp "localhost:<port>")`, not the literal `127.0.0.1:<port>` — the literal form does not compile ("host must be `*` or localhost"); `localhost` covers both v4+v6 and the port is the discriminator. Never emits `*:N`. (`RenderNetworkSB`, golden `internal/profile/testdata/network.golden`.)
+- [x] The proxy-port allow is produced by a separate function (`RenderProxyFragment(port)`) taking a port argument, regenerated each launch. **Note:** per the planning checkpoint `network.sb` is not input-hash-cached at all (regenerated every launch), so "not part of the cached body" holds trivially; the separate-function requirement is met.
+- [x] Output is deterministic and golden-tested for a representative set (`mysql:3306, redis:6379`).
+- [x] Ships the localhost-refusal self-test from AC-0003 as a gated integration test (`internal/profile/live_integration_test.go`): EPERM-refusal on a non-allowlisted port over v4+v6, allowlisted port reachable. (Per checkpoint decision: integration test only; `doctor`/`setup` runtime wiring deferred — AC-0033 is the end-to-end gate.)
+- [x] Composition matches S5: `--append-profile` fragment (no wholesale profile), `localhost:N`, deny-before-allows. Ordering contract for AC-0023 documented (append `network.sb` before the proxy fragment).
 
 ## Verification & Test Steps
 
@@ -51,8 +51,8 @@ Phase 2. Gated by AC-0003 + AC-0005. On the critical path to M3.
 
 ## Questions for Research/Planning
 
-- [ ] Final composition per S5: appended fragment or whole generated profile?
-- [ ] Exact SBPL syntax for the deny baseline that composes with Safehouse's base.
+- [x] Final composition per S5: **appended fragment** (not a whole generated profile).
+- [x] Exact SBPL: `(deny network*)` baseline first, then `(allow network-outbound (remote tcp "localhost:<port>"))` per port; no `(version 1)`/`(deny default)` header (Safehouse's base provides those). Verified to compile against real `sandbox-exec`.
 
 ## References
 
@@ -61,7 +61,30 @@ Phase 2. Gated by AC-0003 + AC-0005. On the critical path to M3.
 
 ## Implementation Plan
 
+- Research: `thoughts/shared/research/2026-06-05-AC-0014-seatbelt-profile-compiler.md`
+- Plan: `thoughts/shared/plans/2026-06-05-AC-0014-seatbelt-profile-compiler.md`
+
 ## Notes & Updates
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Enforcement code waits on S3 + S5.
+
+### 2026-06-05
+Both spike gates resolved (S3 2026-06-04, S5 2026-06-05) — clear to build. Implemented
+`internal/profile` in four phases: SBPL renderers + golden tests, the cache-less
+out-of-tree compiler, the S3 integration self-test, and the design.md/spec corrections
+the spikes assigned to this ticket.
+
+**Key correction carried from the spikes:** the literal `(remote tcp "127.0.0.1:N")`
+rule form the ticket/design/spec assumed does **not** compile on macOS 26.5. The
+compiler emits `(remote tcp "localhost:N")` (family-agnostic, port-enforced) and never
+`*:N`. Verified out-of-band against real `sandbox-exec`: the generated `localhost:N`
+profile compiles (reaches `sandbox_apply`) while the literal-IP form is rejected at
+compile time. design.md (lines ~53, ~100, ~295), `internal/config/config.go`'s
+`HostService` doc, and the spec WP-2.5 bullet were corrected accordingly.
+
+Verification: `go build ./...`, `make test`, `make lint`, `make golden` (no diff) all
+green. The integration test skips on hosts that can't apply nested sandbox profiles
+(this dev box) and runs the full EPERM probes on a real macOS session — it folds into
+**AC-0033** (the end-to-end isolation gate). Runtime self-test wiring into
+`doctor`/`setup` was deferred per the planning checkpoint.

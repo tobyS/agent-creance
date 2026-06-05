@@ -55,8 +55,8 @@ type Network struct {
 }
 
 // HostService is one "label:port" entry reachable from inside the cage. Label is
-// cosmetic; the address is always forced to 127.0.0.1 downstream (AC-0014), so it is
-// not represented here.
+// cosmetic; the generated Seatbelt rule keys on the port via the `localhost` host
+// token (AC-0014 / internal/profile), so the address is not represented here.
 type HostService struct {
 	Label string
 	Port  int
