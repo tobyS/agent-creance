@@ -1,6 +1,6 @@
 # AC-0016: `policy refresh` command (WP-2.7)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
