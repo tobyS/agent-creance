@@ -1,0 +1,142 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/tobyS/agent-creance/internal/policy"
+	"github.com/tobyS/agent-creance/internal/policy/compile"
+	"github.com/tobyS/agent-creance/internal/policy/render"
+)
+
+// newPolicyCmd is the `policy` parent: it groups the read-only visibility
+// subcommands (show, explain). It has no RunE of its own, so invoking it bare
+// prints the subcommand help — cobra's default for a command with children.
+func newPolicyCmd(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "policy",
+		Short: "Inspect the resolved egress policy",
+	}
+	cmd.AddCommand(newPolicyShowCmd(app), newPolicyExplainCmd(app))
+	return cmd
+}
+
+// newPolicyShowCmd implements `policy show`: compile the project's policy on demand
+// (cached) and dump it with per-rule source annotations and passthrough/lower-trust
+// flags. --json re-emits the compiled artifact verbatim.
+func newPolicyShowCmd(app *App) *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Dump the fully-resolved policy with rule sources",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			compiled, err := resolvePolicy(cmd.Context(), app, ".")
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				out, err := render.ShowJSON(compiled)
+				if err != nil {
+					return err
+				}
+				fmt.Fprint(app.Stdout, out)
+				return nil
+			}
+			fmt.Fprint(app.Stdout, render.Show(compiled))
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the compiled policy as JSON")
+	return cmd
+}
+
+// newPolicyExplainCmd implements `policy explain URL`: parse the URL into a request,
+// run the shared matcher, and report the decision + matching rule. A URL carries no
+// HTTP method, so --method (default GET) supplies the one the matcher needs.
+func newPolicyExplainCmd(app *App) *cobra.Command {
+	var (
+		asJSON bool
+		method string
+	)
+	cmd := &cobra.Command{
+		Use:   "explain URL",
+		Short: "Show which rule (if any) decides a given URL",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			req, err := requestFromURL(args[0], method)
+			if err != nil {
+				return err
+			}
+			compiled, err := resolvePolicy(cmd.Context(), app, ".")
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				out, err := render.ExplainJSON(compiled, req)
+				if err != nil {
+					return err
+				}
+				fmt.Fprint(app.Stdout, out)
+				return nil
+			}
+			fmt.Fprint(app.Stdout, render.Explain(compiled, req))
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the explanation as JSON")
+	cmd.Flags().StringVar(&method, "method", "GET", "HTTP method to evaluate the URL against")
+	return cmd
+}
+
+// resolvePolicy compiles dir's effective policy on demand (the compiler is cached
+// and idempotent — a cache hit makes zero network calls) and reads the resulting
+// artifact back into memory. Re-reading the file covers the cache-hit and
+// freshly-written paths uniformly.
+func resolvePolicy(ctx context.Context, app *App, dir string) (policy.Compiled, error) {
+	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+	if err != nil {
+		return policy.Compiled{}, err
+	}
+	result, err := compiler.Compile(ctx, dir)
+	if err != nil {
+		return policy.Compiled{}, err
+	}
+	data, err := app.FS.ReadFile(result.PolicyPath)
+	if err != nil {
+		return policy.Compiled{}, fmt.Errorf("read compiled policy: %w", err)
+	}
+	var compiled policy.Compiled
+	if err := json.Unmarshal(data, &compiled); err != nil {
+		return policy.Compiled{}, fmt.Errorf("parse compiled policy %s: %w", result.PolicyPath, err)
+	}
+	return compiled, nil
+}
+
+// requestFromURL parses an explain argument into a matcher request. A bare
+// host/path with no scheme still parses correctly once https:// is prepended; an
+// empty path normalises to "/".
+func requestFromURL(raw, method string) (policy.Request, error) {
+	s := raw
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return policy.Request{}, fmt.Errorf("parse URL %q: %w", raw, err)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return policy.Request{}, fmt.Errorf("URL %q has no host", raw)
+	}
+	path := u.Path
+	if path == "" {
+		path = "/"
+	}
+	return policy.Request{Host: host, Path: path, Method: method}, nil
+}

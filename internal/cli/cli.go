@@ -23,6 +23,12 @@ type App struct {
 	Stderr    io.Writer
 	// Tested is the tested-against version map; injected so tests can pin it.
 	Tested map[string]string
+	// The filesystem/path/clock/HTTP seams the policy commands need to compile and
+	// read a project's egress policy on demand (the policy compiler takes all four).
+	FS    sysdep.FileSystem
+	Paths sysdep.PathResolver
+	Clock sysdep.Clock
+	HTTP  sysdep.HTTPGetter
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -45,6 +51,7 @@ func newRootCmd(app *App) *cobra.Command {
 
 	root.AddCommand(newVersionCmd(app))
 	root.AddCommand(newDoctorCmd(app))
+	root.AddCommand(newPolicyCmd(app))
 	return root
 }
 
@@ -58,6 +65,10 @@ func Main() int {
 		Stdout:    os.Stdout,
 		Stderr:    os.Stderr,
 		Tested:    buildinfo.TestedVersions,
+		FS:        sysdep.OSFileSystem{},
+		Paths:     sysdep.OSPathResolver{},
+		Clock:     sysdep.OSClock{},
+		HTTP:      sysdep.OSHTTPGetter{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.
