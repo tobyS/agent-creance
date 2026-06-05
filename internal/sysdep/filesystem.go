@@ -1,22 +1,40 @@
 package sysdep
 
-import "os"
+import (
+	"io/fs"
+	"os"
+)
 
-// FileSystem abstracts reading file contents — the file *content* I/O seam the
-// PathResolver doc anticipates (PathResolver only *locates* paths; this *reads*
-// them). It is deliberately narrow: its first consumer, include resolution in
-// internal/config (AC-0008), only needs ReadFile. Later phases (AC-0009) grow it
-// with the write/stat/mkdir/remove/rename methods their consumers require.
+// FileSystem abstracts file *content* I/O — the seam the PathResolver doc
+// anticipates (PathResolver only *locates* paths; this reads and writes them).
+// It covers the out-of-tree state operations later phases need: reading config
+// includes (internal/config), and writing/inspecting the compiled policy.json,
+// network.sb, the proxy lock file, the audit log, and the extracted enforcer.py.
 //
-// Why route file reads through the seam (for someone coming from PHP/TS): reading
-// a file touches the real filesystem, so logic that called os.ReadFile directly
-// could not be unit-tested hermetically. Packages take a FileSystem and call
+// Why route file I/O through the seam (for someone coming from PHP/TS): touching
+// the real filesystem makes logic that called os.ReadFile/os.WriteFile directly
+// impossible to unit-test hermetically. Packages take a FileSystem and call
 // *that*; production wires OSFileSystem, tests wire the fake in sysdeptest.
 type FileSystem interface {
 	// ReadFile returns the contents of the named file, mirroring os.ReadFile. A
 	// non-existent file yields an error satisfying errors.Is(err, fs.ErrNotExist),
 	// so callers can distinguish "absent" from a genuine read failure.
 	ReadFile(name string) ([]byte, error)
+	// WriteFile writes data to name with perm, mirroring os.WriteFile: it creates
+	// the file if absent and truncates it otherwise. A non-nil error means the
+	// write failed.
+	WriteFile(name string, data []byte, perm fs.FileMode) error
+	// Stat returns file info for name, mirroring os.Stat. A non-existent path
+	// yields an error satisfying errors.Is(err, fs.ErrNotExist).
+	Stat(name string) (fs.FileInfo, error)
+	// MkdirAll creates name and any missing parents with perm, mirroring
+	// os.MkdirAll. It is a no-op (nil) if the directory already exists.
+	MkdirAll(name string, perm fs.FileMode) error
+	// Remove removes the named file or empty directory, mirroring os.Remove.
+	Remove(name string) error
+	// Rename renames (moves) oldpath to newpath, mirroring os.Rename — the
+	// primitive behind atomic "write to a temp file then rename" updates.
+	Rename(oldpath, newpath string) error
 }
 
 // OSFileSystem is the production FileSystem backed by the os package.
@@ -30,4 +48,24 @@ var _ FileSystem = (*OSFileSystem)(nil)
 
 func (OSFileSystem) ReadFile(name string) ([]byte, error) {
 	return os.ReadFile(name)
+}
+
+func (OSFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	return os.WriteFile(name, data, perm)
+}
+
+func (OSFileSystem) Stat(name string) (fs.FileInfo, error) {
+	return os.Stat(name)
+}
+
+func (OSFileSystem) MkdirAll(name string, perm fs.FileMode) error {
+	return os.MkdirAll(name, perm)
+}
+
+func (OSFileSystem) Remove(name string) error {
+	return os.Remove(name)
+}
+
+func (OSFileSystem) Rename(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
 }
