@@ -22,7 +22,43 @@ func newPolicyCmd(app *App) *cobra.Command {
 		Use:   "policy",
 		Short: "Inspect the resolved egress policy",
 	}
-	cmd.AddCommand(newPolicyShowCmd(app), newPolicyExplainCmd(app))
+	cmd.AddCommand(newPolicyShowCmd(app), newPolicyExplainCmd(app), newPolicyRefreshCmd(app))
+	return cmd
+}
+
+// newPolicyRefreshCmd implements `policy refresh`: force a re-fetch of generator
+// registry metadata (invalidating this project's per-package cache and the generator
+// output cache) and recompile the policy, regardless of the 30-day refresh window or
+// the input-hash cache. It reports what was refreshed and exits 0; --json emits the
+// structured report. It does not require the cage to be running.
+func newPolicyRefreshCmd(app *App) *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "refresh",
+		Short: "Force a re-fetch of generator metadata and recompile the policy",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+			if err != nil {
+				return err
+			}
+			res, err := compiler.Refresh(cmd.Context(), ".")
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				out, err := render.RefreshJSON(res)
+				if err != nil {
+					return err
+				}
+				fmt.Fprint(app.Stdout, out)
+				return nil
+			}
+			fmt.Fprint(app.Stdout, render.Refresh(res))
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the refresh report as JSON")
 	return cmd
 }
 

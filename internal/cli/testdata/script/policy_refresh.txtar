@@ -1,0 +1,34 @@
+# `agent-creance policy refresh` forces a re-fetch of generator metadata and a
+# recompile, then reports what was refreshed. This config lists no generators, so the
+# scenario runs fully offline (no network, no external tools) and exercises the command
+# wiring, the "nothing to refresh" path, and the recompile. The metadata-refetch path
+# itself is covered hermetically by the compiler's real-stack unit test (the HTTP seam
+# is not stubbable from a testscript). HOME/XDG_CACHE_HOME under $WORK keep it hermetic.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+agent-creance policy refresh
+stdout 'No generators configured — nothing to refresh\.'
+stdout 'Recompiled policy: 2 allow, 1 deny\.'
+! stderr .
+
+# --json emits the structured report; with no generators the array is empty (not null).
+agent-creance policy refresh --json
+stdout '"generators": \[\]'
+stdout '"allow_count": 2'
+stdout '"deny_count": 1'
+! stderr .
+
+-- .agent-creance.yaml --
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        paths: ["/repos/tobyS/x/"]
+        methods: ["GET", "POST"]
+      - host: api.anthropic.com
+        mode: passthrough
+    deny_always:
+      - host: w3schools.com
+        reason: low quality

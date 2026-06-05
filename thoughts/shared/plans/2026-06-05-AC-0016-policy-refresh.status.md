@@ -10,4 +10,7 @@ updated: 2026-06-05
 - [x] Phase 2 — `generator.Generator.Invalidate` (+ `lookuper` seam)
 - [x] Phase 3 — `compile.Compiler.Refresh` (+ runner seam, refactor)
 - [x] Phase 4 — render `Refresh` / `RefreshJSON` (+ goldens)
-- [ ] Phase 5 — CLI command + testscript + final verification
+- [x] Phase 5 — CLI command + testscript + final verification
+
+All phases complete. Final verification green: `go build ./...`, `make golden` (no diff),
+`make test` (race), `make lint`. AC-0016 closed (Done).

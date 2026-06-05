@@ -1,6 +1,6 @@
 # AC-0016: `policy refresh` command (WP-2.7)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -22,9 +22,9 @@ Generator metadata is cached for 30 days; occasionally an operator needs to forc
 
 ## Acceptance Criteria
 
-- [ ] `policy refresh` invalidates the per-package metadata cache for the project's generators and triggers a recompile.
-- [ ] It does not require the cage to be running.
-- [ ] Output reports what was refreshed (counts) and exits 0 on success.
+- [x] `policy refresh` invalidates the per-package metadata cache for the project's generators and triggers a recompile.
+- [x] It does not require the cage to be running.
+- [x] Output reports what was refreshed (counts) and exits 0 on success.
 
 ## Verification & Test Steps
 
@@ -43,7 +43,10 @@ Phase 2. Small follow-on to the generator stack.
 
 ## Questions for Research/Planning
 
-- [ ] Refresh all generators or accept a package/generator filter argument in v0.1?
+- [x] Refresh all generators or accept a package/generator filter argument in v0.1?
+      → **Resolved:** refresh all (no filter) for v0.1; per-generator/package filtering
+      stays deferred (Out of Scope). A `--json` flag was added for parity with
+      `policy show`/`explain`.
 
 ## References
 
@@ -56,3 +59,22 @@ Phase 2. Small follow-on to the generator stack.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-05
+Implemented (WP-2.7). Research surfaced that a real re-fetch+recompile must defeat
+**three** caches, not one: the 30-day registry metadata cache, the no-TTL generator
+output cache, and the compiler's input-hash gate. Invalidation is scoped to **this
+project's** packages so the intentionally cross-project registry/generator caches for
+other packages survive (which also yields the per-package counts the AC asks for).
+
+Built bottom-up: `registry.Client.Invalidate` + a shared `sysdep.RemoveIfPresent`
+(Stat-then-Remove for reliable counts under both OS and the fake FS) → extended the
+generator `lookuper` seam + `Generator.Invalidate` → `Compiler.Refresh` (refactored
+`Compile` to share its resolve/build steps; Refresh forces a rebuild past the gate) →
+`render.Refresh`/`RefreshJSON` (golden-tested) → `policy refresh [--json]` cobra
+subcommand + hermetic testscript. The "fake registry called again" check lives in a
+hermetic real-stack compiler test (fake HTTP/FS/clock over the real generator+registry),
+since the HTTP seam can't be stubbed from a testscript. Final verification green:
+`go build ./...`, `make golden` (no diff), `make test` (race), `make lint`.
+
+Completes the generator stack's operator-facing surface (WP-2.7). Phase 5 of 5.
