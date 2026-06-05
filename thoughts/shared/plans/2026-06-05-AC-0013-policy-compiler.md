@@ -263,7 +263,7 @@ companion hosts. Robust assertions (host presence, not exact paths) per AC-0012 
   and the research doc.
 
 ### Success criteria
-- [ ] All four acceptance criteria in the ticket satisfied; all six verification steps
+- [x] All four acceptance criteria in the ticket satisfied; all six verification steps
       pass. Integration test green. Ticket marked Done.
 
 ---

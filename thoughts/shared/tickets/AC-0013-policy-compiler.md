@@ -1,6 +1,6 @@
 # AC-0013: Policy compiler → policy.json with input-hash cache (WP-2.4)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -24,10 +24,10 @@ The runtime proxy enforces a compiled `policy.json`, not the human YAML. The com
 
 ## Acceptance Criteria
 
-- [ ] Compiled `policy.json` is the union of: explicit `allow`/`deny_always`, generator output, included files, implicit global, and the session-overlay.
-- [ ] Each rule in the output carries its source annotation (`explicit` / `generated:…` / `global:…` / `once`).
-- [ ] An input hash over (project YAML + all includes + global + referenced manifests + session-overlay) keys the cache; matching hash skips regeneration.
-- [ ] The artifact is written under `~/.cache/agent-creance/projects/<hash>/policy.json` (out-of-tree) and never inside the project tree.
+- [x] Compiled `policy.json` is the union of: explicit `allow`/`deny_always`, generator output, included files, implicit global, and the session-overlay.
+- [x] Each rule in the output carries its source annotation (`explicit` / `generated:…` / `global:…` / `once`).
+- [x] An input hash over (project YAML + all includes + global + referenced manifests + session-overlay) keys the cache; matching hash skips regeneration.
+- [x] The artifact is written under `~/.cache/agent-creance/projects/<hash>/policy.json` (out-of-tree) and never inside the project tree.
 
 ## Verification & Test Steps
 
@@ -50,8 +50,14 @@ Phase 2. The convergence point for AC-0006/0008/0010/0012. Reaches Milestone M1 
 
 ## Questions for Research/Planning
 
-- [ ] `policy.json` schema/version field for forward-compat with `enforcer.py`?
-- [ ] Hash algorithm + what exactly is canonicalized before hashing (ordering, whitespace)?
+- [x] `policy.json` schema/version field for forward-compat with `enforcer.py`? **Yes** —
+  artifact carries a top-level `version` (`policy.CompiledVersion = 1`) alongside the
+  required per-rule `source` annotation (and a preserved `lower_trust` flag).
+- [x] Hash algorithm + what exactly is canonicalized before hashing? **sha256** over a
+  canonical `json.Marshal` of the three resolved config layers (global / project+includes
+  / session-overlay) plus the referenced manifest bytes — deterministic (sorted map keys,
+  fixed struct field order) and environment-independent. Stored in the artifact's
+  `input_hash` field; the cache check runs before generators, so a hit does zero work.
 
 ## References
 
@@ -60,7 +66,35 @@ Phase 2. The convergence point for AC-0006/0008/0010/0012. Reaches Milestone M1 
 
 ## Implementation Plan
 
+Research: `thoughts/shared/research/2026-06-05-AC-0013-policy-compiler.md`
+Plan: `thoughts/shared/plans/2026-06-05-AC-0013-policy-compiler.md`
+
+Four phases:
+1. Artifact schema (`internal/policy`) — `Rule` gains `Source`/`LowerTrust`; new
+   `Compiled` type (`version` + `input_hash` + embedded `RuleSet`); exported
+   `RuleFromConfig`.
+2. Layered config loading (`internal/config`) — additive `Loader.GlobalPath` and
+   `Loader.ResolveLayer` (single file + includes, no implicit global) to recover the
+   provenance the fused `Load` discards. `Load`/`merge` untouched.
+3. The compiler (new `internal/policy/compile`) — layered load → generators over their
+   in-tree manifests → annotated union → input-hash cache → atomic out-of-tree write.
+   Hermetic golden/cache-hit/cache-miss/C4-guard/annotation tests via a `generatorRunner`
+   seam.
+4. Live integration test (real npm) + close-out.
+
 ## Notes & Updates
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-05
+Implemented across four commits. Checkpoint decisions (all accepted as recommended): add
+a `version: 1` field; recover provenance via compiler-owned layered load; sha256 over a
+canonical serialization of resolved inputs + manifest bytes, stored as in-artifact
+`input_hash`. Self-decided: preserve the generator `lower_trust` flag in the artifact;
+interpret criterion-4 "touching the overlay" as an overlay *content* change (the fake fs
+does not model mtime); normalize generated rules to an explicit `intercept` mode so the
+whole artifact is uniformly self-describing. No CLI surface (`policy show`/`run` wiring)
+in scope — this ships the library compiler + tests. All four acceptance criteria met; all
+six verification steps pass (`go build ./...`, `make test`, `make test-integration`,
+`make lint`, golden reviewed). Marked Done.
