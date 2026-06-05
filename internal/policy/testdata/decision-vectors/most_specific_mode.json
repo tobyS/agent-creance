@@ -1,0 +1,11 @@
+{
+  "name": "most_specific_mode",
+  "ruleset": {
+    "allow": [
+      {"host": "api.example.com", "mode": "passthrough"},
+      {"host": "api.example.com", "paths": ["/v1/"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "api.example.com", "path": "/v1/messages", "method": "POST"},
+  "expected": {"decision": "allow", "mode": "intercept", "matched_rule": {"list": "allow", "index": 1}}
+}

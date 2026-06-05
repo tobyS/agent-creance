@@ -1,0 +1,10 @@
+{
+  "name": "prefix_coverage",
+  "ruleset": {
+    "allow": [
+      {"host": "github.com", "paths": ["/facebook/react/"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "github.com", "path": "/facebook/react/blob/main/README.md", "method": "GET"},
+  "expected": {"decision": "allow", "mode": "intercept", "matched_rule": {"list": "allow", "index": 0}}
+}

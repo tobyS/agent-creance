@@ -1,0 +1,10 @@
+{
+  "name": "host_suffix_apex_miss",
+  "ruleset": {
+    "deny_always": [
+      {"host": "*.medium.com", "paths": ["/@*"], "mode": "intercept", "reason": "User-published Medium posts are unreliable for technical content."}
+    ]
+  },
+  "request": {"host": "medium.com", "path": "/@user/post", "method": "GET"},
+  "expected": {"decision": "soft-deny", "mode": "", "matched_rule": null}
+}

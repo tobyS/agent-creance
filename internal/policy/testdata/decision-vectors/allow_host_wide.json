@@ -1,0 +1,10 @@
+{
+  "name": "allow_host_wide",
+  "ruleset": {
+    "allow": [
+      {"host": "react.dev", "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "react.dev", "path": "/learn/state", "method": "GET"},
+  "expected": {"decision": "allow", "mode": "intercept", "matched_rule": {"list": "allow", "index": 0}}
+}

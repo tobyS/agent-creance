@@ -1,0 +1,13 @@
+{
+  "name": "hard_deny_by_host",
+  "ruleset": {
+    "allow": [
+      {"host": "*", "paths": ["/**"], "mode": "intercept"}
+    ],
+    "deny_always": [
+      {"host": "w3schools.com", "mode": "intercept", "reason": "Known low-quality source. Use MDN or official docs instead."}
+    ]
+  },
+  "request": {"host": "w3schools.com", "path": "/html/html_intro.asp", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

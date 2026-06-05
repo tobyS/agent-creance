@@ -1,0 +1,10 @@
+{
+  "name": "host_suffix_wildcard",
+  "ruleset": {
+    "deny_always": [
+      {"host": "*.medium.com", "paths": ["/@*"], "mode": "intercept", "reason": "User-published Medium posts are unreliable for technical content."}
+    ]
+  },
+  "request": {"host": "blog.medium.com", "path": "/@user/some-article-hash", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

@@ -1,0 +1,10 @@
+{
+  "name": "star_not_crossing_slash",
+  "ruleset": {
+    "allow": [
+      {"host": "files.example", "paths": ["/a*/b"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "files.example", "path": "/a/c/b", "method": "GET"},
+  "expected": {"decision": "soft-deny", "mode": "", "matched_rule": null}
+}

@@ -1,0 +1,10 @@
+{
+  "name": "host_star_wildcard",
+  "ruleset": {
+    "allow": [
+      {"host": "*", "paths": ["/public/"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "anything.example", "path": "/public/data.json", "method": "GET"},
+  "expected": {"decision": "allow", "mode": "intercept", "matched_rule": {"list": "allow", "index": 0}}
+}

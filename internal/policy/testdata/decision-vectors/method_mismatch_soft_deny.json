@@ -1,0 +1,10 @@
+{
+  "name": "method_mismatch_soft_deny",
+  "ruleset": {
+    "allow": [
+      {"host": "api.github.com", "paths": ["/repos/"], "methods": ["GET"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "api.github.com", "path": "/repos/foo", "method": "POST"},
+  "expected": {"decision": "soft-deny", "mode": "", "matched_rule": null}
+}

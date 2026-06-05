@@ -1,0 +1,13 @@
+{
+  "name": "hard_deny_by_path_glob",
+  "ruleset": {
+    "allow": [
+      {"host": "*", "paths": ["/**"], "mode": "intercept"}
+    ],
+    "deny_always": [
+      {"host": "*", "paths": ["**/.env", "**/.git/config"], "mode": "intercept", "reason": "Secrets path."}
+    ]
+  },
+  "request": {"host": "example.com", "path": "/config/.env", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

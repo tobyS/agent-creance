@@ -1,0 +1,10 @@
+{
+  "name": "doublestar_at_depth",
+  "ruleset": {
+    "deny_always": [
+      {"host": "*", "paths": ["**/.git/config"], "mode": "intercept", "reason": "Secrets path."}
+    ]
+  },
+  "request": {"host": "example.com", "path": "/a/b/.git/config", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

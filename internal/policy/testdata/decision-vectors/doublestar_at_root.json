@@ -1,0 +1,10 @@
+{
+  "name": "doublestar_at_root",
+  "ruleset": {
+    "deny_always": [
+      {"host": "*", "paths": ["**/.env"], "mode": "intercept", "reason": "Secrets path."}
+    ]
+  },
+  "request": {"host": "example.com", "path": "/.env", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

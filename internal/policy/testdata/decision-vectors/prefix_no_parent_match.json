@@ -1,0 +1,10 @@
+{
+  "name": "prefix_no_parent_match",
+  "ruleset": {
+    "allow": [
+      {"host": "github.com", "paths": ["/facebook/react/"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "github.com", "path": "/facebook/other", "method": "GET"},
+  "expected": {"decision": "soft-deny", "mode": "", "matched_rule": null}
+}

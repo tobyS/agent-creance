@@ -1,0 +1,13 @@
+{
+  "name": "passthrough_host_deny_enforced",
+  "ruleset": {
+    "allow": [
+      {"host": "api.anthropic.com", "mode": "passthrough"}
+    ],
+    "deny_always": [
+      {"host": "api.anthropic.com", "mode": "intercept", "reason": "Temporarily blocked."}
+    ]
+  },
+  "request": {"host": "api.anthropic.com", "path": "/v1/messages", "method": "POST"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

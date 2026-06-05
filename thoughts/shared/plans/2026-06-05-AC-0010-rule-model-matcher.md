@@ -204,7 +204,7 @@ canonical `host|paths|methods|mode` string (smallest wins) for determinism.
 
 ---
 
-## Phase 2 — Decision-vector corpus + corpus-driven test
+## Phase 2 — Decision-vector corpus + corpus-driven test ✅
 
 ### Changes
 

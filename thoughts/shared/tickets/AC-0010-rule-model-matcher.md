@@ -1,9 +1,9 @@
 # AC-0010: Rule model & matcher + decision-vector corpus (WP-2.1)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-05
 **Plan reference:** WP-2.1 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** AC-0007 (WP-1.2)
 **Spike gate:** none
@@ -24,10 +24,10 @@ The allow / soft-deny / hard-deny + per-host `mode` decision is the heart of the
 
 ## Acceptance Criteria
 
-- [ ] Host matching supports exact, `*.suffix`, and `*` wildcards; path matching supports prefix + `*`/`**` globs; method matching is set-membership.
-- [ ] Precedence is implemented and documented: `deny_always` shadows `allow`; unmatched → soft-deny; `mode` is carried on the matched allow.
-- [ ] A language-neutral corpus exists at `internal/policy/testdata/decision-vectors/` (JSON: ruleset + request → expected `{decision, mode, matched_rule}`), covering allow, host-wide allow, soft-deny default, hard-deny by host, hard-deny by path glob, passthrough host, and wildcard edge cases.
-- [ ] The Go matcher passes 100% of the corpus.
+- [x] Host matching supports exact, `*.suffix`, and `*` wildcards; path matching supports prefix + `*`/`**` globs; method matching is set-membership.
+- [x] Precedence is implemented and documented: `deny_always` shadows `allow`; unmatched → soft-deny; `mode` is carried on the matched allow.
+- [x] A language-neutral corpus exists at `internal/policy/testdata/decision-vectors/` (JSON: ruleset + request → expected `{decision, mode, matched_rule}`), covering allow, host-wide allow, soft-deny default, hard-deny by host, hard-deny by path glob, passthrough host, and wildcard edge cases.
+- [x] The Go matcher passes 100% of the corpus.
 
 ## Verification & Test Steps
 
@@ -48,8 +48,8 @@ Phase 2, first. Gates AC-0013, AC-0015, AC-0017. The corpus is a hard prerequisi
 
 ## Questions for Research/Planning
 
-- [ ] Exact glob semantics for `**` vs `*` in path scoping — does `**/.env` match at any depth including root?
-- [ ] How is the "most specific rule wins" tie-break defined when multiple allows match?
+- [x] Exact glob semantics for `**` vs `*` in path scoping — does `**/.env` match at any depth including root? **Resolved:** yes. `**` (whole segment) matches zero-or-more path segments including zero, so `**/.env` matches `.env` at the root and at any depth (`.gitignore`/doublestar convention); `*` never crosses `/`. Path patterns are prefix-by-default (a pattern matches a prefix of the request's segments). Hand-rolled (not a library) for Go↔Python parity.
+- [x] How is the "most specific rule wins" tie-break defined when multiple allows match? **Resolved:** most-specific-wins by `(host: exact > *.suffix > *)`, then `(path: constrained > host-wide, more literal segments, more total segments)`, then `(method: constrained > any)`, with a deterministic canonical-string fallback for exact ties. Order-independent (lists union additively across `include:`).
 
 ## References
 
@@ -62,3 +62,16 @@ Phase 2, first. Gates AC-0013, AC-0015, AC-0017. The corpus is a hard prerequisi
 
 ### 2026-06-04
 Created from the v0.1 technical specification. The decision-vector corpus is the single guardrail against Go/Python drift — do not close this ticket without it.
+
+### 2026-06-05 — Done
+Implemented `internal/policy` (pure matcher: `RuleSet`/`Rule`/`Request`/`Result`,
+`Decide`, `FromConfig`) with host (`*`, `*.suffix` — apex excluded, case-insensitive),
+prefix-by-default path globs (`*` within a segment, whole-segment `**` across
+segments, hand-rolled), method set-membership, most-specific-wins tie-break, and the
+passthrough path-deny blind spot (a path-scoped `deny_always` is suppressed when the
+matching allow is `passthrough`; a host-level deny still hard-denies). Shipped the
+18-vector language-neutral corpus at `internal/policy/testdata/decision-vectors/` plus
+a directory-iterating, strict-JSON, zero-guarded corpus test (`vectors_test.go`) — the
+C1 contract AC-0017's Python `enforcer.py` reuses. Verification steps 1–5 all pass
+(`go build`, `go test -race`, zero-vectors guard, `make lint`, `jq` over each file).
+Plan: `thoughts/shared/plans/2026-06-05-AC-0010-rule-model-matcher.md`.

@@ -1,0 +1,10 @@
+{
+  "name": "soft_deny_default",
+  "ruleset": {
+    "allow": [
+      {"host": "react.dev", "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "docs.somelib.io", "path": "/v2/auth/", "method": "GET"},
+  "expected": {"decision": "soft-deny", "mode": "", "matched_rule": null}
+}
