@@ -2,7 +2,7 @@
 date: 2026-06-05
 ticket: AC-0012
 title: "Allowlist generators (package_json, composer_json) (WP-2.3)"
-status: ready
+status: complete
 research: thoughts/shared/research/2026-06-05-AC-0012-allowlist-generators.md
 git_commit: 8cfd78e
 branch: main
@@ -131,8 +131,8 @@ mirroring the existing `RegistriesRoot` table: XDG set → `…/generators`; XDG
 ### Success criteria
 
 #### Automated
-- [ ] `go test -race ./internal/state/...` passes
-- [ ] `make lint` clean
+- [x] `go test -race ./internal/state/...` passes
+- [x] `make lint` clean
 
 ---
 
@@ -223,9 +223,9 @@ golden readability; the matcher trims anyway).
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/generator/...` passes
-- [ ] `make lint` clean
+- [x] `go build ./...`
+- [x] `go test -race ./internal/generator/...` passes
+- [x] `make lint` clean
 
 ---
 
@@ -317,12 +317,12 @@ under `internal/generator/testdata/`.
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/generator/...` passes
-- [ ] `make lint` clean
+- [x] `go build ./...`
+- [x] `go test -race ./internal/generator/...` passes
+- [x] `make lint` clean
 
 #### Manual
-- [ ] `make golden` then review `git diff internal/generator/testdata` — the golden
+- [x] `make golden` then review `git diff internal/generator/testdata` — the golden
       rule-sets match the design's examples (homepage host-wide vs path-scoped; the
       five GitHub companions incl. lower-trust `objects.githubusercontent.com`; the
       two GitLab rows).
@@ -366,8 +366,8 @@ under `internal/generator/testdata/`.
 ### Success criteria
 
 #### Automated
-- [ ] `go test -race ./internal/generator/...` passes (incl. zero-Lookup-on-hit)
-- [ ] `make lint` clean
+- [x] `go test -race ./internal/generator/...` passes (incl. zero-Lookup-on-hit)
+- [x] `make lint` clean
 
 ---
 
@@ -398,14 +398,14 @@ extracted from the live metadata rather than hard-coding, to avoid brittleness.)
 ### Success criteria
 
 #### Automated
-- [ ] `make test` (full unit suite, race) passes
-- [ ] `make test-integration` passes (real npm + Packagist generate)
-- [ ] `make lint` clean
-- [ ] `go build ./...`
+- [x] `make test` (full unit suite, race) passes
+- [x] `make test-integration` passes (real npm + Packagist generate)
+- [x] `make lint` clean
+- [x] `go build ./...`
 
 #### Manual
-- [ ] All six ticket acceptance criteria verified against the implemented tests
-- [ ] `make golden` diff reviewed once more after all phases; no unintended churn
+- [x] All six ticket acceptance criteria verified against the implemented tests
+- [x] `make golden` diff reviewed once more after all phases; no unintended churn
 
 ---
 

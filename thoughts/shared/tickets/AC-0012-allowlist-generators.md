@@ -1,9 +1,9 @@
 # AC-0012: Allowlist generators (package_json, composer_json) (WP-2.3)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-05
 **Plan reference:** WP-2.3 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** AC-0011 (WP-2.2)
 **Spike gate:** none
@@ -23,12 +23,12 @@ Manually allowlisting every dependency's docs/repo hosts is tedious and bit-rott
 
 ## Acceptance Criteria
 
-- [ ] `package_json` walks `dependencies` + `devDependencies` (direct only); `composer_json` walks `require` + `require-dev` (direct only).
-- [ ] Per dep: emit a homepage rule (host-wide for a bare host, path-scoped for a path-carrying/shared host) and a repository rule scoped to `<org>/<repo>`.
-- [ ] For GitHub repositories, emit the companion content hosts: `raw.githubusercontent.com/<org>/<repo>/`, `codeload.github.com/<org>/<repo>/`, `<org>.github.io/<repo>/`, and host-wide `objects.githubusercontent.com` (flagged lower-trust).
-- [ ] Missing homepage/repository → no rule emitted (no error).
-- [ ] Each rule is annotated with its source (`generated:package_json:<pkg>`).
-- [ ] Output is cached keyed on the manifest hash; unchanged manifest → cache hit, no registry calls.
+- [x] `package_json` walks `dependencies` + `devDependencies` (direct only); `composer_json` walks `require` + `require-dev` (direct only).
+- [x] Per dep: emit a homepage rule (host-wide for a bare host, path-scoped for a path-carrying/shared host) and a repository rule scoped to `<org>/<repo>`.
+- [x] For GitHub repositories, emit the companion content hosts: `raw.githubusercontent.com/<org>/<repo>/`, `codeload.github.com/<org>/<repo>/`, `<org>.github.io/<repo>/`, and host-wide `objects.githubusercontent.com` (flagged lower-trust). (GitLab companions also shipped.)
+- [x] Missing homepage/repository → no rule emitted (no error).
+- [x] Each rule is annotated with its source (`generated:package_json:<pkg>`).
+- [x] Output is cached keyed on the manifest hash; unchanged manifest → cache hit, no registry calls.
 
 ## Verification & Test Steps
 
@@ -51,8 +51,8 @@ Phase 2. Depends on AC-0011. Feeds AC-0013.
 
 ## Questions for Research/Planning
 
-- [ ] The exact forge content-host table (data, not code) — confirm GitHub entries and any GitLab rows.
-- [ ] Path-scoping algorithm for shared hosts (`github.io`, `*.readthedocs.io`) — how is the tenant path derived?
+- [x] The exact forge content-host table (data, not code) — confirm GitHub entries and any GitLab rows. → GitHub entries per design; GitLab row shipped (`gitlab.com` web + `<org>.gitlab.io` pages) per the planning checkpoint decision. Table is data-driven (`internal/generator/forge.go`), extensible to further forges by a single edit.
+- [x] Path-scoping algorithm for shared hosts (`github.io`, `*.readthedocs.io`) — how is the tenant path derived? → No shared-host table needed: a homepage rule is host-wide iff the homepage URL has no path, else scoped to that path prefix. The "tenant path" is simply the homepage URL's own path (`internal/generator/homepage.go`).
 
 ## References
 
@@ -65,3 +65,11 @@ Phase 2. Depends on AC-0011. Feeds AC-0013.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-05
+Implemented in `internal/generator` (5 phases). Research:
+`thoughts/shared/research/2026-06-05-AC-0012-allowlist-generators.md`; plan:
+`thoughts/shared/plans/2026-06-05-AC-0012-allowlist-generators.md`. All six
+acceptance criteria met and all verification steps pass (`make test`,
+`make test-integration`, `make lint`, `go build ./...`; golden rule-sets reviewed).
+GitLab forge row added alongside GitHub per the planning checkpoint. Status → Done.
