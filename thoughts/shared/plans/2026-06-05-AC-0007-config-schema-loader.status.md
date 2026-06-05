@@ -24,10 +24,10 @@ Status: done (commit pending)
   type-name-free messages.
 - 7 golden fixtures + .golden files; TestValidate table test; TestGoldenErrors;
   TestValidate_ReportsAllIssues (accumulates, not fail-fast).
-- go test -race ./... green; make lint clean.
-- NOTE: repo-wide `make golden` has a pre-existing -update flag defect (cli/state/
-  sysdep lack the flag); goldens verified via `go test ./internal/config -update`.
-  Surfaced to user; out of scope.
+- go test -race ./... green; make lint clean; make golden clean.
+- Fixed a pre-existing `make golden` defect (cli/state/sysdep lack the -update
+  flag and rejected `go test ./... -update`): the target now discovers
+  golden-bearing packages dynamically and runs -update against just those.
 
 ## Phase 3 — Close-out
 Status: done (commit pending)

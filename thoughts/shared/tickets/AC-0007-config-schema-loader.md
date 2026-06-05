@@ -87,8 +87,8 @@ Created from the v0.1 technical specification.
 Implemented `internal/config` (research → plan → 2 implementation phases). Both open
 questions resolved (strict fail-closed parsing; typed `host_services` validated here,
 address-forcing deferred to AC-0014). All acceptance criteria met; `go build`,
-`go test -race ./...`, `make lint` green. **Note:** the repo-wide `make golden`
-target (`go test ./... -update`) has a pre-existing cross-package `-update` flag
-defect (packages without a golden test — `cli`/`state`/`sysdep` — reject the flag);
-this package's goldens were regenerated with the scoped `go test ./internal/config
--update`. Flagged for separate follow-up.
+`go test -race ./...`, `make lint`, `make golden` green. Also fixed a pre-existing
+defect in the `make golden` target (`go test ./... -update` errored because packages
+without a golden test — `cli`/`state`/`sysdep` — reject the `-update` flag): the
+target now discovers golden-bearing packages dynamically and runs `-update` against
+just those.

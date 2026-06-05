@@ -267,14 +267,12 @@ the boolean validation logic, plus golden tests for rendered messages:
 #### Automated
 - [x] `go test -race ./internal/config/...` passes (table + golden).
 - [x] `go test ./internal/config -run TestValidate` green.
-- [x] Golden files regenerate with no *unexpected* diff. NOTE: repo-wide
-      `make golden` (= `go test ./... -update`) has a **pre-existing** defect — the
-      custom `-update` flag is only defined in packages with golden tests, so the
-      `cli`/`state`/`sysdep` binaries reject it (`internal/state`, from AC-0006 and
-      untouched here, fails identically). Verified via the scoped
-      `go test ./internal/config -update`; all `testdata/*.golden` are new (no
-      existing golden modified). The Makefile papercut is surfaced to the user,
-      out of scope for AC-0007.
+- [x] `make golden` produces no *unexpected* diff (all `testdata/*.golden` are new;
+      no existing golden modified). A **pre-existing** defect in the target was fixed
+      as part of close-out: `go test ./... -update` errored because the custom
+      `-update` flag is only defined in packages with golden tests, so the
+      `cli`/`state`/`sysdep` binaries rejected it. The target now discovers
+      golden-bearing packages dynamically and runs `-update` against just those.
 - [x] `go test -race ./...` (full suite) green.
 - [x] `make lint` clean.
 

@@ -62,9 +62,16 @@ cover:
 	go tool cover -html=coverage.out
 
 ## golden: regenerate golden test files (review the diff afterwards!)
+# Only packages with a golden test define the -update flag; passing it to a test
+# binary that doesn't define it is a hard error ("flag provided but not defined").
+# So we discover the golden-bearing packages dynamically (by the shared flag
+# description string) and run -update against just those, instead of `./...`.
 .PHONY: golden
 golden:
-	go test ./... -update
+	@pkgs=$$(grep -rl 'regenerate golden files' --include='*_test.go' . | xargs -n1 dirname | sort -u); \
+	if [ -z "$$pkgs" ]; then echo "no golden tests found"; exit 0; fi; \
+	echo "regenerating goldens in:" $$pkgs; \
+	go test $$pkgs -update
 
 ## fmt: format all Go code
 .PHONY: fmt
