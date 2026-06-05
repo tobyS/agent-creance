@@ -33,6 +33,7 @@ const (
 	appCacheSubdir     = "agent-creance"
 	projectsSubdir     = "projects"
 	registriesSubdir   = "registries"
+	generatorsSubdir   = "generators"
 	policyJSONName     = "policy.json"
 	networkSBName      = "network.sb"
 	proxyLockName      = "proxy.lock"
@@ -119,6 +120,21 @@ func (r *Resolver) RegistriesRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(cache, appCacheSubdir, registriesSubdir), nil
+}
+
+// GeneratorsRoot returns <cache>/agent-creance/generators — the cross-project home
+// of generator output caches, content-addressed by manifest hash. Like
+// RegistriesRoot it is a sibling of projects/<hash>/ and project-independent: two
+// projects with an identical manifest share the same generated rule set, so the
+// cache survives across them (see docs/design.md, "Allowlist generators" →
+// Caching). The generator owns the per-generator and per-hash path segments beneath
+// this root.
+func (r *Resolver) GeneratorsRoot() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, generatorsSubdir), nil
 }
 
 // cacheRoot returns the base cache directory, honouring XDG_CACHE_HOME when set and
