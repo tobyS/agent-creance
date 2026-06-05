@@ -65,12 +65,18 @@ const (
 // uses plain []string (nil == "key omitted") and json tags, so it decodes straight
 // from the language-neutral decision-vector corpus and carries no yaml/`*[]string`
 // baggage from the loader.
+//
+// Source and LowerTrust are populated by the compiler (AC-0013) for the on-disk
+// policy.json and are *ignored by Decide* — they exist so `policy show` can render an
+// annotated artifact. They are absent from the decision-vector corpus (omitempty).
 type Rule struct {
-	Host    string   `json:"host"`
-	Paths   []string `json:"paths,omitempty"`
-	Methods []string `json:"methods,omitempty"`
-	Mode    string   `json:"mode,omitempty"`
-	Reason  string   `json:"reason,omitempty"`
+	Host       string   `json:"host"`
+	Paths      []string `json:"paths,omitempty"`
+	Methods    []string `json:"methods,omitempty"`
+	Mode       string   `json:"mode,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	LowerTrust bool     `json:"lower_trust,omitempty"`
 }
 
 // RuleSet is the compiled, in-memory policy the matcher evaluates: the unioned
@@ -78,6 +84,21 @@ type Rule struct {
 type RuleSet struct {
 	Allow      []Rule `json:"allow,omitempty"`
 	DenyAlways []Rule `json:"deny_always,omitempty"`
+}
+
+// CompiledVersion is the policy.json schema version — the cross-language contract with
+// the Python enforcer. Bump only on a breaking change to the artifact shape.
+const CompiledVersion = 1
+
+// Compiled is the on-disk policy.json the compiler (AC-0013) writes and the proxy
+// enforcer reads: a versioned, input-hash-keyed RuleSet whose rules carry source
+// annotations. The embedded RuleSet promotes allow/deny_always to the top level, so the
+// artifact serializes as {version, input_hash, allow, deny_always}. InputHash keys the
+// compiler's regeneration cache; the enforcer ignores it.
+type Compiled struct {
+	Version   int    `json:"version"`
+	InputHash string `json:"input_hash"`
+	RuleSet
 }
 
 // Request is the single egress attempt being decided.
@@ -122,17 +143,25 @@ func rulesFromConfig(in []config.Rule) []Rule {
 	}
 	out := make([]Rule, len(in))
 	for i, r := range in {
-		out[i] = Rule{
-			Host:   r.Host,
-			Mode:   r.Mode,
-			Reason: r.Reason,
-		}
-		if r.Paths != nil {
-			out[i].Paths = *r.Paths
-		}
-		if r.Methods != nil {
-			out[i].Methods = *r.Methods
-		}
+		out[i] = RuleFromConfig(r)
+	}
+	return out
+}
+
+// RuleFromConfig converts one config.Rule into a matcher Rule, dereferencing the
+// loader's *[]string Paths/Methods (a nil pointer stays a nil slice — "key omitted").
+// Source is left empty for the caller (the compiler) to stamp with provenance.
+func RuleFromConfig(r config.Rule) Rule {
+	out := Rule{
+		Host:   r.Host,
+		Mode:   r.Mode,
+		Reason: r.Reason,
+	}
+	if r.Paths != nil {
+		out.Paths = *r.Paths
+	}
+	if r.Methods != nil {
+		out.Methods = *r.Methods
 	}
 	return out
 }

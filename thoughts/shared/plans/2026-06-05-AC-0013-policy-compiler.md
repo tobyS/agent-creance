@@ -118,8 +118,8 @@ Extend the pure schema so the compiled artifact can carry provenance + version.
   pass (new fields are `omitempty`, absent in the corpus). `make lint`.
 
 ### Success criteria
-- [ ] `policy.Rule` has `Source`/`LowerTrust`; `policy.Compiled` + `CompiledVersion` exist.
-- [ ] All existing policy tests + vectors green; build + lint clean.
+- [x] `policy.Rule` has `Source`/`LowerTrust`; `policy.Compiled` + `CompiledVersion` exist.
+- [x] All existing policy tests + vectors green; build + lint clean.
 
 ---
 
