@@ -27,6 +27,6 @@ type OSFlock struct{}
 
 var _ Flock = (*OSFlock)(nil)
 
-func (OSFlock) Acquire(path string) (func() error, error) {
+func (OSFlock) Acquire(_ string) (func() error, error) {
 	return nil, ErrNotImplemented
 }

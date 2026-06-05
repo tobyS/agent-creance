@@ -1,9 +1,9 @@
 # AC-0009: sysdep seam extensions (WP-1.4)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-05
 **Plan reference:** WP-1.4 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** none
 **Spike gate:** none
@@ -22,10 +22,10 @@ The project's core testability rule is that no logic package touches the OS dire
 
 ## Acceptance Criteria
 
-- [ ] Interfaces defined for `Clock` (now/since), `FileSystem` (read/write/stat/mkdir/remove/rename as needed), `Keychain` (read item), `Flock` (acquire/release), `ProcessGroup` (start in new pgid, signal group, wait).
-- [ ] Each interface has a compile-time `var _ Iface = (*RealImpl)(nil)` assertion (real impls may be stubs returning `ErrNotImplemented` until their consumer ticket).
-- [ ] Each interface has a configurable fake in `sysdeptest` (records calls, returns scripted results/errors).
-- [ ] The existing `Commander` seam and tests remain green.
+- [x] Interfaces defined for `Clock` (now/since), `FileSystem` (read/write/stat/mkdir/remove/rename as needed), `Keychain` (read item), `Flock` (acquire/release), `ProcessGroup` (start in new pgid, signal group, wait).
+- [x] Each interface has a compile-time `var _ Iface = (*RealImpl)(nil)` assertion (real impls may be stubs returning `ErrNotImplemented` until their consumer ticket).
+- [x] Each interface has a configurable fake in `sysdeptest` (records calls, returns scripted results/errors).
+- [x] The existing `Commander` seam and tests remain green.
 
 ## Verification & Test Steps
 
@@ -46,8 +46,8 @@ Phase 1. Enables hermetic tests in AC-0006, AC-0020, AC-0022, AC-0024, and other
 
 ## Questions for Research/Planning
 
-- [ ] Keep one fat `FileSystem` or several narrow interfaces defined at point of use (Go idiom favors the latter)?
-- [ ] Does `Flock` belong here or behind a higher-level lock abstraction in `internal/proxy`?
+- [x] Keep one fat `FileSystem` or several narrow interfaces defined at point of use (Go idiom favors the latter)? → **Grow the existing single `FileSystem` in place** with write/stat/mkdir/remove/rename (its own doc delegated this growth to AC-0009); the seam stays concern-scoped (content I/O) rather than fanning out into micro-interfaces.
+- [x] Does `Flock` belong here or behind a higher-level lock abstraction in `internal/proxy`? → **Thin `Flock` seam in `sysdep`** (wrapping `unix.Flock`); any higher-level lock abstraction lives in the proxy package with its consumer (WP-3.4).
 
 ## References
 
@@ -56,7 +56,36 @@ Phase 1. Enables hermetic tests in AC-0006, AC-0020, AC-0022, AC-0024, and other
 
 ## Implementation Plan
 
+- Research: `thoughts/shared/research/2026-06-05-AC-0009-sysdep-seam-extensions.md`
+- Plan: `thoughts/shared/plans/2026-06-05-AC-0009-sysdep-seam-extensions.md`
+
 ## Notes & Updates
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-05
+Implemented (WP-1.4). Added five seams to `internal/sysdep`, each with a fake in
+`sysdeptest`, a compile-time `var _ Iface = (*Impl)(nil)` assertion on both the
+real type and the fake, and a smoke test:
+
+- `Clock` (now/since) — real `OSClock`; `FakeClock` (frozen + `Advance`).
+- `FileSystem` grown in place with `WriteFile`/`Stat`/`MkdirAll`/`Remove`/
+  `Rename` — real `OSFileSystem`; `FakeFileSystem` extended to a scripted
+  in-memory FS with per-op error knobs.
+- `Keychain` (`FindGenericPassword`, with `ErrItemNotFound`/`ErrKeychainLocked`
+  contract sentinels) — `OSKeychain` stubbed (`ErrNotImplemented`); `FakeKeychain`
+  functional with `Locked`/`WithItem`/`Lookups`.
+- `Flock` (`Acquire` → release func) — `OSFlock` stubbed; `FakeFlock` records
+  acquire/release + `Held`.
+- `ProcessGroup`/signals (`Start` → `Process{Signal,Wait,Pgid}`, `Notify`) —
+  `Start` stubbed, `Notify` real (`os/signal.Notify`); `FakeProcessGroup`/
+  `FakeProcess` record commands/signals.
+
+Decisions (question checkpoint): real stdlib impls now for `Clock` + `FileSystem`
+writes; `ErrNotImplemented` stubs (new `sysdep.ErrNotImplemented` sentinel) for
+the macOS-specific `Keychain`/`Flock`/`ProcessGroup.Start`, deferred to their
+consumers (WP-4.1/WP-3.4/WP-4.3). No `go.mod` change; `cli.App` left unwired
+(unused deps). All five verification steps pass (`go build`/`go vet`,
+`go test -race ./internal/sysdep/...`, grep guard, `make test`); `make lint`
+clean. Commits unsigned (signing key unavailable this session).

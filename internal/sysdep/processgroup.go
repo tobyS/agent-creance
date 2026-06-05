@@ -49,7 +49,7 @@ type OSProcessGroup struct{}
 
 var _ ProcessGroup = (*OSProcessGroup)(nil)
 
-func (OSProcessGroup) Start(ctx context.Context, name string, args ...string) (Process, error) {
+func (OSProcessGroup) Start(_ context.Context, _ string, _ ...string) (Process, error) {
 	return nil, ErrNotImplemented
 }
 

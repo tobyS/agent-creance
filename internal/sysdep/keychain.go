@@ -41,6 +41,6 @@ type OSKeychain struct{}
 
 var _ Keychain = (*OSKeychain)(nil)
 
-func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
+func (OSKeychain) FindGenericPassword(_, _ string) ([]byte, error) {
 	return nil, ErrNotImplemented
 }
