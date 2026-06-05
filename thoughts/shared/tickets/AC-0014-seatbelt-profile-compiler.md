@@ -1,6 +1,6 @@
 # AC-0014: Seatbelt profile compiler → network.sb (WP-2.5)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
