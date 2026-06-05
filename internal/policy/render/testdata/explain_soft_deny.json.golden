@@ -1,0 +1,9 @@
+{
+  "request": {
+    "host": "evil.test",
+    "path": "/",
+    "method": "GET"
+  },
+  "decision": "soft-deny",
+  "matched": null
+}

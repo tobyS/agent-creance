@@ -1,0 +1,19 @@
+{
+  "request": {
+    "host": "github.com",
+    "path": "/facebook/react/pull/1",
+    "method": "GET"
+  },
+  "decision": "allow",
+  "mode": "intercept",
+  "matched": {
+    "list": "allow",
+    "index": 3,
+    "host": "github.com",
+    "paths": [
+      "/facebook/react/"
+    ],
+    "mode": "intercept",
+    "source": "generated:package_json:react"
+  }
+}

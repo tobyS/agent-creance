@@ -1,0 +1,3 @@
+Request:   evil.test GET /
+Decision:  soft-deny
+Matched:   (none — not in the allowlist)

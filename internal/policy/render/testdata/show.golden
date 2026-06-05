@@ -1,0 +1,13 @@
+Resolved egress policy (6 allow, 2 deny)
+
+ALLOW
+  [global]                        passthrough  api.anthropic.com              (any path)  ⚠ passthrough (audit blind spot)
+  [explicit]                      intercept    api.github.com                 /repos/tobyS/x/  (GET, POST)
+  [generated:package_json:react]  intercept    react.dev                      (any path)
+  [generated:package_json:react]  intercept    github.com                     /facebook/react/
+  [generated:package_json:react]  intercept    objects.githubusercontent.com  (any path)  ⚠ lower-trust
+  [once]                          intercept    docs.somelib.io                /v2/
+
+DENY
+  [global]    w3schools.com  (any path)  (reason: low quality)
+  [explicit]  *              **/.env  (reason: secrets)

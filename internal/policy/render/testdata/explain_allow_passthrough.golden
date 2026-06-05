@@ -1,0 +1,4 @@
+Request:   api.anthropic.com POST /v1/messages
+Decision:  allow (passthrough)
+Matched:   allow[0]  [global]  api.anthropic.com (any path)
+Note:      passthrough host — the proxy tunnels raw bytes; path and method are not inspected and auditing is host-level only.
