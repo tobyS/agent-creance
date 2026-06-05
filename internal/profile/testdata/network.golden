@@ -1,0 +1,5 @@
+;; agent-creance network.sb — appended after safehouse's base via --append-profile (AC-0023).
+;; Deny-all network baseline; re-open only allowlisted host-service ports. Generated; do not edit.
+(deny network*)
+(allow network-outbound (remote tcp "localhost:3306"))  ;; mysql
+(allow network-outbound (remote tcp "localhost:6379"))  ;; redis
