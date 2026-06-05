@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/policy"
+	"github.com/tobyS/agent-creance/internal/policy/compile"
 	"github.com/tobyS/agent-creance/internal/policy/render"
 )
 
@@ -80,6 +81,40 @@ func TestExplain(t *testing.T) {
 			assertGolden(t, "explain_"+tc.name+".golden", render.Explain(fixture(), tc.req))
 		})
 	}
+}
+
+// refreshFixture is a two-generator refresh result: one with all entries cleared, one
+// with a singular package whose entry was already absent (exercises plural/singular and
+// the zero-cleared path).
+func refreshFixture() compile.RefreshResult {
+	return compile.RefreshResult{
+		Generators: []compile.GeneratorRefresh{
+			{Name: "package_json", Packages: 3, CacheEntriesCleared: 3, OutputCacheCleared: true},
+			{Name: "composer_json", Packages: 1, CacheEntriesCleared: 0, OutputCacheCleared: false},
+		},
+		AllowCount: 7,
+		DenyCount:  2,
+	}
+}
+
+func TestRefresh(t *testing.T) {
+	assertGolden(t, "refresh.golden", render.Refresh(refreshFixture()))
+}
+
+func TestRefreshJSON(t *testing.T) {
+	got, err := render.RefreshJSON(refreshFixture())
+	require.NoError(t, err)
+	assertGolden(t, "refresh.json.golden", got)
+}
+
+func TestRefreshEmpty(t *testing.T) {
+	assertGolden(t, "refresh_empty.golden", render.Refresh(compile.RefreshResult{AllowCount: 2, DenyCount: 1}))
+}
+
+func TestRefreshEmptyJSON(t *testing.T) {
+	got, err := render.RefreshJSON(compile.RefreshResult{AllowCount: 2, DenyCount: 1})
+	require.NoError(t, err)
+	assertGolden(t, "refresh_empty.json.golden", got)
 }
 
 func TestExplainJSON(t *testing.T) {

@@ -1,0 +1,18 @@
+{
+  "generators": [
+    {
+      "name": "package_json",
+      "packages": 3,
+      "cache_entries_cleared": 3,
+      "output_cache_cleared": true
+    },
+    {
+      "name": "composer_json",
+      "packages": 1,
+      "cache_entries_cleared": 0,
+      "output_cache_cleared": false
+    }
+  ],
+  "allow_count": 7,
+  "deny_count": 2
+}

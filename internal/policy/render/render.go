@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/tobyS/agent-creance/internal/policy"
+	"github.com/tobyS/agent-creance/internal/policy/compile"
 )
 
 // Distinct flags appended to a rule line. Kept as constants so the code and the
@@ -184,6 +185,76 @@ func ExplainJSON(c policy.Compiled, req policy.Request) (string, error) {
 		return "", fmt.Errorf("render: marshal explanation: %w", err)
 	}
 	return string(data) + "\n", nil
+}
+
+// Refresh renders the outcome of `policy refresh`: a per-generator line (packages
+// considered + registry cache entries cleared) and the rule counts of the recompiled
+// policy. With no generators configured it says so plainly — refresh still recompiles.
+func Refresh(r compile.RefreshResult) string {
+	var b strings.Builder
+	if len(r.Generators) == 0 {
+		b.WriteString("No generators configured — nothing to refresh.\n")
+	} else {
+		b.WriteString("Refreshed generator metadata:\n")
+		nameW := 0
+		for _, g := range r.Generators {
+			nameW = max(nameW, len(g.Name))
+		}
+		for _, g := range r.Generators {
+			fmt.Fprintf(&b, "  %-*s  %s  (%s cleared)\n",
+				nameW, g.Name,
+				countN(g.Packages, "package", "packages"),
+				countN(g.CacheEntriesCleared, "cache entry", "cache entries"))
+		}
+	}
+	fmt.Fprintf(&b, "Recompiled policy: %d allow, %d deny.\n", r.AllowCount, r.DenyCount)
+	return b.String()
+}
+
+// refreshOutput is the `policy refresh --json` shape: per-generator invalidation detail
+// and the recompiled policy's rule counts.
+type refreshOutput struct {
+	Generators []generatorRefreshOutput `json:"generators"`
+	AllowCount int                      `json:"allow_count"`
+	DenyCount  int                      `json:"deny_count"`
+}
+
+type generatorRefreshOutput struct {
+	Name                string `json:"name"`
+	Packages            int    `json:"packages"`
+	CacheEntriesCleared int    `json:"cache_entries_cleared"`
+	OutputCacheCleared  bool   `json:"output_cache_cleared"`
+}
+
+// RefreshJSON returns the structured refresh report for `policy refresh --json`. The
+// generators array is always present (empty, not null, when none are configured).
+func RefreshJSON(r compile.RefreshResult) (string, error) {
+	out := refreshOutput{
+		Generators: make([]generatorRefreshOutput, 0, len(r.Generators)),
+		AllowCount: r.AllowCount,
+		DenyCount:  r.DenyCount,
+	}
+	for _, g := range r.Generators {
+		out.Generators = append(out.Generators, generatorRefreshOutput{
+			Name:                g.Name,
+			Packages:            g.Packages,
+			CacheEntriesCleared: g.CacheEntriesCleared,
+			OutputCacheCleared:  g.OutputCacheCleared,
+		})
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("render: marshal refresh: %w", err)
+	}
+	return string(data) + "\n", nil
+}
+
+// countN renders "<n> <unit>" with singular/plural agreement (1 package, 2 packages).
+func countN(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
 }
 
 // matchedRule resolves a MatchedRule's (list, index) back to the rule it names.
