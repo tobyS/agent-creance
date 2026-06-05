@@ -1,0 +1,139 @@
+// Package state answers one question every later component asks: "what project is
+// this, and where does its out-of-tree state live?" It maps a project directory to
+// a stable identity hash — derived from the directory's canonical (realpath-
+// resolved) absolute path — and to the fully-resolved layout of the project's state
+// directory under ~/.cache/agent-creance/projects/<hash>/.
+//
+// Two paths that point at the same physical directory (e.g. via a symlink) collapse
+// to one identity; a renamed or moved directory is intentionally a different
+// identity (any proxy under the old path is irrelevant). This is the same identity
+// scheme the proxy lock file uses — see docs/design.md, "Multi-agent lifecycle".
+//
+// The package performs no artifact I/O: it only computes paths and the hash. The
+// compiler, proxy, and audit log own creating and writing the files whose locations
+// this package reports. All OS access (canonicalising the path, locating the cache
+// root) goes through the sysdep.PathResolver seam, so the logic stays hermetically
+// testable.
+package state
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"path/filepath"
+
+	"github.com/tobyS/agent-creance/internal/sysdep"
+)
+
+// Artifact file names within a project's state directory. These names are the
+// contract downstream packages (policy compiler, proxy lifecycle, audit log, cage
+// config redirect, session-overlay mutation) build against, so they are defined
+// once here.
+const (
+	appCacheSubdir     = "agent-creance"
+	projectsSubdir     = "projects"
+	policyJSONName     = "policy.json"
+	networkSBName      = "network.sb"
+	proxyLockName      = "proxy.lock"
+	egressJSONLName    = "egress.jsonl"
+	claudeDirName      = "claude"
+	sessionOverlayName = "session-overlay.yaml"
+
+	// hashHexLen is the number of hex characters in a project hash: the first 8
+	// bytes (64 bits) of the SHA-256 of the canonical path. Short enough for a
+	// readable directory name, wide enough that collisions across any realistic
+	// number of projects are negligible.
+	hashHexLen = 16
+)
+
+// Resolver turns a project directory into its identity and state-dir layout using
+// the injected path/environment seam.
+type Resolver struct {
+	paths sysdep.PathResolver
+}
+
+// New returns a Resolver backed by the given seam.
+func New(paths sysdep.PathResolver) *Resolver {
+	return &Resolver{paths: paths}
+}
+
+// Layout is the fully-resolved set of paths for one project's state directory.
+type Layout struct {
+	// Canonical is the realpath-resolved absolute project directory.
+	Canonical string
+	// Hash is the deterministic identity derived from Canonical.
+	Hash string
+	// Root is the project's state directory:
+	// <cache>/agent-creance/projects/<hash>.
+	Root string
+}
+
+// Resolve canonicalises dir (absolute, then symlink-resolved), derives the identity
+// hash, and returns the layout. It returns an error if dir cannot be resolved (for
+// example, it does not exist — symlink resolution requires the directory to be
+// present) or the cache root cannot be determined.
+func (r *Resolver) Resolve(dir string) (Layout, error) {
+	abs, err := r.paths.Abs(dir)
+	if err != nil {
+		return Layout{}, fmt.Errorf("state: absolute path for %q: %w", dir, err)
+	}
+	canonical, err := r.paths.EvalSymlinks(abs)
+	if err != nil {
+		return Layout{}, fmt.Errorf("state: resolve %q: %w", dir, err)
+	}
+	hash := hashPath(canonical)
+	root, err := r.projectRoot(hash)
+	if err != nil {
+		return Layout{}, err
+	}
+	return Layout{Canonical: canonical, Hash: hash, Root: root}, nil
+}
+
+// hashPath derives the project identity from a canonical path: the first 8 bytes of
+// its SHA-256, rendered as 16 lowercase hex characters.
+func hashPath(canonical string) string {
+	sum := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(sum[:hashHexLen/2])
+}
+
+// projectRoot returns <cache>/agent-creance/projects/<hash>.
+func (r *Resolver) projectRoot(hash string) (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, projectsSubdir, hash), nil
+}
+
+// cacheRoot returns the base cache directory, honouring XDG_CACHE_HOME when set and
+// falling back to $HOME/.cache. The design uses the XDG-style ~/.cache on macOS too
+// (not ~/Library/Caches), so os.UserCacheDir is deliberately not used.
+func (r *Resolver) cacheRoot() (string, error) {
+	if xdg := r.paths.Getenv("XDG_CACHE_HOME"); xdg != "" {
+		return xdg, nil
+	}
+	home, err := r.paths.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("state: locate cache root: %w", err)
+	}
+	return filepath.Join(home, ".cache"), nil
+}
+
+// PolicyJSON is the compiled egress policy consumed by the proxy enforcer.
+func (l Layout) PolicyJSON() string { return filepath.Join(l.Root, policyJSONName) }
+
+// NetworkSB is the Seatbelt profile passed to Safehouse via --append-profile.
+func (l Layout) NetworkSB() string { return filepath.Join(l.Root, networkSBName) }
+
+// ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
+func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }
+
+// EgressJSONL is the JSONL audit log of proxied requests.
+func (l Layout) EgressJSONL() string { return filepath.Join(l.Root, egressJSONLName) }
+
+// ClaudeConfigDir is the ephemeral CLAUDE_CONFIG_DIR the caged agent is pointed at.
+func (l Layout) ClaudeConfigDir() string { return filepath.Join(l.Root, claudeDirName) }
+
+// SessionOverlay is the session-scoped allow-overlay file written by `allow --once`
+// and purged on last-agent-exit teardown.
+func (l Layout) SessionOverlay() string { return filepath.Join(l.Root, sessionOverlayName) }
