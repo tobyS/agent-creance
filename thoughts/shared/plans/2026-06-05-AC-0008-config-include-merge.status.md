@@ -17,8 +17,16 @@ Status: done (commit pending)
 - go build / go vet / go test -race ./internal/sysdep all green; grep guard passes.
 
 ## Phase 2 — Merge semantics (merge.go)
-Status: in progress
+Status: done (commit pending)
+
+- internal/config/merge.go: pure merge(base, over) per the agreed table — scalar/
+  command override (firstNonEmpty*), list union+dedupe (dedupeStrings/HostServices/
+  Rules), env key-wise merge. dedupeRules uses reflect.DeepEqual (pointer-aware for
+  *[]string Paths/Methods). Empty results normalise to nil for DeepEqual stability.
+- merge_test.go: scalar override, command replace (not concat), string-list & rule
+  union+dedupe, pointer-aware dedupe (nil≠empty Paths), env over-wins, determinism.
+- go test -race ./internal/config + go vet green.
 
 ## Phase 3 — Loader: include resolution, cycle detection, depth limit
-Status: not started
+Status: in progress
 </content>
