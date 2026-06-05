@@ -1,0 +1,35 @@
+# `agent-creance policy show` compiles the project's egress policy on demand and
+# dumps it with per-rule source annotations and the passthrough blind-spot flag.
+# The config lists no generators, so the whole scenario runs fully offline — no
+# network, no external tools. HOME/XDG_CACHE_HOME under $WORK keep it hermetic:
+# the global config is absent (optional) and the compiled artifact lands in $WORK.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+agent-creance policy show
+stdout 'Resolved egress policy \(2 allow, 1 deny\)'
+stdout '\[explicit\]'
+stdout 'api\.anthropic\.com'
+stdout 'passthrough \(audit blind spot\)'
+stdout 'reason: low quality'
+! stderr .
+
+# --json re-emits the compiled artifact verbatim (cache hit — no recompile cost).
+agent-creance policy show --json
+stdout '"version": 1'
+stdout '"source": "explicit"'
+stdout '"mode": "passthrough"'
+
+-- .agent-creance.yaml --
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        paths: ["/repos/tobyS/x/"]
+        methods: ["GET", "POST"]
+      - host: api.anthropic.com
+        mode: passthrough
+    deny_always:
+      - host: w3schools.com
+        reason: low quality

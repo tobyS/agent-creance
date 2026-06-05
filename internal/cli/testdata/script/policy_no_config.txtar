@@ -1,0 +1,10 @@
+# With no project .agent-creance.yaml, the required project config is missing, so
+# `policy show` fails cleanly (non-zero exit) with an error rather than crashing.
+# The leading ! asserts the non-zero exit.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+! agent-creance policy show
+stderr 'error'
+stderr 'agent-creance\.yaml'

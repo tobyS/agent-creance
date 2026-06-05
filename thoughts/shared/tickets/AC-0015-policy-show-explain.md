@@ -1,6 +1,6 @@
 # AC-0015: `policy show` / `policy explain` commands (WP-2.6)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -24,9 +24,9 @@ Operators need to see the fully-resolved policy and understand *why* a given URL
 
 ## Acceptance Criteria
 
-- [ ] `policy show` lists every rule with `[explicit]`/`[generated:…]`/`[global:…]` annotation; passthrough rules are visibly flagged.
-- [ ] `policy explain URL` prints the decision (allow/soft-deny/hard-deny + mode) and the matching rule + source, consistent with AC-0010's matcher (C1).
-- [ ] Output is stable and golden-tested.
+- [x] `policy show` lists every rule with `[explicit]`/`[generated:…]`/`[global:…]` annotation; passthrough rules are visibly flagged.
+- [x] `policy explain URL` prints the decision (allow/soft-deny/hard-deny + mode) and the matching rule + source, consistent with AC-0010's matcher (C1).
+- [x] Output is stable and golden-tested.
 
 ## Verification & Test Steps
 
@@ -47,8 +47,9 @@ Phase 2. Reaches **Milestone M1** together with AC-0013.
 
 ## Questions for Research/Planning
 
-- [ ] Output format: plain aligned columns (per design sample) — any `--json` mode for v0.1 or defer?
-- [ ] How does `explain` resolve a URL to host/path/method (parse rules)?
+- [x] Output format: plain aligned columns (per design sample) — any `--json` mode for v0.1 or defer? → **`--json` shipped now** on both `show` and `explain` (the artifact is already JSON on disk, so it was cheap; golden-tested).
+- [x] How does `explain` resolve a URL to host/path/method (parse rules)? → `net/url.Parse` (bare host tolerated by prepending `https://`); empty path → `/`; **method comes from a `--method` flag, default `GET`** (a URL carries no method).
+- [x] Source of truth: the commands **compile-on-demand** (the cached/idempotent compiler) then render, so they are self-sufficient before `run`/`policy refresh` exist.
 
 ## References
 
@@ -61,3 +62,14 @@ Phase 2. Reaches **Milestone M1** together with AC-0013.
 
 ### 2026-06-04
 Created from the v0.1 technical specification. With AC-0013 this hits M1 ("Policy visible").
+
+### 2026-06-05
+Implemented (4 phases). New pure `internal/policy/render` package (Show/Explain +
+`--json`, golden-tested, with a decision-vector replay enforcing C1 parity with the
+matcher); grew the `cli.App` composition root with the FS/path/clock/HTTP seams; added
+the cobra `policy` parent with `show`/`explain` children that compile-on-demand and
+render; hermetic generator-free testscript scenarios (show/explain/no-config). All
+acceptance criteria met; `go build`, `make golden` (no diff), `make test` (race), and
+`make lint` green. Renders the compiler's real source strings
+(`explicit`/`global`/`once`/`generated:…` + `lower_trust`), not the design sample's
+illustrative `:claude-defaults` form. Reaches **Milestone M1** with AC-0013.

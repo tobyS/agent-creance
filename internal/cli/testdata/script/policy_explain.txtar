@@ -1,0 +1,44 @@
+# `agent-creance policy explain URL` parses the URL into a request, runs the shared
+# matcher, and reports the decision + the matching rule. Offline (no generators).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+# An allowed path: allow, carrying the rule's intercept mode and explicit source.
+agent-creance policy explain https://api.github.com/repos/tobyS/x/issues
+stdout 'Decision:  allow \(intercept\)'
+stdout 'allow\[0\]  \[explicit\]  api\.github\.com'
+! stderr .
+
+# A passthrough host is allowed and carries the audit blind-spot note.
+agent-creance policy explain https://api.anthropic.com/v1/messages
+stdout 'Decision:  allow \(passthrough\)'
+stdout 'Note:      passthrough host'
+
+# A deny_always host hard-denies and names the reason.
+agent-creance policy explain https://w3schools.com/html
+stdout 'Decision:  hard-deny \(intercept\)'
+stdout 'reason: low quality'
+
+# Not in the allowlist → soft-deny with no matching rule.
+agent-creance policy explain https://evil.test/
+stdout 'Decision:  soft-deny'
+stdout 'Matched:   \(none'
+
+# --method changes the evaluated method; --json emits the structured explanation.
+agent-creance policy explain --method POST --json https://api.github.com/repos/tobyS/x/
+stdout '"decision": "allow"'
+stdout '"method": "POST"'
+
+-- .agent-creance.yaml --
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        paths: ["/repos/tobyS/x/"]
+        methods: ["GET", "POST"]
+      - host: api.anthropic.com
+        mode: passthrough
+    deny_always:
+      - host: w3schools.com
+        reason: low quality
