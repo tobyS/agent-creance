@@ -315,11 +315,12 @@ No command consumes it yet; this delivers a fully wired seam ready for AC-0025.
 ### Success Criteria
 
 #### Automated
-- [ ] `go build ./...` compiles; `go test -race ./internal/cli/...` green.
-- [ ] `make lint` clean.
+- [x] `go build ./...` compiles; `go test -race ./internal/cli/...` green.
+- [x] `make lint` clean.
 
 #### Manual
-- [ ] `App` exposes `ProcessGroup`; `cli.Main` injects `sysdep.OSProcessGroup{}`.
+- [x] `App` exposes `ProcessGroup`; `cli.Main` injects `sysdep.OSProcessGroup{}`. No
+      test App-builder to update (cli tests are testscript-based, running real `Main`).
 
 ---
 

@@ -33,6 +33,10 @@ type App struct {
 	// to detect credential availability before a caged run (its consumers, the
 	// run/doctor preconditions, land in later phases).
 	Keychain sysdep.Keychain
+	// ProcessGroup starts the caged agent in its own process group and forwards
+	// SIGINT/SIGTERM to the whole group; the run command (AC-0025) drives it via
+	// cage.Runner to tear the agent's subtree down on Ctrl-C before the lock decrement.
+	ProcessGroup sysdep.ProcessGroup
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -66,15 +70,16 @@ func newRootCmd(app *App) *cobra.Command {
 // runs it in-process).
 func Main() int {
 	app := &App{
-		Commander: sysdep.ExecCommander{},
-		Stdout:    os.Stdout,
-		Stderr:    os.Stderr,
-		Tested:    buildinfo.TestedVersions,
-		FS:        sysdep.OSFileSystem{},
-		Paths:     sysdep.OSPathResolver{},
-		Clock:     sysdep.OSClock{},
-		HTTP:      sysdep.OSHTTPGetter{},
-		Keychain:  sysdep.OSKeychain{},
+		Commander:    sysdep.ExecCommander{},
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
+		Tested:       buildinfo.TestedVersions,
+		FS:           sysdep.OSFileSystem{},
+		Paths:        sysdep.OSPathResolver{},
+		Clock:        sysdep.OSClock{},
+		HTTP:         sysdep.OSHTTPGetter{},
+		Keychain:     sysdep.OSKeychain{},
+		ProcessGroup: sysdep.OSProcessGroup{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.

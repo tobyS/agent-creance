@@ -9,7 +9,7 @@ started: 2026-06-06
 
 - [x] Phase 1 — Implement `OSProcessGroup.Start` seam + extend the fake (commit pending)
 - [x] Phase 2 — `cage.Runner` forwarding loop (commit pending)
-- [ ] Phase 3 — Wire `ProcessGroup` into `App`/`cli.Main`
+- [x] Phase 3 — Wire `ProcessGroup` into `App`/`cli.Main` (commit pending)
 - [ ] Phase 4 — Integration tests + final verification
 
 ## Notes
