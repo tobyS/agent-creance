@@ -271,14 +271,14 @@ Run `go mod tidy`; review the `go.sum` diff.
 ### Success criteria
 
 #### Automated
-- [ ] `make test` (race) green incl. `follow_test.go` — the follow-across-rotation test
-      passes (AC criterion 1; verification step 2 follow test).
-- [ ] `go build ./...` green; `go mod tidy` leaves a clean tree.
+- [x] `make test` (race) green incl. `follow_test.go` — the follow-across-rotation test
+      passes (AC criterion 1; verification step 2 follow test). Stable over `-count=5`.
+- [x] `go build ./...` green; `go mod tidy` leaves a clean tree (fsnotify is a direct dep).
 
 #### Manual
-- [ ] No `tail` shell-out anywhere; following uses `fsnotify` on the parent dir with a
+- [x] No `tail` shell-out anywhere; following uses `fsnotify` on the parent dir with a
       stat-poll backstop (AC criterion 3).
-- [ ] Partial trailing lines are buffered until the newline arrives (no half-line
+- [x] Partial trailing lines are buffered until the newline arrives (no half-line
       output).
 
 ---

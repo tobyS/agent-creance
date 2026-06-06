@@ -3,6 +3,7 @@ module github.com/tobyS/agent-creance
 go 1.26.3
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/rogpeppe/go-internal v1.15.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
