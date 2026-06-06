@@ -1,0 +1,9 @@
+{
+  "error": "agent_cage_not_allowlisted",
+  "url": "https://docs.somelib.io/v2/auth/",
+  "host": "docs.somelib.io",
+  "path": "/v2/auth/",
+  "method": "GET",
+  "how_to_proceed": "Not on the project allowlist. Ignore this resource if you can find the needed information elsewhere or can work reliably without it. If you think the information is important and would contribute significantly to your success, prompt the user and ask them to add the resource to the allowlist.",
+  "allow_command_suggestion": "agent-creance allow 'docs.somelib.io/v2/auth/'"
+}

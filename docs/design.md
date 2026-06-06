@@ -261,12 +261,12 @@ The proxy distinguishes three response types so the agent can react appropriatel
   "host": "docs.somelib.io",
   "path": "/v2/auth/",
   "method": "GET",
-  "how_to_proceed": "Not on the project allowlist. If this is genuinely important...",
+  "how_to_proceed": "Not on the project allowlist. Ignore this resource if you can find the needed information elsewhere or can work reliably without it. If you think the information is important and would contribute significantly to your success, prompt the user and ask them to add the resource to the allowlist.",
   "allow_command_suggestion": "agent-creance allow 'docs.somelib.io/v2/auth/'"
 }
 ```
 
-The agent's instructions (via the shipped skill, see below) say: route around silently if you have any alternative, escalate to the user only if all three of (no alternative exists, source is authoritative, information is genuinely needed) are true.
+The agent's instructions (via the shipped skill, see below) say: ignore the resource and proceed if the needed information is available elsewhere or the agent can work reliably without it; escalate to the user — asking them to allowlist it — only when the information is important and would contribute significantly to success.
 
 **Hard-deny** — *"on the permanent block list, do not ask, find another way."* HTTP 403 with `X-Cage-Reason: hard-deny` and a JSON body including the `reason:` field from the matching `deny_always` rule:
 

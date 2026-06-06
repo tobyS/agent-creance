@@ -1,0 +1,6 @@
+{
+  "error": "agent_cage_hard_deny",
+  "url": "https://w3schools.com/html/default.asp",
+  "reason": "Known low-quality source. Use MDN or official docs instead.",
+  "how_to_proceed": "Permanently blocked. Do NOT ask the user to allow it. Do NOT retry. Find an alternative source."
+}

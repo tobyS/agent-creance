@@ -7,7 +7,7 @@ updated: 2026-06-06
 # Status — AC-0017 enforcer.py decision engine
 
 - [x] Phase 1 — Python scaffold, pure matcher, corpus parity green
-- [ ] Phase 2 — 403 response bodies + goldens + design.md sync
+- [x] Phase 2 — 403 response bodies + goldens + design.md sync
 - [ ] Phase 3 — mitmproxy addon (hooks, policy load, hot reload)
 - [ ] Phase 4 — integration test (real mitmproxy + curl), gated S1
 - [ ] Phase 5 — final verification + close ticket
