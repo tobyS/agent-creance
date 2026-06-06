@@ -20,4 +20,4 @@ stdout '✓'
 echo 'agent-safehouse 1.4.2'
 -- bin/mitmproxy --
 #!/bin/sh
-echo 'Mitmproxy: 12.0.1'
+echo 'Mitmproxy: 12.2.3'

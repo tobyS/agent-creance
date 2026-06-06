@@ -33,5 +33,5 @@ var (
 // whenever you re-test against newer upstreams.
 var TestedVersions = map[string]string{
 	"agent-safehouse": "1.4.2",
-	"mitmproxy":       "12.0.1",
+	"mitmproxy":       "12.2.3",
 }

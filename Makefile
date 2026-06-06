@@ -54,6 +54,29 @@ test:
 .PHONY: test-integration
 test-integration:
 	go test -race -tags=integration ./...
+	$(MAKE) test-enforcer-integration
+
+# Python enforcer addon (the one piece of Python in the stack). It runs in its own
+# repo-local venv with a pinned mitmproxy, and is kept OUT of the fast `make test`
+# and the pre-commit hook so Go contributors without Python aren't blocked.
+ENFORCER_DIR := internal/proxy/enforcer
+ENFORCER_VENV := .venv-enforcer
+ENFORCER_PYTEST := $(ENFORCER_VENV)/bin/pytest
+
+.PHONY: enforcer-venv
+enforcer-venv:
+	@test -x $(ENFORCER_PYTEST) || python3 -m venv $(ENFORCER_VENV)
+	@$(ENFORCER_VENV)/bin/pip install -q -r $(ENFORCER_DIR)/requirements.txt
+
+## test-enforcer: Python mitmproxy addon tests (repo-local venv; pinned mitmproxy)
+.PHONY: test-enforcer
+test-enforcer: enforcer-venv
+	$(ENFORCER_PYTEST) -q $(ENFORCER_DIR) -m "not integration"
+
+## test-enforcer-integration: live mitmproxy + curl probes for the addon (gated S1)
+.PHONY: test-enforcer-integration
+test-enforcer-integration: enforcer-venv
+	$(ENFORCER_PYTEST) -q $(ENFORCER_DIR) -m integration
 
 ## cover: run tests and open an HTML coverage report
 .PHONY: cover

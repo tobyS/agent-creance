@@ -7,3 +7,8 @@
 /bin/
 coverage.out
 
+# Python enforcer test venv + caches
+/.venv-enforcer/
+__pycache__/
+.pytest_cache/
+
