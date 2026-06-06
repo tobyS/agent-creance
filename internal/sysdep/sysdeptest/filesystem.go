@@ -3,6 +3,7 @@ package sysdeptest
 import (
 	"io/fs"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/tobyS/agent-creance/internal/sysdep"
@@ -32,6 +33,12 @@ type FakeFileSystem struct {
 	MkdirErrs  map[string]error
 	RemoveErrs map[string]error
 	RenameErrs map[string]error
+
+	// mu guards the maps so the fake is safe under concurrent access (e.g. the
+	// proxy lifecycle's -race attach/detach simulation, where MkdirAll runs before
+	// the flock is held). Direct map access from a test after the concurrent work
+	// has joined needs no locking.
+	mu sync.Mutex
 }
 
 var _ sysdep.FileSystem = (*FakeFileSystem)(nil)
@@ -52,6 +59,8 @@ func NewFakeFileSystem() *FakeFileSystem {
 }
 
 func (f *FakeFileSystem) ReadFile(name string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.Errs[name]; ok {
 		return nil, err
 	}
@@ -62,6 +71,8 @@ func (f *FakeFileSystem) ReadFile(name string) ([]byte, error) {
 }
 
 func (f *FakeFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.WriteErrs[name]; ok {
 		return err
 	}
@@ -71,6 +82,8 @@ func (f *FakeFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) e
 }
 
 func (f *FakeFileSystem) Stat(name string) (fs.FileInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.StatErrs[name]; ok {
 		return nil, err
 	}
@@ -84,6 +97,8 @@ func (f *FakeFileSystem) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (f *FakeFileSystem) MkdirAll(name string, perm fs.FileMode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.MkdirErrs[name]; ok {
 		return err
 	}
@@ -93,6 +108,8 @@ func (f *FakeFileSystem) MkdirAll(name string, perm fs.FileMode) error {
 }
 
 func (f *FakeFileSystem) Remove(name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.RemoveErrs[name]; ok {
 		return err
 	}
@@ -103,6 +120,8 @@ func (f *FakeFileSystem) Remove(name string) error {
 }
 
 func (f *FakeFileSystem) Rename(oldpath, newpath string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err, ok := f.RenameErrs[oldpath]; ok {
 		return err
 	}

@@ -6,8 +6,8 @@ Plan: `thoughts/shared/plans/2026-06-06-AC-0020-proxy-lifecycle-manager.md`
 
 - [x] Phase 1 — Redesign the `Flock` seam + real `OSFlock`
 - [x] Phase 2 — New seams: `ProcessManager` + `PortAllocator`
-- [ ] Phase 3 — The lifecycle `Manager`
-- [ ] Phase 4 — Manager tests, race simulation, integration scaffold
+- [x] Phase 3 — The lifecycle `Manager`
+- [x] Phase 4 — Manager tests, race simulation, integration scaffold
 - [ ] Phase 5 — Reconcile docs & close the ticket
 
 ## Notes
@@ -21,4 +21,12 @@ Plan: `thoughts/shared/plans/2026-06-06-AC-0020-proxy-lifecycle-manager.md`
   real `OS*` impls + fakes + smoke tests. Updated `ErrNotImplemented` doc (Flock no
   longer deferred). The proxy is killed by PID (last agent out holds no handle), so
   signalling lives on ProcessManager, not the group-targeted ProcessGroup.
+- Phase 3+4 (committed together — the riskiest logic ships with its tests):
+  `internal/proxy/lifecycle.go` Manager with Attach/Detach; the five mandated
+  cases + corrupt-lock/error/C4 cases (blackbox), white-box helper tests, a -race
+  attach/detach simulation, and the S3-gated integration scaffold. Added a mutex to
+  `FakeFileSystem` so the -race sim is sound (MkdirAll runs before the flock, so it
+  is legitimately concurrent). Proxy-alive = PID-liveness AND port probe. mitmproxy
+  is launched as `mitmdump --listen-port N -s enforcer.py --set creance_policy=… 
+  --set creance_audit_log=…` (option names verified against enforcer.py).
 </content>
