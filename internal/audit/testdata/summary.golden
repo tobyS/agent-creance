@@ -1,0 +1,5 @@
+Audit summary: 6 entries (4 intercepted, 2 passthrough)
+  allow      3
+  soft-deny  1
+  hard-deny  2
+(1 malformed line(s) skipped)

@@ -264,12 +264,13 @@ func TestAccessorsAreRootedAtProjectsHash(t *testing.T) {
 		path string
 		name string
 	}{
-		"PolicyJSON":      {l.PolicyJSON(), "policy.json"},
-		"NetworkSB":       {l.NetworkSB(), "network.sb"},
-		"ProxyLock":       {l.ProxyLock(), "proxy.lock"},
-		"EgressJSONL":     {l.EgressJSONL(), "egress.jsonl"},
-		"ClaudeConfigDir": {l.ClaudeConfigDir(), "claude"},
-		"SessionOverlay":  {l.SessionOverlay(), "session-overlay.yaml"},
+		"PolicyJSON":         {l.PolicyJSON(), "policy.json"},
+		"NetworkSB":          {l.NetworkSB(), "network.sb"},
+		"ProxyLock":          {l.ProxyLock(), "proxy.lock"},
+		"EgressJSONL":        {l.EgressJSONL(), "egress.jsonl"},
+		"EgressJSONLRotated": {l.EgressJSONLRotated(), "egress.jsonl.1"},
+		"ClaudeConfigDir":    {l.ClaudeConfigDir(), "claude"},
+		"SessionOverlay":     {l.SessionOverlay(), "session-overlay.yaml"},
 	}
 	for accessor, want := range accessors {
 		if !strings.Contains(want.path, rooted) {

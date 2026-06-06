@@ -163,13 +163,13 @@ func (l Layout) EgressJSONLRotated() string {
 ### Success criteria
 
 #### Automated
-- [ ] `make test` passes incl. the new `internal/audit` + `internal/state` tests.
-- [ ] `go build ./...` green.
-- [ ] Golden files `internal/audit/testdata/summary.golden` and `format_lines.golden`
+- [x] `make test` passes incl. the new `internal/audit` + `internal/state` tests.
+- [x] `go build ./...` green.
+- [x] Golden files `internal/audit/testdata/summary.golden` and `format_lines.golden`
       exist and match.
 
 #### Manual
-- [ ] `Summarize` is decision-correct, never aborts on a malformed line, and reads
+- [x] `Summarize` is decision-correct, never aborts on a malformed line, and reads
       `.1`-then-current order as one stream.
 
 ---

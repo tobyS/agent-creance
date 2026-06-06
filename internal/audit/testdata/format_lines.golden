@@ -1,0 +1,5 @@
+2026-06-06T10:22:01Z  allow      GET https://api.github.com/ -> 200
+2026-06-06T10:22:03Z  soft-deny  GET https://evil.example/ -> 403
+2026-06-06T10:22:04Z  hard-deny  POST https://w3schools.com/x -> 403
+2026-06-06T10:22:05Z  allow      api.anthropic.com (passthrough)
+2026-06-06T10:22:06Z  hard-deny  tunnel.example (passthrough)

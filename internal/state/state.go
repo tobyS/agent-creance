@@ -30,17 +30,22 @@ import (
 // config redirect, session-overlay mutation) build against, so they are defined
 // once here.
 const (
-	appCacheSubdir     = "agent-creance"
-	projectsSubdir     = "projects"
-	registriesSubdir   = "registries"
-	generatorsSubdir   = "generators"
-	enforcerSubdir     = "enforcer"
-	policyJSONName     = "policy.json"
-	networkSBName      = "network.sb"
-	proxyLockName      = "proxy.lock"
-	egressJSONLName    = "egress.jsonl"
-	claudeDirName      = "claude"
-	sessionOverlayName = "session-overlay.yaml"
+	appCacheSubdir   = "agent-creance"
+	projectsSubdir   = "projects"
+	registriesSubdir = "registries"
+	generatorsSubdir = "generators"
+	enforcerSubdir   = "enforcer"
+	policyJSONName   = "policy.json"
+	networkSBName    = "network.sb"
+	proxyLockName    = "proxy.lock"
+	egressJSONLName  = "egress.jsonl"
+	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
+	// (egress.jsonl.1). The reader (internal/audit) reads it then the current file
+	// as one logical stream, so the ".1" suffix is part of that contract and is
+	// named once here, mirroring the writer's ROTATED_SUFFIX.
+	egressJSONLRotatedName = egressJSONLName + ".1"
+	claudeDirName          = "claude"
+	sessionOverlayName     = "session-overlay.yaml"
 
 	// hashHexLen is the number of hex characters in a project hash: the first 8
 	// bytes (64 bits) of the SHA-256 of the canonical path. Short enough for a
@@ -178,6 +183,13 @@ func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName)
 
 // EgressJSONL is the JSONL audit log of proxied requests.
 func (l Layout) EgressJSONL() string { return filepath.Join(l.Root, egressJSONLName) }
+
+// EgressJSONLRotated is the single rotated backup of the audit log
+// (egress.jsonl.1). The reader (internal/audit) reads it then EgressJSONL as one
+// logical stream.
+func (l Layout) EgressJSONLRotated() string {
+	return filepath.Join(l.Root, egressJSONLRotatedName)
+}
 
 // ClaudeConfigDir is the ephemeral CLAUDE_CONFIG_DIR the caged agent is pointed at.
 func (l Layout) ClaudeConfigDir() string { return filepath.Join(l.Root, claudeDirName) }
