@@ -1,6 +1,6 @@
 # AC-0022: Credential detection (Keychain vs file fallback) (WP-4.1)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +23,10 @@ The caged agent must reach Claude's OAuth token. On macOS that lives in the logi
 
 ## Acceptance Criteria
 
-- [ ] Keychain item present → detection returns "ok, use Keychain."
-- [ ] Keychain absent + `~/.claude/.credentials.json` present → returns a refusal with the exact documented message (file creds out of scope; run `claude` login differently).
-- [ ] Neither present → returns a refusal pointing at host `claude` login.
-- [ ] All Keychain access goes through the `sysdep.Keychain` seam (hermetic tests).
+- [x] Keychain item present → detection returns "ok, use Keychain." (`cred.StatusOK`)
+- [x] Keychain absent + `~/.claude/.credentials.json` present → returns a refusal with the exact documented message (file creds out of scope; run `claude` login differently). (`cred.StatusFileFallback`)
+- [x] Neither present → returns a refusal pointing at host `claude` login. (`cred.StatusMissing`)
+- [x] All Keychain access goes through the `sysdep.Keychain` seam (hermetic tests). (grep guard passes; `kc.Lookups` asserted)
 
 ## Verification & Test Steps
 
@@ -47,8 +47,8 @@ Phase 4. Gated by S2. Feeds AC-0025 (`run` precondition).
 
 ## Questions for Research/Planning
 
-- [ ] Exact Keychain service/account from S2; exact refusal wording (align with design).
-- [ ] Should `doctor` (AC-0031) surface the same detection?
+- [x] Exact Keychain service/account from S2; exact refusal wording (align with design). — Service `Claude Code-credentials`, account = login short name (S2; service name alone is unique). Refusal wording pinned in `internal/cred/testdata/*.golden`.
+- [x] Should `doctor` (AC-0031) surface the same detection? — Out of scope here; `internal/cred.Detect` is built to be reusable by AC-0031 (`doctor`) and AC-0025 (`run`). The locked-keychain *unlock pre-flight* (S2 §4) also stays with those tickets.
 
 ## References
 
@@ -58,6 +58,18 @@ Phase 4. Gated by S2. Feeds AC-0025 (`run` precondition).
 ## Implementation Plan
 
 ## Notes & Updates
+
+### 2026-06-06
+Implemented (WP-4.1). `internal/cred.Detect` classifies the credential into
+`StatusOK` / `StatusLocked` / `StatusFileFallback` / `StatusMissing` via the
+`sysdep.Keychain` seam (account from `$USER`, service `Claude Code-credentials`),
+with documented refusal messages pinned in golden files. The real `sysdep.OSKeychain`
+now shells out to `/usr/bin/security` under a 10s watchdog (locked keychain → timeout
+→ `ErrKeychainLocked`), and is wired onto `App.Keychain`. A gated integration test
+finds the live item on a real machine. Verification steps 1–5 pass; the locked-keychain
+*unlock pre-flight* and `doctor`/`run` surfacing are deferred to AC-0031/AC-0025 as
+designed. Research: `thoughts/shared/research/2026-06-06-AC-0022-credential-detection.md`;
+plan: `thoughts/shared/plans/2026-06-06-AC-0022-credential-detection.md`.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.

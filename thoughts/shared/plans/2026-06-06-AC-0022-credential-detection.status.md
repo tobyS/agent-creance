@@ -8,5 +8,5 @@ started: 2026-06-06
 
 - [x] Phase 1 — Real OSKeychain via the `security` CLI
 - [x] Phase 2 — `internal/cred` detection + hermetic tests
-- [ ] Phase 3 — Wire `App.Keychain` + gated integration test + final verification
+- [x] Phase 3 — Wire `App.Keychain` + gated integration test + final verification
 </content>

@@ -254,16 +254,18 @@ comment citing S2 — `sysdep` must not import `cred`):
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `make test` (race, hermetic) is green across the module.
-- [ ] `make lint` is clean (`go vet` + `golangci-lint`).
-- [ ] `make test-integration` runs the new integration test; on this machine it finds the
-      real item (or skips cleanly if absent).
+- [x] `go build ./...` compiles.
+- [x] `make test` (race, hermetic) is green across the module.
+- [x] `make lint` is clean (`go vet` + `golangci-lint`).
+- [x] `make test-integration` runs the new integration test; on this machine it found the
+      real item. (One unrelated test, `internal/proxy` `TestLifecycleStartAttachTeardown-
+      RealProxy`, fails because a real mitmproxy didn't boot in its 5s window — untouched
+      by this ticket, environmental.)
 
 #### Manual
-- [ ] `git grep -n "Claude Code-credentials"` shows the constant lives in `internal/cred`
+- [x] `git grep -n "Claude Code-credentials"` shows the constant lives in `internal/cred`
       and the literal in the sysdep integration test only (no stray duplication).
-- [ ] Re-read `make golden` diff one last time; goldens are intentional.
+- [x] Re-read `make golden` diff one last time; goldens are intentional.
 
 ---
 

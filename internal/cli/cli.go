@@ -29,6 +29,10 @@ type App struct {
 	Paths sysdep.PathResolver
 	Clock sysdep.Clock
 	HTTP  sysdep.HTTPGetter
+	// Keychain reads the Anthropic OAuth credential item; internal/cred uses it
+	// to detect credential availability before a caged run (its consumers, the
+	// run/doctor preconditions, land in later phases).
+	Keychain sysdep.Keychain
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -70,6 +74,7 @@ func Main() int {
 		Paths:     sysdep.OSPathResolver{},
 		Clock:     sysdep.OSClock{},
 		HTTP:      sysdep.OSHTTPGetter{},
+		Keychain:  sysdep.OSKeychain{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.
