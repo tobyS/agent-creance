@@ -221,14 +221,14 @@ exactly as `report_test.go` does. Also a case asserting `Detect` returns an erro
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `go test -race ./internal/cred/...` passes (matrix + golden messages + error case).
-- [ ] Grep guard: `! grep -rn 'os/exec\|"github.com/.*keychain"' internal/cred/*.go`
+- [x] `go build ./...` compiles.
+- [x] `go test -race ./internal/cred/...` passes (matrix + golden messages + error case).
+- [x] Grep guard: `! grep -rn 'os/exec\|"github.com/.*keychain"' internal/cred/*.go`
       (access is via the `sysdep.Keychain` seam only).
-- [ ] `make golden` produces no unexpected diff after the goldens are committed.
+- [x] `make golden` produces no unexpected diff after the goldens are committed.
 
 #### Manual
-- [ ] `Detect` never reads the secret bytes or the contents of the credentials file
+- [x] `Detect` never reads the secret bytes or the contents of the credentials file
       (presence via `Stat` only); the golden message strings read as intended to an
       operator.
 

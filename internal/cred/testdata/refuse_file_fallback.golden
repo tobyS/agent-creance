@@ -1,0 +1,1 @@
+A file-based Claude credential (~/.claude/.credentials.json) was found, but caged sessions require a Keychain-stored credential. File-based credentials are not supported in v0.1 (they can't be refreshed under a read-only ~/.claude). Run `claude` on the host to log in to the Keychain.

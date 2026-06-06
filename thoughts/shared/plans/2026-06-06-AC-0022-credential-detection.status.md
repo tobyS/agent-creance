@@ -7,6 +7,6 @@ started: 2026-06-06
 # AC-0022 implementation status
 
 - [x] Phase 1 — Real OSKeychain via the `security` CLI
-- [ ] Phase 2 — `internal/cred` detection + hermetic tests
+- [x] Phase 2 — `internal/cred` detection + hermetic tests
 - [ ] Phase 3 — Wire `App.Keychain` + gated integration test + final verification
 </content>
