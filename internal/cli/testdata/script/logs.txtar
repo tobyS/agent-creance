@@ -1,0 +1,26 @@
+# `agent-creance logs` reads the project's out-of-tree egress audit log.
+#
+# This scenario exercises the command wiring, flag parsing, and the empty-log path
+# end-to-end through the real state resolver: with HOME/XDG_CACHE_HOME redirected under
+# $WORK there is no audit log on disk yet (the cage has never run), so the reader treats
+# both files as absent. Seeded-content summary/dump rendering is covered hermetically by
+# the internal/audit unit tests (the state-dir path is hashed from $WORK's realpath, so
+# pre-seeding a fixture by path is not practical from a testscript). Following (--follow)
+# is a long-lived streaming command and is covered by internal/audit's follow_test.go.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+# --summary on an empty (never-written) log reports no entries and exits 0.
+agent-creance logs --summary
+stdout 'No audit entries yet\.'
+! stderr .
+
+# Bare logs on an empty log prints nothing and exits 0.
+agent-creance logs
+! stdout .
+! stderr .
+
+# --follow and --summary are mutually exclusive.
+! agent-creance logs --follow --summary
+stderr 'mutually exclusive'

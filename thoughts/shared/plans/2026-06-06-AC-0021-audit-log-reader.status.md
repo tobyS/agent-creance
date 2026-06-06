@@ -9,4 +9,6 @@ started: 2026-06-06
 - [x] Phase 1 — state `.1` accessor + pure parse/summarize/format core (commit pending)
 - [x] Phase 2 — file-backed Dump + SummarizeFiles over `.1`+current (commit pending)
 - [x] Phase 3 — rotation-aware Follow (fsnotify + poll backstop) (commit pending)
-- [ ] Phase 4 — `logs` command + wiring + testscript + close-out
+- [x] Phase 4 — `logs` command + wiring + testscript + close-out (commit pending)
+
+All phases complete. Ticket AC-0021 marked Done.

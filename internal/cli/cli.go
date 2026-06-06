@@ -52,6 +52,7 @@ func newRootCmd(app *App) *cobra.Command {
 	root.AddCommand(newVersionCmd(app))
 	root.AddCommand(newDoctorCmd(app))
 	root.AddCommand(newPolicyCmd(app))
+	root.AddCommand(newLogsCmd(app))
 	return root
 }
 

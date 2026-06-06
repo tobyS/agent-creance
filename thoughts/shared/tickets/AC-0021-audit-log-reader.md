@@ -1,6 +1,6 @@
 # AC-0021: Audit log reader — logs --follow / --summary (WP-3.5)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,9 +23,9 @@ Operators read the egress log live and in summary. A naive `tail -f` breaks acro
 
 ## Acceptance Criteria
 
-- [ ] `logs --follow` streams new entries live and continues correctly across a rotation (does not get stuck on the renamed file).
-- [ ] `logs --summary` reads `.1` and current in order as one stream and reports allow/soft-deny/hard-deny counts.
-- [ ] Implemented natively (fsnotify), not by shelling out to `tail`.
+- [x] `logs --follow` streams new entries live and continues correctly across a rotation (does not get stuck on the renamed file).
+- [x] `logs --summary` reads `.1` and current in order as one stream and reports allow/soft-deny/hard-deny counts.
+- [x] Implemented natively (fsnotify), not by shelling out to `tail`.
 
 ## Verification & Test Steps
 
@@ -47,7 +47,15 @@ Phase 3. Depends on the AC-0018 format. Contributes to M2.
 
 ## Questions for Research/Planning
 
-- [ ] fsnotify behavior on macOS for rename events — does it fire reliably for the rotation pattern?
+- [x] fsnotify behavior on macOS for rename events — does it fire reliably for the rotation pattern?
+  **Resolved:** Not reliably enough to depend on alone — so don't. On macOS/kqueue a
+  watch placed on the *file* is destroyed by the rename, and events are coalesced /
+  best-effort. The follower therefore watches the *parent directory* (which survives
+  the rename and delivers the `Create` for the fresh file), detects rotation by inode
+  identity (`os.SameFile`), and runs a 1 s stat-poll backstop so a dropped/coalesced
+  event can never lose entries. fsnotify is a latency reducer, not a correctness
+  dependency. Verified on real macOS by `internal/audit/follow_test.go` (rotate
+  mid-stream; stable over `-count=5 -race`).
 
 ## References
 
@@ -60,3 +68,34 @@ Phase 3. Depends on the AC-0018 format. Contributes to M2.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-06
+Implemented (WP-3.5). New Go package `internal/audit` (the read side of the egress
+audit log) + `agent-creance logs` command:
+
+- **Pure, seam-free core** over `io.Reader`/`[]byte` (`entry.go`, `summary.go`,
+  `format.go`): `ParseLine` (the two enforcer JSONL shapes — intercepted
+  `{ts,method,url,decision,rule,status}` and passthrough `{ts,host,decision}`),
+  `Summarize` (tallies allow/soft-deny/hard-deny across `.1`-then-current as one
+  stream, skipping + counting malformed lines rather than aborting), `FormatEntry`
+  (one human-readable line per entry). Table + golden tested.
+- **File layer** (`read.go`): `SummarizeFiles` / `Dump` open `.1` then current (missing
+  files skipped, not an error).
+- **`Follow`** (`follow.go`): native fsnotify tail, rotation-aware — see the research
+  question above for the watch-the-dir + inode-identity + poll-backstop design.
+- **`logs` command** (`internal/cli/logs.go`): bare = dump once; `--summary` = counts;
+  `--follow` = live stream; `--follow`+`--summary` rejected. Resolves the project's
+  out-of-tree state dir from cwd via `state.New(app.Paths).Resolve(".")`. Added
+  `state.Layout.EgressJSONLRotated()` so the `.1` contract is named once on the Go side.
+
+Decisions (checkpoint): (1) `--follow` uses concrete fsnotify with a real-temp-file
+follow test — a scoped, documented deviation from the "all FS through `sysdep`" rule,
+because fsnotify needs real kernel events no fake can produce; the pure core stays
+seam-free. (2) Output is human-formatted, dump-once for bare `logs`; `--follow` starts
+at end-of-file (history not re-emitted).
+
+Verification — all green: `make test` (race; incl. the audit unit/golden/follow tests
+and the `logs.txtar` testscript), `go build ./...`, `make lint`. Real end-to-end
+manually confirmed: `logs`/`logs --summary` over a hand-seeded `.1`+current pair render
+the combined stream and correct counts. Research: `thoughts/shared/research/2026-06-06-AC-0021-audit-log-reader.md`;
+plan: `thoughts/shared/plans/2026-06-06-AC-0021-audit-log-reader.md`.

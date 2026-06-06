@@ -363,18 +363,18 @@ deviation).
 ### Success criteria
 
 #### Automated
-- [ ] `agent-creance logs --summary` reads `.1`+current and reports allow/soft-deny/
+- [x] `agent-creance logs --summary` reads `.1`+current and reports allow/soft-deny/
       hard-deny counts (AC criterion 2) — covered by `read_test.go` + testscript.
-- [ ] `agent-creance logs --follow` streams across a rotation without getting stuck
+- [x] `agent-creance logs --follow` streams across a rotation without getting stuck
       (AC criterion 1) — covered by `follow_test.go`.
-- [ ] Native `fsnotify`, no `tail` shell-out (AC criterion 3) — code review + grep.
-- [ ] `--follow --summary` is rejected; empty log prints a friendly message.
-- [ ] `make test`, `go build ./...`, `make lint` all green.
+- [x] Native `fsnotify`, no `tail` shell-out (AC criterion 3) — code review + grep.
+- [x] `--follow --summary` is rejected; empty log prints a friendly message.
+- [x] `make test`, `go build ./...`, `make lint` all green.
 
 #### Manual
-- [ ] Ticket acceptance boxes ticked, research question answered, Status: Done.
-- [ ] Bare `logs` and `--follow` render human-readable lines; `--summary` matches the
-      golden layout.
+- [x] Ticket acceptance boxes ticked, research question answered, Status: Done.
+- [x] Bare `logs` and `--follow` render human-readable lines; `--summary` matches the
+      golden layout. (Manually confirmed dump + summary over a hand-seeded log.)
 
 ---
 
