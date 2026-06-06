@@ -43,13 +43,24 @@ def _write_policy(path, obj):
 
 
 @pytest.fixture
-def addon(tmp_path):
+def audit_path(tmp_path):
+    return tmp_path / "egress.jsonl"
+
+
+@pytest.fixture
+def addon(tmp_path, audit_path):
     path = tmp_path / "policy.json"
     _write_policy(path, _POLICY)
     a = enforcer.Enforcer()
     with taddons.context(a) as tctx:
-        tctx.configure(a, creance_policy=str(path))
+        tctx.configure(a, creance_policy=str(path), creance_audit_log=str(audit_path))
         yield a
+
+
+def _read_audit(path):
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 def _https_flow(host, path, method="GET"):
@@ -184,3 +195,92 @@ def test_hot_reload_picks_up_new_allow(tmp_path):
 
         after = policy.decide(a._ruleset, policy.Request("flip.example", "/", "GET"))
         assert after.decision == policy.DECISION_ALLOW
+
+
+# --- audit logging (AC-0018) --------------------------------------------------
+
+
+def test_intercept_allow_logs_entry_and_scrubs_url(addon, audit_path):
+    # An allowed request with a token in the query string: the response hook logs a
+    # full entry, and the sensitive value must not reach the log.
+    flow = _https_flow("react.dev", "/learn?api_key=SEKRET")
+    addon.request(flow)
+    assert flow.response is None  # allow forwards untouched
+    flow.response = tutils.tresp(content=b"ok")  # upstream 200
+    addon.response(flow)
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["decision"] == "allow"
+    assert e["method"] == "GET"
+    assert e["status"] == 200
+    assert e["rule"] == {"list": "allow", "index": 0}
+    assert "api_key=REDACTED" in e["url"]
+    assert "SEKRET" not in audit_path.read_text(encoding="utf-8")
+
+
+def test_intercept_soft_deny_logs_entry(addon, audit_path):
+    flow = _https_flow("not-allowlisted.example", "/v2/auth/")
+    addon.request(flow)
+    addon.response(flow)  # status comes from the synthesized 403
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["decision"] == "soft-deny"
+    assert e["rule"] is None
+    assert e["status"] == 403
+
+
+def test_intercept_hard_deny_logs_entry_with_rule(addon, audit_path):
+    flow = _https_flow("w3schools.com", "/html/default.asp")
+    addon.request(flow)
+    addon.response(flow)
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["decision"] == "hard-deny"
+    assert e["rule"]["list"] == "deny_always"
+    assert e["status"] == 403
+
+
+def test_passthrough_clean_logs_host_only(addon, audit_path):
+    addon.tls_clienthello(_clienthello("api.anthropic.com"))
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e == {"ts": e["ts"], "host": "api.anthropic.com", "decision": "allow"}
+    # Host-only: no path/method/status/url leaks.
+    for absent in ("method", "path", "url", "status"):
+        assert absent not in e
+
+
+def test_passthrough_denied_logs_host_only(addon, audit_path):
+    flow = _https_flow("tunnel-blocked.example", "/secret/path")
+    addon.http_connect(flow)
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["host"] == "tunnel-blocked.example"
+    assert e["decision"] == "hard-deny"
+    for absent in ("method", "path", "url", "status"):
+        assert absent not in e
+
+
+def test_audit_disabled_when_option_empty(tmp_path):
+    # No creance_audit_log -> the addon writes nothing and creates no file.
+    path = tmp_path / "policy.json"
+    _write_policy(path, _POLICY)
+    log = tmp_path / "egress.jsonl"
+    a = enforcer.Enforcer()
+    with taddons.context(a) as tctx:
+        tctx.configure(a, creance_policy=str(path))  # audit option left at default ""
+        flow = _https_flow("w3schools.com", "/x")
+        a.request(flow)
+        a.response(flow)
+        a.tls_clienthello(_clienthello("api.anthropic.com"))
+    assert not log.exists()
