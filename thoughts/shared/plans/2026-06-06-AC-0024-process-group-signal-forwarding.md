@@ -278,13 +278,17 @@ Use `sysdeptest.NewFakeProcessGroup`:
 ### Success Criteria
 
 #### Automated
-- [ ] `go test -race ./internal/cage/...` green.
-- [ ] `go build ./...`, `make lint` clean.
+- [x] `go test -race ./internal/cage/...` green.
+- [x] `go build ./...`, `make lint` clean.
 
 #### Manual
-- [ ] `Run` forwards exactly `SIGINT`/`SIGTERM`, escalates to `SIGKILL` after grace, and
+- [x] `Run` forwards exactly `SIGINT`/`SIGTERM`, escalates to `SIGKILL` after grace, and
       returns the child's wait error only after the group exits.
-- [ ] `cage` package still does not import `internal/proxy` (no decrement coupling).
+- [x] `cage` package still does not import `internal/proxy` (no decrement coupling).
+      Added a `WithGrace` option so the grace is injectable (also for AC-0025) and the
+      escalation path is unit-testable. The fake's recorded outputs were moved behind
+      mutex-guarded accessors (`Started()`/`Notified()`/`NotifyChans()`) since the loop
+      now drives `Notify` from a goroutine concurrently with the test.
 
 ---
 

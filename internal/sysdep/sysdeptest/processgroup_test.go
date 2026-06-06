@@ -18,10 +18,10 @@ func TestFakeProcessGroupStartRecordsAndReturnsHandle(t *testing.T) {
 	if proc == nil {
 		t.Fatal("Start returned nil Process")
 	}
-	if len(pg.Started) != 1 {
-		t.Fatalf("Started = %+v, want one entry", pg.Started)
+	if len(pg.Started()) != 1 {
+		t.Fatalf("Started = %+v, want one entry", pg.Started())
 	}
-	got := pg.Started[0]
+	got := pg.Started()[0]
 	if got.Name != "agent-safehouse" || len(got.Args) != 2 || got.Args[0] != "run" || got.Args[1] != "claude" {
 		t.Errorf("Started[0] = %+v, want {agent-safehouse [run claude]}", got)
 	}
@@ -47,15 +47,15 @@ func TestFakeProcessGroupNotifyRecords(t *testing.T) {
 	pg := NewFakeProcessGroup()
 	ch := make(chan os.Signal, 1)
 	pg.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	if len(pg.Notified) != 1 || len(pg.Notified[0]) != 2 {
-		t.Fatalf("Notified = %+v, want one entry of two signals", pg.Notified)
+	if len(pg.Notified()) != 1 || len(pg.Notified()[0]) != 2 {
+		t.Fatalf("Notified = %+v, want one entry of two signals", pg.Notified())
 	}
-	if pg.Notified[0][0] != syscall.SIGINT || pg.Notified[0][1] != syscall.SIGTERM {
-		t.Errorf("Notified[0] = %v, want [SIGINT SIGTERM]", pg.Notified[0])
+	if pg.Notified()[0][0] != syscall.SIGINT || pg.Notified()[0][1] != syscall.SIGTERM {
+		t.Errorf("Notified[0] = %v, want [SIGINT SIGTERM]", pg.Notified()[0])
 	}
 	// The channel is captured so a test can inject a signal the fake then "delivers".
-	if len(pg.NotifyChans) != 1 || pg.NotifyChans[0] != ch {
-		t.Errorf("NotifyChans = %v, want the channel passed to Notify", pg.NotifyChans)
+	if len(pg.NotifyChans()) != 1 || pg.NotifyChans()[0] != ch {
+		t.Errorf("NotifyChans = %v, want the channel passed to Notify", pg.NotifyChans())
 	}
 }
 
