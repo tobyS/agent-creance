@@ -72,6 +72,18 @@ class Enforcer:
             self._load()
 
     def running(self) -> None:
+        # Two settings make the enforcer a true egress gate — the proxy must never
+        # touch a denied host:
+        #   - connection_strategy=lazy: don't open the upstream connection until an
+        #     ALLOWED request is actually forwarded. A soft/hard-denied request is
+        #     answered from the request hook, so its host is never connected to.
+        #   - upstream_cert=False: generate the client-facing leaf cert from the SNI
+        #     alone, never reach out to copy the upstream's certificate.
+        # Without these, mitmproxy connects eagerly at CONNECT (and sniffs the
+        # upstream cert), leaking a connection to every host — including denied ones
+        # — and returning a spurious 502 for hosts that don't resolve.
+        ctx.options.update(connection_strategy="lazy", upstream_cert=False)
+
         # Background mtime poll for hot reload. Hold the task reference so it is not
         # garbage-collected; cancel it on shutdown.
         if self._task is None:

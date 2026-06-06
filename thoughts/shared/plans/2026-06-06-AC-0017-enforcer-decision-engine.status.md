@@ -9,7 +9,7 @@ updated: 2026-06-06
 - [x] Phase 1 — Python scaffold, pure matcher, corpus parity green
 - [x] Phase 2 — 403 response bodies + goldens + design.md sync
 - [x] Phase 3 — mitmproxy addon (hooks, policy load, hot reload)
-- [ ] Phase 4 — integration test (real mitmproxy + curl), gated S1
+- [x] Phase 4 — integration test (real mitmproxy + curl), gated S1
 - [ ] Phase 5 — final verification + close ticket
 
 ## Notes
@@ -27,3 +27,14 @@ updated: 2026-06-06
   `internal/buildinfo/buildinfo.go`, `requirements.txt`, and the
   `doctor_healthy.txtar` stub (12.0.1 → 12.2.3) to keep that fixture genuinely
   healthy. All Go tests still green.
+
+### Phase 4 (done 2026-06-06)
+- Live integration (`make test-enforcer-integration`, folded into
+  `make test-integration`): 6 curl-driven probes against a real mitmdump — soft/
+  hard-deny (no egress), allow/passthrough/intercept-cert/hot-reload (egress). All
+  green locally; skip cleanly without curl/egress.
+- **Security finding folded into the addon:** mitmproxy at CONNECT was connecting to
+  the upstream eagerly (and sniffing its cert), so denied hosts were being contacted
+  (egress leak) and unreachable denied hosts returned a spurious 502. The addon now
+  sets `connection_strategy=lazy` + `upstream_cert=False` in `running()`, making the
+  proxy a true gate: a denied host is answered with the 403 and never connected to.
