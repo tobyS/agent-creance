@@ -32,6 +32,6 @@ var (
 // installed versions against these and classifies any skew. Bump these
 // whenever you re-test against newer upstreams.
 var TestedVersions = map[string]string{
-	"agent-safehouse": "1.4.2",
+	"agent-safehouse": "0.10.1",
 	"mitmproxy":       "12.2.3",
 }
