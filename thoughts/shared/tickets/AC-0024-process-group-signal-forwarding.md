@@ -1,6 +1,6 @@
 # AC-0024: Process group & signal forwarding (WP-4.3)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
