@@ -1,6 +1,6 @@
 # AC-0022: Credential detection (Keychain vs file fallback) (WP-4.1)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
