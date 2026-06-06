@@ -1,6 +1,6 @@
 # AC-0019: Embed & extract enforcer.py (WP-3.3)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +23,10 @@ Users should never install or version the Python addon themselves — they just 
 
 ## Acceptance Criteria
 
-- [ ] `enforcer.py` is embedded in the binary (`go:embed`).
-- [ ] On first run it's written to the state dir (a constant location, not per-project content); re-runs are idempotent.
-- [ ] When the embedded copy differs from the extracted one (binary upgraded), the extracted file is refreshed.
-- [ ] Extraction target is out-of-tree.
+- [x] `enforcer.py` is embedded in the binary (`go:embed`). (Plus the three sibling modules it imports — see Notes; embedding only `enforcer.py` would `ImportError` at load.)
+- [x] On first run it's written to the state dir (a constant location, not per-project content); re-runs are idempotent.
+- [x] When the embedded copy differs from the extracted one (binary upgraded), the extracted file is refreshed.
+- [x] Extraction target is out-of-tree.
 
 ## Verification & Test Steps
 
@@ -47,7 +47,7 @@ Phase 3. Small enabler between the addon and the lifecycle manager.
 
 ## Questions for Research/Planning
 
-- [ ] Version/checksum the embedded addon so "differs" is cheap to detect?
+- [x] Version/checksum the embedded addon so "differs" is cheap to detect? **No.** Per-file byte comparison is used instead: the extracted module is read back and compared to the embedded bytes; mismatch (or absence) triggers an atomic tmp+rename rewrite. For four small files this is negligible, self-heals a corrupt extraction, needs no checksum/version sidecar (a second source of truth), and — unlike mtime — keeps the unit tests hermetic against the in-memory fake.
 
 ## References
 
@@ -60,3 +60,21 @@ Phase 3. Small enabler between the addon and the lifecycle manager.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-06 — Implemented (WP-3.3)
+- **The addon is four modules, not one.** `enforcer.py` imports `policy`, `audit`
+  and `responses` (added by AC-0017/0018 after this ticket was written), so all
+  four runtime modules are embedded and extracted together into one directory
+  (mitmproxy puts a `-s` script's parent dir on `sys.path`). The dev-only files
+  (`test_*.py`, `conftest.py`, `requirements.txt`, `testdata/`) are not shipped;
+  the `go:embed` directive enumerates the four files explicitly because a glob
+  has no exclude.
+- **Constant location, not per-project** (checkpoint decision). New
+  `state.Resolver.EnforcerRoot()` → `<cache>/agent-creance/enforcer/`, a sibling
+  of `registries/`/`generators/`. `docs/design.md:449` (which said
+  `projects/<hash>/`) was reconciled to match line 297 and the ticket.
+- **No CLI wiring here** — AC-0020 starts mitmproxy with the extracted
+  `enforcer.py` path returned by `proxy.Extractor.Extract()`.
+- Implemented in `internal/state` (Phase 1, commit 18f85d2) and the new
+  `internal/proxy` package (Phase 2, commit 2ea8010). Verified: `make test`
+  (race), `go build ./...`, `make lint` all green.
