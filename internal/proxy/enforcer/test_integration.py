@@ -72,10 +72,11 @@ def _write_policy(path, obj):
 
 
 class _Proxy:
-    def __init__(self, port, ca_cert, policy_path):
+    def __init__(self, port, ca_cert, policy_path, audit_path):
         self.port = port
         self.ca_cert = ca_cert
         self.policy_path = policy_path
+        self.audit_path = audit_path
 
 
 @contextmanager
@@ -84,6 +85,7 @@ def running_proxy(policy_obj):
     tmp = tempfile.mkdtemp(prefix="creance-enforcer-it-")
     confdir = os.path.join(tmp, "conf")
     policy_path = os.path.join(tmp, "policy.json")
+    audit_path = os.path.join(tmp, "egress.jsonl")
     _write_policy(policy_path, policy_obj)
     port = _free_port()
 
@@ -94,6 +96,7 @@ def running_proxy(policy_obj):
             "-p", str(port),
             "-s", _ENFORCER,
             "--set", f"creance_policy={policy_path}",
+            "--set", f"creance_audit_log={audit_path}",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -101,7 +104,7 @@ def running_proxy(policy_obj):
     ca_cert = os.path.join(confdir, "mitmproxy-ca-cert.pem")
     try:
         _wait_until_ready(proc, port, ca_cert)
-        yield _Proxy(port, ca_cert, policy_path)
+        yield _Proxy(port, ca_cert, policy_path, audit_path)
     finally:
         proc.terminate()
         try:
@@ -158,6 +161,23 @@ def _read(path):
             return f.read()
     except FileNotFoundError:
         return ""
+
+
+def _wait_for_audit(path, predicate, timeout=5.0):
+    """Poll the JSONL audit file until an entry satisfies ``predicate`` (the proxy
+    writes it from a hook just after the curl returns). Returns the matching entry,
+    or None on timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for line in _read(path).splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if predicate(entry):
+                return entry
+        time.sleep(0.2)
+    return None
 
 
 # --- outcomes that need no egress (mitmproxy terminates TLS locally) -----------
@@ -253,3 +273,58 @@ def test_hot_reload(egress):
             if code == "200":
                 break
         assert last == "200", f"policy reload did not take effect (last code {last})"
+
+
+# --- audit log (AC-0018) ------------------------------------------------------
+
+
+def test_audit_logs_soft_deny():
+    with running_proxy(_DENY_POLICY) as p:
+        _curl(p, "https://not-allowlisted.test/v2/auth/", use_mitm_ca=True)
+        entry = _wait_for_audit(
+            p.audit_path, lambda e: e.get("decision") == "soft-deny"
+        )
+    assert entry is not None, "no soft-deny audit entry appeared"
+    assert entry["status"] == 403
+    assert entry["method"] == "GET"
+    assert entry["rule"] is None
+
+
+def test_audit_logs_hard_deny():
+    with running_proxy(_DENY_POLICY) as p:
+        _curl(p, "https://blocked.test/anything", use_mitm_ca=True)
+        entry = _wait_for_audit(
+            p.audit_path, lambda e: e.get("decision") == "hard-deny"
+        )
+    assert entry is not None, "no hard-deny audit entry appeared"
+    assert entry["status"] == 403
+    assert entry["rule"]["list"] == "deny_always"
+
+
+def test_audit_logs_allow(egress):
+    with running_proxy(_DENY_POLICY) as p:
+        _curl(p, f"https://{_ALLOW_HOST}/", use_mitm_ca=True)
+        entry = _wait_for_audit(
+            p.audit_path,
+            lambda e: e.get("decision") == "allow" and "url" in e,
+        )
+    assert entry is not None, "no allow audit entry appeared"
+    assert entry["status"] == 200
+    assert _ALLOW_HOST in entry["url"]
+
+
+def test_audit_passthrough_logs_host_only(egress):
+    policy_obj = {
+        "version": 1,
+        "allow": [{"host": _PASSTHROUGH_HOST, "mode": "passthrough"}],
+    }
+    with running_proxy(policy_obj) as p:
+        _curl(p, f"https://{_PASSTHROUGH_HOST}/", use_mitm_ca=False)
+        entry = _wait_for_audit(
+            p.audit_path, lambda e: e.get("host") == _PASSTHROUGH_HOST
+        )
+    assert entry is not None, "no passthrough audit entry appeared"
+    assert entry["decision"] == "allow"
+    # Host-only: TLS was never terminated, so no path/method/status is recorded.
+    for absent in ("method", "path", "url", "status"):
+        assert absent not in entry

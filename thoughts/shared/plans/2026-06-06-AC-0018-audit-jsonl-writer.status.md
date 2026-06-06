@@ -8,7 +8,9 @@ updated: 2026-06-06
 
 - [x] Phase 1 — `audit.py` pure module + writer, with tests
 - [x] Phase 2 — Wire the writer into `enforcer.py` (four logging points)
-- [ ] Phase 3 — Integration probes + final verification
+- [x] Phase 3 — Integration probes + final verification
+
+**Ticket AC-0018: Done.**
 
 ## Notes
 - Phase 1: `audit.py` (builders + `scrub_url` + `AuditLog`) and `test_audit.py`
@@ -20,3 +22,8 @@ updated: 2026-06-06
   entries, decision stashed in `flow.metadata` from `request`. `test_enforcer.py`
   +6 tests (allow/soft/hard + clean/denied passthrough + disabled-when-empty).
   enforcer suite green (92 passed); `go build ./...` + `make test` green.
+- Phase 3: `test_integration.py` wires `creance_audit_log` into `running_proxy` and
+  adds 4 live audit probes (soft/hard-deny, allow, host-only passthrough). Final
+  verification all green: `make test`, `go build ./...`, `make lint`,
+  `make test-enforcer` (92), enforcer integration (`pytest -m integration`, 10
+  passed). Ticket ACs ticked; both research questions answered in the ticket.
