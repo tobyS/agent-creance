@@ -1,0 +1,35 @@
+{
+  "Path": "safehouse",
+  "Args": [
+    "--add-dirs",
+    "/proj",
+    "--add-dirs-ro",
+    "/home/test/.config/git",
+    "--enable=shell-init",
+    "--workdir",
+    "/proj",
+    "--append-profile",
+    "/home/test/.cache/agent-creance/projects/0123456789abcdef/network.sb",
+    "--append-profile",
+    "/home/test/.cache/agent-creance/projects/0123456789abcdef/proxy.sb",
+    "--env-pass",
+    "CLAUDE_CONFIG_DIR,GIT_SSL_CAINFO,HTTPS_PROXY,HTTP_PROXY,MY_VAR,NODE_EXTRA_CA_CERTS,NO_PROXY,REQUESTS_CA_BUNDLE,SSL_CERT_FILE,http_proxy,https_proxy,no_proxy",
+    "--",
+    "claude",
+    "--dangerously-skip-permissions"
+  ],
+  "Env": [
+    "CLAUDE_CONFIG_DIR=/home/test/.cache/agent-creance/projects/0123456789abcdef/claude",
+    "GIT_SSL_CAINFO=/home/test/.mitmproxy/mitmproxy-ca-cert.pem",
+    "HTTPS_PROXY=http://127.0.0.1:18081",
+    "HTTP_PROXY=http://127.0.0.1:18081",
+    "MY_VAR=hello",
+    "NODE_EXTRA_CA_CERTS=/home/test/.mitmproxy/mitmproxy-ca-cert.pem",
+    "NO_PROXY=localhost,127.0.0.1,::1",
+    "REQUESTS_CA_BUNDLE=/home/test/.mitmproxy/mitmproxy-ca-cert.pem",
+    "SSL_CERT_FILE=/home/test/.mitmproxy/mitmproxy-ca-cert.pem",
+    "http_proxy=http://127.0.0.1:18081",
+    "https_proxy=http://127.0.0.1:18081",
+    "no_proxy=localhost,127.0.0.1,::1"
+  ]
+}
