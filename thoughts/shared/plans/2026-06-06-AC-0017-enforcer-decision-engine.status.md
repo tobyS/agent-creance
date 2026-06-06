@@ -8,7 +8,7 @@ updated: 2026-06-06
 
 - [x] Phase 1 — Python scaffold, pure matcher, corpus parity green
 - [x] Phase 2 — 403 response bodies + goldens + design.md sync
-- [ ] Phase 3 — mitmproxy addon (hooks, policy load, hot reload)
+- [x] Phase 3 — mitmproxy addon (hooks, policy load, hot reload)
 - [ ] Phase 4 — integration test (real mitmproxy + curl), gated S1
 - [ ] Phase 5 — final verification + close ticket
 

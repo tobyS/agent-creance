@@ -31,6 +31,15 @@ def pytest_configure(config):
         "markers",
         "integration: live mitmproxy + curl probes (slow; gated on spike S1)",
     )
+    # Quiet third-party deprecation noise from mitmproxy's transitive deps on
+    # Python 3.14 (pyparsing/ldap3/pyasn1). Our own code emits no warnings.
+    for mod in ("pyparsing", "ldap3", "pyasn1", "mitmproxy"):
+        config.addinivalue_line(
+            "filterwarnings", f"ignore::DeprecationWarning:{mod}"
+        )
+    config.addinivalue_line(
+        "filterwarnings", "ignore::pyparsing.PyparsingDeprecationWarning"
+    )
 
 
 @pytest.fixture

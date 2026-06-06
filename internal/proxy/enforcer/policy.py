@@ -363,6 +363,52 @@ def _more_specific(a: _Specificity, b: _Specificity) -> bool:
     return a.canonical < b.canonical
 
 
+# --- connect-stage disposition (host only; no path/method visible) -------------
+
+
+@dataclass(frozen=True)
+class HostDisposition:
+    """What the proxy can decide about a host at CONNECT / TLS-ClientHello time.
+
+    At that stage only the host (CONNECT authority / SNI) is known -- there is no
+    path or method yet -- so this is a deliberately host-granular view, consistent
+    with "passthrough is host-granularity only by construction" (docs/design.md).
+
+    - ``passthrough``: tunnel without terminating TLS. True iff the most
+      host-specific matching allow is passthrough AND no equally-host-specific allow
+      asks to intercept (an intercept rule forces termination so path/method rules
+      can be applied; an ambiguous/mixed host resolves to intercept).
+    - ``deny_reason``: set when a host-level deny_always (no paths) matches. Such a
+      deny is still enforced on a passthrough host -- the tunnel is refused at
+      CONNECT, since it cannot be enforced once tunnelled. (Path-scoped denies are
+      invisible at this stage and handled later, per-request, on intercept hosts.)
+    """
+
+    passthrough: bool
+    deny_reason: Optional[str]
+
+
+def host_disposition(rs: RuleSet, host: str) -> HostDisposition:
+    # Host-level deny (paths is None): the most host-specific matching one wins.
+    deny_reason = None
+    best_deny_rank = -1
+    for r in rs.deny_always:
+        if r.paths is None and _match_host(r.host, host):
+            rank = _host_rank(r.host)
+            if rank > best_deny_rank:
+                best_deny_rank, deny_reason = rank, r.reason
+
+    # Passthrough iff the top host-rank tier of matching allows is all passthrough.
+    matching = [r for r in rs.allow if _match_host(r.host, host)]
+    passthrough = False
+    if matching:
+        top_rank = max(_host_rank(r.host) for r in matching)
+        top = [r for r in matching if _host_rank(r.host) == top_rank]
+        passthrough = all(r.mode == MODE_PASSTHROUGH for r in top)
+
+    return HostDisposition(passthrough=passthrough, deny_reason=deny_reason)
+
+
 # --- policy.json loading -------------------------------------------------------
 
 
