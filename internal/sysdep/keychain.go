@@ -1,6 +1,13 @@
 package sysdep
 
-import "errors"
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"time"
+)
 
 // Keychain abstracts reading a generic-password item from the macOS login
 // Keychain — specifically the Anthropic OAuth credential (the login-keychain
@@ -21,9 +28,8 @@ type Keychain interface {
 	FindGenericPassword(service, account string) ([]byte, error)
 }
 
-// Contract sentinels the Keychain seam models (distinct from ErrNotImplemented,
-// which marks a deferred production impl): these are the real outcomes a working
-// implementation and the fake return.
+// Contract sentinels the Keychain seam models: these are the real outcomes a
+// working implementation and the fake return.
 var (
 	// ErrItemNotFound means the requested generic-password item is absent.
 	ErrItemNotFound = errors.New("sysdep: keychain item not found")
@@ -32,15 +38,82 @@ var (
 	ErrKeychainLocked = errors.New("sysdep: keychain is locked")
 )
 
-// OSKeychain is the production Keychain. Its real behaviour is deferred to WP-4.1
-// (internal/cred): the implementation reads the item via the macOS Security
-// framework and maps absent→ErrItemNotFound, locked→ErrKeychainLocked. Until
-// then it returns ErrNotImplemented, so the compile-time assertion holds without
-// pulling in a Security-framework/cgo dependency.
+// errUnexpectedSecurity wraps a /usr/bin/security failure that is neither
+// "item not found" nor a locked-keychain timeout — surfaced to callers (with
+// the tool's stderr) so a genuine misconfiguration isn't silently swallowed.
+var errUnexpectedSecurity = errors.New("sysdep: keychain lookup failed")
+
+// securityFindTimeout bounds the find-generic-password call. A locked login
+// keychain does not fail cleanly — securityd raises a blocking SecurityAgent
+// unlock prompt out-of-process (spike S2 §4) — so an unbounded call could hang
+// forever. We cap it well above the ~1s observed for a successful read and the
+// 8s S2 used to characterize the locked prompt, then map the timeout to
+// ErrKeychainLocked.
+const securityFindTimeout = 10 * time.Second
+
+// secItemNotFound is the exit code /usr/bin/security returns when the requested
+// item is absent (errSecItemNotFound; observed in spike S2 §1).
+const secItemNotFound = 44
+
+// OSKeychain is the production Keychain. It shells out to /usr/bin/security
+// (the legacy SecKeychain CLI), exactly the access path validated by spike S2 —
+// no cgo / Security-framework binding. Its host-side job is detection: callers
+// use the returned error (ErrItemNotFound / ErrKeychainLocked) more than the
+// secret bytes; the in-cage agent does the actual token refresh.
 type OSKeychain struct{}
 
 var _ Keychain = (*OSKeychain)(nil)
 
-func (OSKeychain) FindGenericPassword(_, _ string) ([]byte, error) {
-	return nil, ErrNotImplemented
+func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), securityFindTimeout)
+	defer cancel()
+
+	// Service name alone is a unique lookup key (S2); pass -a only when an
+	// account is supplied. -w prints the secret to stdout (honors the contract).
+	args := []string{"find-generic-password", "-s", service}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	args = append(args, "-w")
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/usr/bin/security", args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		// `security -w` appends a single newline after the password; strip it so
+		// the returned bytes are the raw secret.
+		return bytes.TrimSuffix(stdout.Bytes(), []byte("\n")), nil
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, interpretSecurityErr(-1, true)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		mapped := interpretSecurityErr(exitErr.ExitCode(), false)
+		if errors.Is(mapped, errUnexpectedSecurity) {
+			return nil, fmt.Errorf("%w: exit %d: %s", errUnexpectedSecurity,
+				exitErr.ExitCode(), bytes.TrimSpace(stderr.Bytes()))
+		}
+		return nil, mapped
+	}
+	return nil, fmt.Errorf("%w: %w", errUnexpectedSecurity, err)
+}
+
+// interpretSecurityErr maps a failed find-generic-password invocation to a
+// Keychain sentinel. timedOut (a locked keychain's blocking prompt, S2 §4) →
+// ErrKeychainLocked; exitCode 44 (errSecItemNotFound) → ErrItemNotFound;
+// anything else → errUnexpectedSecurity. It is pure so the mapping is
+// table-testable without invoking /usr/bin/security.
+func interpretSecurityErr(exitCode int, timedOut bool) error {
+	switch {
+	case timedOut:
+		return ErrKeychainLocked
+	case exitCode == secItemNotFound:
+		return ErrItemNotFound
+	default:
+		return errUnexpectedSecurity
+	}
 }

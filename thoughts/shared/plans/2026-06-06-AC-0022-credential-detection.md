@@ -133,13 +133,13 @@ mapping logic hermetic; the actual exec is covered only by the integration test
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `go test -race ./internal/sysdep/...` passes (the new `interpretSecurityErr` table).
-- [ ] `grep -n "ErrNotImplemented" internal/sysdep/keychain.go` → no matches (stub gone),
+- [x] `go build ./...` compiles.
+- [x] `go test -race ./internal/sysdep/...` passes (the new `interpretSecurityErr` table).
+- [x] `grep -n "ErrNotImplemented" internal/sysdep/keychain.go` → no matches (stub gone),
       while `internal/sysdep/processgroup.go` still uses it (sentinel retained).
 
 #### Manual
-- [ ] The exec path uses `exec.CommandContext` with a timeout (no unbounded `security`
+- [x] The exec path uses `exec.CommandContext` with a timeout (no unbounded `security`
       call that could hang on a locked keychain).
 
 ---
