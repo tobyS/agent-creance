@@ -20,7 +20,9 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -98,6 +100,74 @@ func setupLayout(t *testing.T) (proj string, layout state.Layout) {
 	require.NoError(t, os.MkdirAll(layout.Root, 0o700))
 	require.NoError(t, os.WriteFile(layout.NetworkSB(), []byte(profile.RenderNetworkSB(nil)), 0o600))
 	return proj, layout
+}
+
+// TestLiveSafehouseGroupTeardown drives the AC-0024 process-group teardown through
+// the WHOLE real chain — OSProcessGroup.Start runs the safehouse bash wrapper in a
+// new group, which runs sandbox-exec → env → sh, which backgrounds a long-lived
+// `sleep`. A single kill(-pgid, SIGTERM) must reap every node, validating the
+// research finding that safehouse does not detach its child into its own group.
+// Liveness is probed with kill(pid, 0) (sandbox shares the host PID space), so no
+// ps/pgrep is needed.
+func TestLiveSafehouseGroupTeardown(t *testing.T) {
+	requireSafehouse(t)
+	proj, layout := setupLayout(t)
+	b := cage.New(sysdep.OSFileSystem{}, sysdep.OSPathResolver{})
+
+	// Gate: if this host cannot nest sandbox-exec, runCaged skips the test for us.
+	out, err := runCaged(t, b, &config.Config{
+		Agent:     config.Agent{Command: []string{"/bin/sh", "-c", "echo ok"}, Workdir: proj},
+		Safehouse: config.Safehouse{AddDirsRW: []string{proj}},
+	}, layout, 18081)
+	require.NoError(t, err, "trivial caged probe failed:\n%s", out)
+
+	// The caged sh records the backgrounded sleep's PID into the project's RW mount.
+	pidFile := proj + "/sleep.pid"
+	cfg := &config.Config{
+		Agent: config.Agent{
+			Command: []string{"/bin/sh", "-c", "sleep 300 & echo $! > " + pidFile + "; wait"},
+			Workdir: proj,
+		},
+		Safehouse: config.Safehouse{AddDirsRW: []string{proj}},
+	}
+	in, err := b.Resolve(cfg, layout, 18081)
+	require.NoError(t, err)
+	require.NoError(t, b.Prepare(in))
+	inv, err := cage.Build(in)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	proc, err := sysdep.OSProcessGroup{}.Start(ctx, inv.Env, inv.Path, inv.Args...)
+	require.NoError(t, err)
+	pgid := proc.Pgid()
+	require.Positive(t, pgid)
+
+	var alive sysdep.OSProcessManager
+	var sleepPID int
+	require.Eventually(t, func() bool {
+		sleepPID = readCagedPID(pidFile)
+		return sleepPID > 0 && alive.Alive(sleepPID)
+	}, 10*time.Second, 50*time.Millisecond, "caged child tree never came up")
+
+	require.NoError(t, proc.Signal(syscall.SIGTERM))
+	require.Error(t, proc.Wait(), "a SIGTERM'd caged group should not exit 0")
+
+	require.Eventually(t, func() bool { return !alive.Alive(sleepPID) && !alive.Alive(pgid) },
+		10*time.Second, 50*time.Millisecond, "a caged descendant survived the group SIGTERM")
+}
+
+// readCagedPID reads a PID an in-cage process wrote to path, or 0 if absent/unparseable.
+func readCagedPID(path string) int {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return 0
+	}
+	return pid
 }
 
 // runCaged builds + prepares the cage invocation for cfg and runs it through real

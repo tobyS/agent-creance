@@ -332,13 +332,15 @@ No command consumes it yet; this delivers a fully wired seam ready for AC-0025.
 
 Proves the syscall layer tears down a child tree on any macOS host (no safehouse, so it
 actually runs on this dev box):
-1. `Start(ctx, nil, "/bin/sh", "-c", "sleep 300 & echo started; wait")` (or write a
-   marker file). Skip on `runtime.GOOS != "darwin"`.
-2. `pgid := proc.Pgid()`; sanity-assert `pgrep -g <pgid>` is **non-empty** within a
-   short timeout (the group is alive).
+1. `Start(ctx, nil, "/bin/sh", "-c", "sleep 300 & echo $! > pidfile; wait")`. Skip on
+   `runtime.GOOS != "darwin"`.
+2. `pgid := proc.Pgid()`; read the backgrounded `sleep`'s PID from the file and assert
+   it is alive (`OSProcessManager.Alive`, i.e. `kill(pid,0)`).
 3. `proc.Signal(syscall.SIGTERM)` (relays `kill(-pgid, SIGTERM)`); `proc.Wait()`.
-4. `require.Eventually` that `pgrep -g <pgid>` is **empty** (exit status 1) within a
-   few seconds — the backgrounded `sleep` (same group, non-interactive sh) is gone.
+4. `require.Eventually` that **both** the descendant and the leader (`pgid`) are gone —
+   the descendant dying from a *group* signal is what proves it was in our group.
+   (Liveness probe rather than `pgrep -g`: macOS `pgrep` needs a pattern and `ps`/`pgrep`
+   process enumeration is restricted in some sandboxes; `kill(pid,0)` is robust.)
 
 **`internal/cage/cage_integration_test.go`** (extend, `//go:build integration`)
 
@@ -355,15 +357,22 @@ the nested-sandbox skip guard:
 
 ### Final Verification
 
-- [ ] `go build ./...` — compiles.
-- [ ] `make test` — green (race; full unit suite).
-- [ ] `make lint` — clean.
-- [ ] `make test-integration` — on a capable macOS host the sysdep teardown test passes
-      and the cage composition test passes (or skips on a nested-sandbox host); on this
-      dev box the cage one skips and the sysdep one runs.
-- [ ] Manual: from a real terminal, a `cage.Runner`-driven caged command that spawns a
-      `sleep 300 &` is fully gone after Ctrl-C (`pgrep -g <pgid>` empty) — the headline
-      acceptance behavior. (Optional; covered by integration tests where the host allows.)
+- [x] `go build ./...` — compiles.
+- [x] `make test` — green (race; full unit suite).
+- [x] `make lint` — clean.
+- [x] `make test-integration` — `TestOSProcessGroupTearsDownChildTree` **passes on this
+      dev box** (no safehouse needed; real `Setpgid`/`kill(-pgid)`/`Wait` teardown of a
+      `sh`→`sleep` tree). The cage `TestLiveSafehouseGroupTeardown` and the other
+      safehouse tests **skip** cleanly (this box can't nest sandbox-exec). One **pre-
+      existing, unrelated** failure remains: `internal/proxy`
+      `TestLifecycleStartAttachTeardownRealProxy` ("proxy did not come up") — it starts
+      a real `mitmdump` that the sandbox won't let bind, and only skips when `mitmdump`
+      is *absent*. Proven not an AC-0024 regression: `git diff 007a4c3 HEAD` touches no
+      file under `internal/proxy/` nor any seam it uses (`OSProcessManager`/`OSFlock`/
+      `OSPortAllocator`/`OSFileSystem`). Runs green on an unsandboxed macOS host.
+- [x] Liveness-probe teardown proof (kill(pid,0)) used instead of `pgrep -g` — macOS
+      `pgrep` requires a pattern and process enumeration is restricted in some sandboxes;
+      the probe is robust and directly asserts the descendant died from the group signal.
 
 ---
 

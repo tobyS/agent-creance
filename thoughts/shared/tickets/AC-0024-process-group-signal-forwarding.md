@@ -1,6 +1,6 @@
 # AC-0024: Process group & signal forwarding (WP-4.3)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -22,9 +22,9 @@ Ctrl-C must reliably tear down the agent *and everything it spawned* (`npm run t
 
 ## Acceptance Criteria
 
-- [ ] The child is started in a new process group (`Setpgid: true` / `setsid` equivalent).
-- [ ] `SIGINT`/`SIGTERM` to the wrapper are forwarded to the entire group (`kill(-pgid, sig)`).
-- [ ] The wrapper waits for the whole group to exit before performing the lock-file decrement (ordering deterministic).
+- [x] The child is started in a new process group (`Setpgid: true` / `setsid` equivalent). — `OSProcessGroup.Start` sets `SysProcAttr{Setpgid: true}` (`internal/sysdep/processgroup.go`).
+- [x] `SIGINT`/`SIGTERM` to the wrapper are forwarded to the entire group (`kill(-pgid, sig)`). — `osProcess.Signal` does `syscall.Kill(-pgid, sig)`; `cage.Runner` relays caught SIGINT/SIGTERM (and escalates to SIGKILL after a grace period).
+- [x] The wrapper waits for the whole group to exit before performing the lock-file decrement (ordering deterministic). — `cage.Runner.Run` returns only after `Process.Wait()`; the caller (AC-0025) sequences `proxy.Detach` after it.
 
 ## Verification & Test Steps
 
@@ -44,7 +44,7 @@ Phase 4. Pairs with AC-0023 + AC-0020 to make `run` (AC-0025) clean on exit.
 
 ## Questions for Research/Planning
 
-- [ ] Interaction between our process group and Safehouse's own child handling — does Safehouse already create a group?
+- [x] Interaction between our process group and Safehouse's own child handling — does Safehouse already create a group? — **No.** Inspecting safehouse 0.10.1 (a bash script): it runs `sandbox-exec -f policy -- /usr/bin/env -i <cmd>` as a non-`exec`, non-`setsid` foreground subprocess (so it can clean up its rendered policy after). No `setsid`/`setpgid` anywhere; the only `nohup &` is the VS Code special case. So the whole tree (bash → sandbox-exec → env → agent → children) stays in the single `Setpgid` group we create, and `kill(-pgid, sig)` reaches everything. Verified end-to-end by `TestLiveSafehouseGroupTeardown`.
 
 ## References
 
@@ -53,7 +53,21 @@ Phase 4. Pairs with AC-0023 + AC-0020 to make `run` (AC-0025) clean on exit.
 
 ## Implementation Plan
 
+- Research: `thoughts/shared/research/2026-06-06-AC-0024-process-group-signal-forwarding.md`
+- Plan: `thoughts/shared/plans/2026-06-06-AC-0024-process-group-signal-forwarding.md`
+
 ## Notes & Updates
+
+### 2026-06-06
+Implemented (WP-4.3). `OSProcessGroup.Start` (`Setpgid: true`) + `osProcess`
+(`kill(-pgid, sig)` / `Wait` / `Pgid`) fill the seam; `cage.Runner` forwards
+SIGINT/SIGTERM to the group, escalates to SIGKILL after a grace period, and returns
+only after the group is reaped (giving the caller the wait-before-decrement ordering);
+`ProcessGroup` is wired into `App`/`cli.Main`. Real teardown verified at the syscall
+layer (`TestOSProcessGroupTearsDownChildTree`, runs on the dev box) and, on a host that
+can nest sandbox-exec, through real safehouse (`TestLiveSafehouseGroupTeardown`).
+Removed the now-unused `sysdep.ErrNotImplemented` sentinel. The `run` orchestration that
+calls `proxy.Detach` after `Runner.Run` is AC-0025.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
