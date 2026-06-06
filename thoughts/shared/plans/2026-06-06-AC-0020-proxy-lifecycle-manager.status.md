@@ -8,7 +8,7 @@ Plan: `thoughts/shared/plans/2026-06-06-AC-0020-proxy-lifecycle-manager.md`
 - [x] Phase 2 — New seams: `ProcessManager` + `PortAllocator`
 - [x] Phase 3 — The lifecycle `Manager`
 - [x] Phase 4 — Manager tests, race simulation, integration scaffold
-- [ ] Phase 5 — Reconcile docs & close the ticket
+- [x] Phase 5 — Reconcile docs & close the ticket
 
 ## Notes
 

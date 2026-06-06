@@ -1,9 +1,9 @@
 # AC-0020: Proxy lifecycle manager (WP-3.4)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Extra Large
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-06
 **Plan reference:** WP-3.4 (`thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`)
 **Depends on:** AC-0006 (WP-1.1), AC-0009 (WP-1.4, Flock seam), AC-0019 (WP-3.3)
 **Spike gate:** **S3 (AC-0003)**
@@ -24,12 +24,12 @@ Multiple `agent-creance` invocations in one project share a single mitmproxy via
 
 ## Acceptance Criteria
 
-- [ ] Lock file records proxy PID, port, policy hash, and attached-agent PIDs; all read-modify-writes are `flock`-guarded.
-- [ ] On run: prune dead agent PIDs (`kill -0`), verify the proxy is alive; start if none, else attach (add own PID); release lock.
-- [ ] Port: bind `:0`, record the port; on restart attempt best-effort reclaim of the recorded port.
-- [ ] Teardown: trap reacquires the lock, removes own PID, kills the proxy iff the agent array is now empty, and purges the session-overlay on last-out.
-- [ ] If a restart could not reclaim the port **and** agents remain attached: emit the documented warning naming affected PIDs; **never** kill those agents.
-- [ ] Lock file is out-of-tree.
+- [x] Lock file records proxy PID, port, policy hash, and attached-agent PIDs; all read-modify-writes are `flock`-guarded. (`lockState` in `internal/proxy/lifecycle.go`, written in place on the locked descriptor.)
+- [x] On run: prune dead agent PIDs (`kill -0`), verify the proxy is alive; start if none, else attach (add own PID); release lock. (`Manager.Attach`.)
+- [x] Port: bind `:0`, record the port; on restart attempt best-effort reclaim of the recorded port. (`PortAllocator.Allocate`/`TryReclaim`; `Manager.choosePort`.)
+- [x] Teardown: reacquires the lock, removes own PID, kills the proxy iff the agent array is now empty, and purges the session-overlay on last-out. (`Manager.Detach`. The *signal-trap* that calls Detach on SIGINT/exit is the run command's job, AC-0025.)
+- [x] If a restart could not reclaim the port **and** agents remain attached: emit the documented warning naming affected PIDs; **never** kill those agents. (`Manager.warnPortChanged`; covered by `TestCrashRestartReclaimFailWarnsNeverKills`.)
+- [x] Lock file is out-of-tree. (`state.Layout.ProxyLock()` under `~/.cache/agent-creance/projects/<hash>/`; guarded by `TestLockPathIsOutOfTree`.)
 
 ## Verification & Test Steps
 
@@ -55,8 +55,8 @@ Phase 3. Critical path to M2/M3. Gated by S3.
 
 ## Questions for Research/Planning
 
-- [ ] `flock` semantics on the target filesystems; how does `doctor` (AC-0031) detect unreliable ones?
-- [ ] How is "proxy is alive" verified beyond PID liveness (port probe)?
+- [x] `flock` semantics on the target filesystems; how does `doctor` (AC-0031) detect unreliable ones? — **Delegated to AC-0031.** The "warn on filesystems with unreliable `flock`" check (notably iCloud Drive and SMB shares, per `docs/design.md` "Multi-agent lifecycle") is `doctor`'s job; AC-0020 assumes a reliable filesystem and does not detect this itself.
+- [x] How is "proxy is alive" verified beyond PID liveness (port probe)? — **PID liveness AND a TCP port probe.** A recorded PID can be recycled into an unrelated process, so `Manager.Attach` treats the proxy as up only when `ProcessManager.Alive(pid)` **and** `PortAllocator.Probe(port)` both hold; otherwise it is a crash and we start fresh.
 
 ## References
 
@@ -65,7 +65,43 @@ Phase 3. Critical path to M2/M3. Gated by S3.
 
 ## Implementation Plan
 
+Research: `thoughts/shared/research/2026-06-06-AC-0020-proxy-lifecycle-manager.md`
+Plan: `thoughts/shared/plans/2026-06-06-AC-0020-proxy-lifecycle-manager.md`
+
 ## Notes & Updates
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Must implement the warn-never-kill path, not just reclaim.
+
+### 2026-06-06 — Implemented (Done)
+
+Built in `internal/proxy/lifecycle.go` (`Manager` with `Attach`/`Detach`) on three
+seam changes:
+
+- **`Flock` redesigned** (checkpoint decision): `Acquire` now returns a
+  `LockedFile{ReadAll/Write/Release}` so the `proxy.lock` read-modify-write happens
+  in place on the *same* descriptor the lock is held on — the codebase's usual
+  temp+rename idiom would swap the inode out from under an advisory `flock` and
+  break exclusion. Real `OSFlock` implemented via `golang.org/x/sys/unix.Flock`
+  (the impl its doc comment had deferred to this ticket). No production callers
+  existed, so the seam change was contained to flock + its fake + their tests.
+- **New `ProcessManager` seam** (`Spawn` a detached daemon via `Setsid` → PID;
+  `Alive` via `kill -0`; `Signal` a single PID). The proxy is a standalone daemon
+  killed by PID from a *later* invocation (the last agent out holds no live handle),
+  which is why this is distinct from the group-targeted `ProcessGroup` (still
+  WP-4.3). Exec-ing Safehouse / agent-group signal forwarding stayed out of scope
+  (AC-0023/0024).
+- **New `PortAllocator` seam** (`Allocate` `:0`; `TryReclaim` a recorded port;
+  `Probe` for the alive check).
+
+Decisions (from the research checkpoint): write-in-place on the locked fd;
+proxy-alive = PID liveness **and** a TCP port probe; manager + seams + `OS*` impls +
+tests landed here while wiring into `cli.App`/`Main()` and the `run` command are
+**deferred to AC-0025** (the first caller). `docs/design.md` "Multi-agent
+lifecycle" updated to name the port-probe in the alive check.
+
+Tests: the five mandated scenarios + corrupt-lock self-heal, error paths, and a C4
+out-of-tree guard (blackbox); white-box helper tests; a `-race` concurrent
+attach/detach simulation (`FakeFileSystem` gained a mutex so the sim is sound, since
+`MkdirAll` legitimately runs before the flock); and an S3-gated
+`//go:build integration` test driving a real mitmproxy across two invocations.

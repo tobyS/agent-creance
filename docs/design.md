@@ -397,7 +397,7 @@ Two agents in the same project share one mitmproxy. The proxy's lifecycle is gov
 Every `agent-creance run` invocation:
 
 1. **Acquires `flock`** on the lock file (atomicity for read-modify-write).
-2. **Validates state** — prunes dead agent PIDs (via `kill -0`), verifies the proxy is alive, checks whether the on-disk policy hash matches what the running proxy was started with. If the proxy is dead but agents are listed, it's been a crash and we start fresh. If the hash differs, we touch `policy.json` so mitmproxy hot-reloads.
+2. **Validates state** — prunes dead agent PIDs (via `kill -0`), verifies the proxy is alive (a recycled PID is a real hazard, so liveness is *both* a `kill -0` on the recorded PID *and* a TCP probe of the recorded port — a bare PID match is not trusted), checks whether the on-disk policy hash matches what the running proxy was started with. If the proxy is dead but agents are listed, it's been a crash and we start fresh. If the hash differs, we touch `policy.json` so mitmproxy hot-reloads.
 3. **Starts or attaches.** Starts mitmproxy if none is running for this project; either way, adds its own PID to the agents array and releases the lock.
 4. **Exec safehouse** with the right flags and env vars (proxy URL, CA path, project-specific append-profile).
 
