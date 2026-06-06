@@ -2,8 +2,12 @@ package sysdep
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"syscall"
 )
 
 // ProcessGroup abstracts running a child in its own process group and tearing the
@@ -18,10 +22,12 @@ import (
 // take a ProcessGroup and call *that*; production wires OSProcessGroup, tests
 // wire the fake in sysdeptest.
 type ProcessGroup interface {
-	// Start runs name with args in a NEW process group (Setpgid: true) and returns
-	// a handle for signalling and waiting on the whole group. A non-nil error
+	// Start runs name with args in a NEW process group (Setpgid: true), wired to the
+	// controlling terminal's stdio, with env appended to the parent's environment
+	// (KEY=VALUE pairs, last-wins — matching the cage Invocation's extra env). It
+	// returns a handle for signalling and waiting on the whole group. A non-nil error
 	// means the child could not be started; in that case Process is nil.
-	Start(ctx context.Context, name string, args ...string) (Process, error)
+	Start(ctx context.Context, env []string, name string, args ...string) (Process, error)
 	// Notify relays the given OS signals into ch, mirroring os/signal.Notify, so
 	// the wrapper can catch SIGINT/SIGTERM and forward them to the group.
 	Notify(ch chan<- os.Signal, sigs ...os.Signal)
@@ -40,19 +46,61 @@ type Process interface {
 	Pgid() int
 }
 
-// OSProcessGroup is the production ProcessGroup. Start is deferred to WP-4.3
-// (internal/cage): the real impl sets SysProcAttr{Setpgid: true} and returns an
+// OSProcessGroup is the production ProcessGroup. Start sets
+// SysProcAttr{Setpgid: true} so the child leads a new process group, and returns an
 // osProcess whose Signal does syscall.Kill(-pgid, sig) and whose Wait reaps the
-// group. Until then Start returns ErrNotImplemented. Notify is portable stdlib
-// and is implemented now.
+// group. Notify is portable stdlib.
 type OSProcessGroup struct{}
 
 var _ ProcessGroup = (*OSProcessGroup)(nil)
 
-func (OSProcessGroup) Start(_ context.Context, _ string, _ ...string) (Process, error) {
-	return nil, ErrNotImplemented
+func (OSProcessGroup) Start(ctx context.Context, env []string, name string, args ...string) (Process, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	// Setpgid (with Pgid left 0) makes the child the leader of a NEW process group
+	// whose pgid equals its own PID — Go performs the setpgid in the forked child
+	// before execve, so cmd.Process.Pid IS the pgid (no Getpgid, no fork/setpgid
+	// race). Unlike ProcessManager's Setsid (a detached daemon), we stay in the
+	// session and keep the controlling terminal so the agent is interactive.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// If ctx is cancelled, tear down the whole group, not just the leader. Cancel
+	// runs only after Start, so cmd.Process is non-nil.
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGINT) }
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("sysdep: start %q: %w", name, err)
+	}
+	return &osProcess{cmd: cmd, pgid: cmd.Process.Pid}, nil
 }
 
 func (OSProcessGroup) Notify(ch chan<- os.Signal, sigs ...os.Signal) {
 	signal.Notify(ch, sigs...)
 }
+
+// osProcess is the production Process: a child leading its own process group.
+type osProcess struct {
+	cmd  *exec.Cmd
+	pgid int
+}
+
+var _ Process = (*osProcess)(nil)
+
+func (p *osProcess) Signal(sig os.Signal) error {
+	s, ok := sig.(syscall.Signal)
+	if !ok {
+		return fmt.Errorf("sysdep: signal pgid %d: unsupported signal %v", p.pgid, sig)
+	}
+	// Negative pgid targets the whole process group, so SIGINT/SIGTERM tears down the
+	// agent's entire subtree. A group that has already exited (ESRCH) is not an error.
+	if err := syscall.Kill(-p.pgid, s); err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		return fmt.Errorf("sysdep: signal pgid %d: %w", p.pgid, err)
+	}
+	return nil
+}
+
+func (p *osProcess) Wait() error { return p.cmd.Wait() }
+
+func (p *osProcess) Pgid() int { return p.pgid }

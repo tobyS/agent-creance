@@ -174,16 +174,16 @@ was relayed, then release `Wait`.
 ### Success Criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `go test -race ./internal/sysdep/...` green (fake + seam unit tests).
-- [ ] `make lint` clean.
+- [x] `go build ./...` compiles.
+- [x] `go test -race ./internal/sysdep/...` green (fake + seam unit tests).
+- [x] `make lint` clean.
 
 #### Manual
-- [ ] `OSProcessGroup.Start` sets `Setpgid: true`, merges env over `os.Environ()`, wires
+- [x] `OSProcessGroup.Start` sets `Setpgid: true`, merges env over `os.Environ()`, wires
       terminal stdio; `osProcess.Signal` targets `-pgid` and swallows `ESRCH`.
-- [ ] No remaining reference to `ErrNotImplemented` from `processgroup.go` (the sentinel
-      stays defined in `errors.go` for `Keychain`/other future use — verify it is still
-      referenced elsewhere or update its doc comment to drop the ProcessGroup mention).
+- [x] No remaining reference to `ErrNotImplemented` — both consumers (Keychain,
+      ProcessGroup.Start) are now implemented, so the sentinel was fully unused and
+      `errors.go` was deleted.
 
 ---
 

@@ -2,7 +2,6 @@ package sysdep
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,14 +9,15 @@ import (
 	"time"
 )
 
-// Start's real impl is deferred to WP-4.3; it must report that via
-// ErrNotImplemented. Notify, by contrast, is portable stdlib and works now.
+// Start's success path (Setpgid, kill(-pgid), Wait) needs real processes and is
+// covered by the integration tests; here we only assert the fast failure path.
+// Notify is portable stdlib and is exercised directly.
 
-func TestOSProcessGroupStartNotImplemented(t *testing.T) {
+func TestOSProcessGroupStartError(t *testing.T) {
 	var pg OSProcessGroup
-	proc, err := pg.Start(context.Background(), "true")
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Start error = %v, want errors.Is(ErrNotImplemented)", err)
+	proc, err := pg.Start(context.Background(), nil, "/nonexistent/agent-creance-xyz")
+	if err == nil {
+		t.Error("Start error = nil, want a non-nil error for a missing binary")
 	}
 	if proc != nil {
 		t.Errorf("Start Process = %v, want nil on error", proc)
