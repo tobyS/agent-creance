@@ -1,0 +1,1 @@
+{"ts":"2026-06-06T12:00:00+00:00","method":"GET","url":"https://docs.somelib.io/v2/data?q=widgets&api_key=REDACTED","decision":"allow","rule":{"list":"allow","index":0},"status":200}
