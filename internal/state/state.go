@@ -34,6 +34,7 @@ const (
 	projectsSubdir     = "projects"
 	registriesSubdir   = "registries"
 	generatorsSubdir   = "generators"
+	enforcerSubdir     = "enforcer"
 	policyJSONName     = "policy.json"
 	networkSBName      = "network.sb"
 	proxyLockName      = "proxy.lock"
@@ -135,6 +136,21 @@ func (r *Resolver) GeneratorsRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(cache, appCacheSubdir, generatorsSubdir), nil
+}
+
+// EnforcerRoot returns <cache>/agent-creance/enforcer — the constant,
+// cross-project home of the extracted mitmproxy enforcer addon. Like
+// RegistriesRoot/GeneratorsRoot it is a sibling of projects/<hash>/ and
+// project-independent: the addon is a constant shipped in the binary, identical
+// for every project (see docs/design.md, "Tech stack"), so users never install
+// or version it. The proxy extractor (AC-0019) owns writing the module files
+// beneath this root.
+func (r *Resolver) EnforcerRoot() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, enforcerSubdir), nil
 }
 
 // cacheRoot returns the base cache directory, honouring XDG_CACHE_HOME when set and

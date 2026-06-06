@@ -212,6 +212,43 @@ func TestGeneratorsRootErrorsWhenCacheRootUnknown(t *testing.T) {
 	}
 }
 
+func TestEnforcerRootHonoursXDGThenFallsBackToHome(t *testing.T) {
+	cases := []struct {
+		name string
+		xdg  string
+		home string
+		want string
+	}{
+		{"xdg set", "/xdg/cache", "/home/u", "/xdg/cache/agent-creance/enforcer"},
+		{"xdg empty -> home/.cache", "", "/home/u", "/home/u/.cache/agent-creance/enforcer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := sysdeptest.NewFakePathResolver()
+			fake.HomeDir = tc.home
+			if tc.xdg != "" {
+				fake.Env["XDG_CACHE_HOME"] = tc.xdg
+			}
+
+			got, err := New(fake).EnforcerRoot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("EnforcerRoot = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEnforcerRootErrorsWhenCacheRootUnknown(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeErr = errors.New("boom") // and XDG_CACHE_HOME unset
+	if _, err := New(fake).EnforcerRoot(); err == nil {
+		t.Error("want error when cache root cannot be determined, got nil")
+	}
+}
+
 func TestAccessorsAreRootedAtProjectsHash(t *testing.T) {
 	fake := sysdeptest.NewFakePathResolver()
 	fake.HomeDir = "/home/u"
