@@ -206,13 +206,13 @@ package owns its I/O per the checkpoint decision):
 ### Success criteria
 
 #### Automated
-- [ ] `make test` green incl. `read_test.go`.
-- [ ] `SummarizeFiles` over a `.1`+current pair yields the expected allow/soft-deny/
+- [x] `make test` green incl. `read_test.go`.
+- [x] `SummarizeFiles` over a `.1`+current pair yields the expected allow/soft-deny/
       hard-deny counts (AC criterion 2).
-- [ ] `go build ./...` green.
+- [x] `go build ./...` green.
 
 #### Manual
-- [ ] `.1` is read before current; a missing file is a skip, not a crash.
+- [x] `.1` is read before current; a missing file is a skip, not a crash.
 
 ---
 
