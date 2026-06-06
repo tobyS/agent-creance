@@ -1,0 +1,33 @@
+# `agent-creance logs` / `logs --summary` over a seeded audit log. The `seedaudit`
+# custom command (see script_test.go) writes the .1 + current fixtures into the
+# out-of-tree state dir the CLI resolves for $WORK, so this exercises the reader
+# end-to-end through the real command + state resolution. HOME/XDG_CACHE_HOME under
+# $WORK keep it hermetic.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+seedaudit audit.1 audit.current
+
+# Bare logs dumps .1 then current as one logical stream, one formatted line per entry.
+agent-creance logs
+stdout 'allow      GET https://api\.github\.com/ -> 200'
+stdout 'hard-deny  old\.example \(passthrough\)'
+stdout 'soft-deny  POST https://evil\.example/ -> 403'
+stdout 'allow      api\.anthropic\.com \(passthrough\)'
+! stderr .
+
+# --summary aggregates both files into decision counts.
+agent-creance logs --summary
+stdout 'Audit summary: 4 entries \(2 intercepted, 2 passthrough\)'
+stdout 'allow      2'
+stdout 'soft-deny  1'
+stdout 'hard-deny  1'
+! stderr .
+
+-- audit.1 --
+{"ts":"2026-06-06T10:00:00Z","method":"GET","url":"https://api.github.com/","decision":"allow","rule":{"list":"allow_always","index":0},"status":200}
+{"ts":"2026-06-06T10:00:01Z","host":"old.example","decision":"hard-deny"}
+-- audit.current --
+{"ts":"2026-06-06T10:01:00Z","method":"POST","url":"https://evil.example/","decision":"soft-deny","rule":null,"status":403}
+{"ts":"2026-06-06T10:01:01Z","host":"api.anthropic.com","decision":"allow"}

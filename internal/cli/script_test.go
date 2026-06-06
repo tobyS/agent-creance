@@ -9,6 +9,8 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/tobyS/agent-creance/internal/cli"
+	"github.com/tobyS/agent-creance/internal/state"
+	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
 )
 
 // testscript (from rogpeppe/go-internal — the same harness the Go toolchain
@@ -31,7 +33,8 @@ func TestMain(m *testing.M) {
 // isolated scenario with its own temp working directory.
 func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
-		Dir: "testdata/script",
+		Dir:  "testdata/script",
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){"seedaudit": seedAudit},
 		Setup: func(e *testscript.Env) error {
 			// testscript copies the registered `agent-creance` command into a
 			// bindir it prepends to PATH (see go-internal/testscript/exe.go). We
@@ -48,4 +51,45 @@ func TestScripts(t *testing.T) {
 			return nil
 		},
 	})
+}
+
+// seedAudit writes a rotated (.1) + current audit log into the out-of-tree state dir
+// the CLI will resolve for the script's working directory, so a scenario can exercise
+// `logs`/`logs --summary` over real fixture content. The state path is hashed from the
+// realpath of the project dir, so it can't be pre-seeded by a static path in the
+// .txtar — this command reproduces the same resolution the CLI does (same state
+// package, the script's HOME/XDG_CACHE_HOME, and the real realpath of $WORK) and writes
+// there. Usage: seedaudit <rotatedSrc> <currentSrc> (both are files in the script dir).
+func seedAudit(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 2 {
+		ts.Fatalf("usage: seedaudit <rotatedSrc> <currentSrc>")
+	}
+	work := ts.Getenv("WORK")
+	canonical, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		ts.Fatalf("seedaudit: evalsymlinks %s: %v", work, err)
+	}
+	// Reproduce the CLI's `state.New(OSPathResolver).Resolve(".")` using the script's
+	// environment: Abs(".") -> $WORK, EvalSymlinks -> its realpath, cache root from
+	// XDG_CACHE_HOME/HOME.
+	paths := sysdeptest.NewFakePathResolver()
+	paths.Cwd = work
+	paths.HomeDir = ts.Getenv("HOME")
+	if xdg := ts.Getenv("XDG_CACHE_HOME"); xdg != "" {
+		paths.Env["XDG_CACHE_HOME"] = xdg
+	}
+	paths.Symlinks = map[string]string{work: canonical}
+	layout, err := state.New(paths).Resolve(".")
+	if err != nil {
+		ts.Fatalf("seedaudit: resolve layout: %v", err)
+	}
+	if err := os.MkdirAll(layout.Root, 0o755); err != nil {
+		ts.Fatalf("seedaudit: mkdir %s: %v", layout.Root, err)
+	}
+	if err := os.WriteFile(layout.EgressJSONLRotated(), []byte(ts.ReadFile(args[0])), 0o600); err != nil {
+		ts.Fatalf("seedaudit: write rotated: %v", err)
+	}
+	if err := os.WriteFile(layout.EgressJSONL(), []byte(ts.ReadFile(args[1])), 0o600); err != nil {
+		ts.Fatalf("seedaudit: write current: %v", err)
+	}
 }
