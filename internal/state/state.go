@@ -30,15 +30,16 @@ import (
 // config redirect, session-overlay mutation) build against, so they are defined
 // once here.
 const (
-	appCacheSubdir   = "agent-creance"
-	projectsSubdir   = "projects"
-	registriesSubdir = "registries"
-	generatorsSubdir = "generators"
-	enforcerSubdir   = "enforcer"
-	policyJSONName   = "policy.json"
-	networkSBName    = "network.sb"
-	proxyLockName    = "proxy.lock"
-	egressJSONLName  = "egress.jsonl"
+	appCacheSubdir     = "agent-creance"
+	projectsSubdir     = "projects"
+	registriesSubdir   = "registries"
+	generatorsSubdir   = "generators"
+	enforcerSubdir     = "enforcer"
+	policyJSONName     = "policy.json"
+	networkSBName      = "network.sb"
+	proxyProfileSBName = "proxy.sb"
+	proxyLockName      = "proxy.lock"
+	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
 	// (egress.jsonl.1). The reader (internal/audit) reads it then the current file
 	// as one logical stream, so the ".1" suffix is part of that contract and is
@@ -177,6 +178,12 @@ func (l Layout) PolicyJSON() string { return filepath.Join(l.Root, policyJSONNam
 
 // NetworkSB is the Seatbelt profile passed to Safehouse via --append-profile.
 func (l Layout) NetworkSB() string { return filepath.Join(l.Root, networkSBName) }
+
+// ProxyProfileSB is the launch-time Seatbelt fragment for the live proxy port,
+// passed to Safehouse via a second --append-profile after NetworkSB (the ordering
+// contract enforced by profile.RenderProxyFragment). Rewritten every launch
+// because the port is ephemeral.
+func (l Layout) ProxyProfileSB() string { return filepath.Join(l.Root, proxyProfileSBName) }
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }
