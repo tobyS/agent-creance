@@ -11,8 +11,19 @@ started: 2026-06-07
 - [x] Phase 3 — proxy.Manager.Clean
 - [x] Phase 4 — internal/status package
 - [x] Phase 5 — CLI commands (status, clean)
-- [ ] Phase 6 — Integration test
-- [ ] Final verification
+- [x] Phase 6 — Integration test
+- [x] Final verification
 
 ## Notes
+
+- All phases implemented and committed. `make test` + `make lint` green.
+- New `clean` real-proxy integration test (`TestCleanStopsRealProxy`) passes under
+  `make test-integration`.
+- Two pre-existing integration failures on this host are environmental, not from
+  this work — verified identical on base commit 99514a9:
+  - `internal/proxy` `TestLifecycleStartAttachTeardownRealProxy`: the mitmproxy
+    enforcer addon never comes up (sandbox blocks `timeout`/addon load here).
+  - `internal/setup` `TestVerifyLive`: stat of `~/.mitmproxy` is "operation not
+    permitted" (sandbox).
+- Ticket AC-0032 marked Done.
 </content>

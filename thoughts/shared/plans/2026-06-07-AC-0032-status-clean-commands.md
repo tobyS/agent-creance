@@ -267,20 +267,21 @@ stack; the established precedent spawns the proxy directly, which proves the sam
 teardown contract.)
 
 **Success criteria**
-- [ ] `make test-integration` passes locally (documents real-tool behaviour;
-      requires `mitmdump` on PATH).
+- [x] `make test-integration` passes locally (new `TestCleanStopsRealProxy`
+      passes; two unrelated tests fail for environmental reasons — see status file).
 
 ---
 
 ## Final verification
 
-- [ ] `make test` green (race, hermetic).
-- [ ] `make lint` clean.
-- [ ] `go build ./...`.
-- [ ] `make test-integration` (where tools are available).
-- [ ] C4 guard: `status`/`clean` only read/write under
+- [x] `make test` green (race, hermetic).
+- [x] `make lint` clean.
+- [x] `go build ./...`.
+- [x] `make test-integration` — new clean integration test passes; two pre-existing
+      environmental failures (verified identical on base commit, unrelated to this work).
+- [x] C4 guard: `status`/`clean` only read/write under
       `~/.cache/agent-creance/projects/<hash>/` (no in-tree state).
-- [ ] Update `thoughts/shared/tickets/AC-0032-status-clean-commands.md` —
+- [x] Update `thoughts/shared/tickets/AC-0032-status-clean-commands.md` —
       check the acceptance boxes and mark the ticket Done.
 
 ## Notes / risks
