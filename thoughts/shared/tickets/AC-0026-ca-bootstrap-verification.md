@@ -1,6 +1,6 @@
 # AC-0026: CA bootstrap + post-install verification (WP-5.1)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
