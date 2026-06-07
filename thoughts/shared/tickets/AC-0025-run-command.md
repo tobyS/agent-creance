@@ -1,6 +1,6 @@
 # AC-0025: `run` command (WP-4.4)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +23,10 @@
 
 ## Acceptance Criteria
 
-- [ ] Order of operations: prereq check → setup-precondition check (trusted CA + skill present) → state resolve → cache-aware compile → proxy start/attach → cage exec → trapped teardown.
-- [ ] If setup hasn't run (no trusted CA / no skill), it prints a clear pointer to `agent-creance setup` and exits non-zero (no stack trace).
-- [ ] Blocks while the agent runs; decrements the proxy refcount on exit; kills the proxy only when last agent leaves.
-- [ ] Ctrl-C tears down the caged process tree (via AC-0024) before decrement.
+- [x] Order of operations: prereq check → setup-precondition check (trusted CA + skill present) → state resolve → cache-aware compile → proxy start/attach → cage exec → trapped teardown. (`internal/cli/run.go`; a credential check sits between the setup and state steps.)
+- [x] If setup hasn't run (no trusted CA / no skill), it prints a clear pointer to `agent-creance setup` and exits non-zero (no stack trace).
+- [x] Blocks while the agent runs; decrements the proxy refcount on exit; kills the proxy only when last agent leaves. (Detach is deferred immediately after Attach; proxy.Manager does the last-out kill + overlay purge.)
+- [x] Ctrl-C tears down the caged process tree (via AC-0024) before decrement. (`cage.Runner.Run` reaps the whole group before the deferred Detach runs.)
 
 ## Verification & Test Steps
 
@@ -64,3 +64,33 @@ Phase 4. The convergence point for Phase 2–4. Reaches **Milestone M3** ("Caged
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Headline command; depends on most of Phases 2–4.
+
+### 2026-06-07 — Implemented (WP-4.4)
+Research: `thoughts/shared/research/2026-06-07-AC-0025-run-command.md`.
+Plan: `thoughts/shared/plans/2026-06-07-AC-0025-run-command.md`.
+
+`run` is thin orchestration in `internal/cli/run.go` over the existing subsystems
+(prereq, setupcheck, cred, policy/profile compilers, proxy.Manager, cage
+Builder/Runner). Shipped across four commits: the `Keychain.FindCertificate`
+seam, the `internal/setupcheck` package, the `run` command + `App` wiring
+(Flock/ProcessManager/PortAllocator), and these docs.
+
+Decisions made at the research→plan checkpoint:
+
+- **Setup-precondition "trusted CA" = keychain query.** `run` proves the CA via
+  `Keychain.FindCertificate("mitmproxy")` (presence in the login keychain shows
+  `setup` imported it), not file-existence on the auto-generated
+  `~/.mitmproxy/...pem` (which mitmproxy creates on first run regardless of
+  trust). The robust live-curl verification stays `setup`/`doctor`'s job by
+  design (design.md:443). `setup` (AC-0026) isn't built yet — `run` only checks.
+- **Integration smoke (verification step 3) deferred.** It needs a completed
+  `setup` (trusted CA in the keychain) that doesn't exist yet. It is left to
+  **AC-0033** (the adversarial battery, which already drives a hostile payload
+  *through* `run` and gates Milestone M3) and/or when `setup` lands.
+- **Test placement.** `cli.Main` wires the real `OSKeychain`, so a `testscript`
+  can't fake the CA/credential lookups. The keychain-dependent behaviors (happy
+  path, setup-missing, credential-missing) are covered by `*App`-with-fakes unit
+  tests in `internal/cli/run_test.go`; `run_missing_prereq.txtar` covers the one
+  cleanly-hermetic PATH-gated scenario end to end through the real binary.
+
+`make test` (race) and `make lint` green.
