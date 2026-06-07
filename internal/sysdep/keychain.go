@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -35,6 +37,17 @@ type Keychain interface {
 	// errors.Is. Presence proves setup imported the cert, not that the trust dialog
 	// was confirmed — the robust live verification stays setup/doctor's job.
 	FindCertificate(commonName string) ([]byte, error)
+
+	// AddTrustedCert imports the PEM certificate at certPath into the login
+	// keychain and marks it a trusted SSL root (security add-trusted-cert, per-user
+	// trust domain). This is the write side setup uses to install the mitmproxy CA.
+	//
+	// NOTE: security add-trusted-cert returns exit 0 even when the user cancels the
+	// authorization dialog (design.md "Post-install CA verification"), so a nil
+	// error proves the command ran, NOT that trust was actually applied. Callers
+	// must verify trust functionally (setup.Verify) rather than trusting this
+	// result. A non-nil error is a genuine failure (bad cert path, exec failure).
+	AddTrustedCert(certPath string) error
 }
 
 // Contract sentinels the Keychain seam models: these are the real outcomes a
@@ -64,6 +77,13 @@ const securityFindTimeout = 10 * time.Second
 // item is absent (errSecItemNotFound; observed in spike S2 §1).
 const secItemNotFound = 44
 
+// addTrustedCertTimeout bounds the add-trusted-cert call. Unlike the read calls,
+// installing a trusted root pops an interactive authorization dialog the user
+// must satisfy, so it gets a far more generous bound than securityFindTimeout —
+// long enough for a human to respond, short enough that an unattended run cannot
+// hang forever.
+const addTrustedCertTimeout = 2 * time.Minute
+
 // OSKeychain is the production Keychain. It shells out to /usr/bin/security
 // (the legacy SecKeychain CLI), exactly the access path validated by spike S2 —
 // no cgo / Security-framework binding. Its host-side job is detection: callers
@@ -88,6 +108,39 @@ func (OSKeychain) FindCertificate(commonName string) ([]byte, error) {
 	// -c matches by common name; -p prints the matching certificate as PEM. We
 	// only need presence, so the PEM bytes are returned as-is for the caller.
 	return runSecurity([]string{"find-certificate", "-c", commonName, "-p"})
+}
+
+func (OSKeychain) AddTrustedCert(certPath string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("sysdep: add-trusted-cert: resolve home: %w", err)
+	}
+	loginKeychain := filepath.Join(home, "Library", "Keychains", "login.keychain-db")
+
+	ctx, cancel := context.WithTimeout(context.Background(), addTrustedCertTimeout)
+	defer cancel()
+
+	// -r trustRoot marks the cert a trusted root; -p ssl constrains the trust to
+	// TLS; omitting -d keeps it in the per-user trust domain (no admin/sudo). The
+	// exit code is advisory only (0 even on a cancelled dialog) — proof of trust is
+	// setup.Verify, not this call.
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/usr/bin/security",
+		"add-trusted-cert", "-r", "trustRoot", "-p", "ssl", "-k", loginKeychain, certPath)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("sysdep: add-trusted-cert: timed out after %s "+
+				"(authorization dialog not answered?)", addTrustedCertTimeout)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Errorf("sysdep: add-trusted-cert: exit %d: %s",
+				exitErr.ExitCode(), bytes.TrimSpace(stderr.Bytes()))
+		}
+		return fmt.Errorf("sysdep: add-trusted-cert: %w", err)
+	}
+	return nil
 }
 
 // runSecurity invokes /usr/bin/security with the given arguments under the

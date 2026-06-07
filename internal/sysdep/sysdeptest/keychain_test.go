@@ -73,3 +73,26 @@ func TestFakeKeychainLockedWinsOverCertificate(t *testing.T) {
 		t.Errorf("FindCertificate(locked) error = %v, want ErrKeychainLocked", err)
 	}
 }
+
+func TestFakeKeychainAddTrustedCertRecordsPath(t *testing.T) {
+	kc := NewFakeKeychain()
+	if err := kc.AddTrustedCert("/home/toby/.mitmproxy/mitmproxy-ca-cert.pem"); err != nil {
+		t.Fatalf("AddTrustedCert: %v", err)
+	}
+	if len(kc.AddedCerts) != 1 || kc.AddedCerts[0] != "/home/toby/.mitmproxy/mitmproxy-ca-cert.pem" {
+		t.Errorf("AddedCerts = %+v, want one matching path", kc.AddedCerts)
+	}
+}
+
+func TestFakeKeychainAddTrustedCertReturnsScriptedErr(t *testing.T) {
+	kc := NewFakeKeychain()
+	sentinel := errors.New("add-trusted-cert boom")
+	kc.AddCertErr = sentinel
+	if err := kc.AddTrustedCert("/x.pem"); !errors.Is(err, sentinel) {
+		t.Errorf("AddTrustedCert error = %v, want %v", err, sentinel)
+	}
+	// Even on error the call is recorded, so tests can assert it was attempted.
+	if len(kc.AddedCerts) != 1 {
+		t.Errorf("AddedCerts = %+v, want the failed call recorded", kc.AddedCerts)
+	}
+}

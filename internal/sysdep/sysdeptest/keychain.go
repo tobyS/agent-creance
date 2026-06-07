@@ -22,6 +22,10 @@ type FakeKeychain struct {
 	Lookups []KeychainQuery
 	// CertLookups records each FindCertificate common name queried, in order.
 	CertLookups []string
+	// AddedCerts records each certPath passed to AddTrustedCert, in order.
+	AddedCerts []string
+	// AddCertErr, if set, is returned by AddTrustedCert.
+	AddCertErr error
 }
 
 // KeychainQuery is one recorded FindGenericPassword call.
@@ -82,6 +86,11 @@ func (f *FakeKeychain) FindCertificate(commonName string) ([]byte, error) {
 		return append([]byte(nil), b...), nil
 	}
 	return nil, sysdep.ErrItemNotFound
+}
+
+func (f *FakeKeychain) AddTrustedCert(certPath string) error {
+	f.AddedCerts = append(f.AddedCerts, certPath)
+	return f.AddCertErr
 }
 
 // keychainKey combines service and account into a single map key. The NUL
