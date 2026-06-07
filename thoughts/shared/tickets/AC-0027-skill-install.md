@@ -1,6 +1,6 @@
 # AC-0027: Skill install (WP-5.2)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
