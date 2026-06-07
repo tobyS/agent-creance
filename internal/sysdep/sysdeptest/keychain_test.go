@@ -44,3 +44,32 @@ func TestFakeKeychainScriptedErr(t *testing.T) {
 		t.Errorf("FindGenericPassword error = %v, want %v", err, sentinel)
 	}
 }
+
+func TestFakeKeychainFindsRegisteredCertificate(t *testing.T) {
+	kc := NewFakeKeychain().WithCertificate("mitmproxy", "-----BEGIN CERTIFICATE-----")
+	got, err := kc.FindCertificate("mitmproxy")
+	if err != nil {
+		t.Fatalf("FindCertificate: %v", err)
+	}
+	if string(got) != "-----BEGIN CERTIFICATE-----" {
+		t.Errorf("pem = %q, want the registered PEM", got)
+	}
+	if len(kc.CertLookups) != 1 || kc.CertLookups[0] != "mitmproxy" {
+		t.Errorf("CertLookups = %+v, want [mitmproxy]", kc.CertLookups)
+	}
+}
+
+func TestFakeKeychainAbsentCertificateIsNotFound(t *testing.T) {
+	kc := NewFakeKeychain()
+	if _, err := kc.FindCertificate("mitmproxy"); !errors.Is(err, sysdep.ErrItemNotFound) {
+		t.Errorf("FindCertificate(absent) error = %v, want ErrItemNotFound", err)
+	}
+}
+
+func TestFakeKeychainLockedWinsOverCertificate(t *testing.T) {
+	kc := NewFakeKeychain().WithCertificate("mitmproxy", "x")
+	kc.Locked = true
+	if _, err := kc.FindCertificate("mitmproxy"); !errors.Is(err, sysdep.ErrKeychainLocked) {
+		t.Errorf("FindCertificate(locked) error = %v, want ErrKeychainLocked", err)
+	}
+}

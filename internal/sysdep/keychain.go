@@ -26,6 +26,15 @@ type Keychain interface {
 	// yields ErrItemNotFound; a locked keychain yields ErrKeychainLocked; callers
 	// distinguish these (and genuine failures) via errors.Is.
 	FindGenericPassword(service, account string) ([]byte, error)
+
+	// FindCertificate returns the PEM bytes of the login-keychain certificate
+	// whose common name is commonName — the cheap "is the CA installed?" check the
+	// run command uses (setup imports the mitmproxy CA into the login keychain). A
+	// missing certificate yields ErrItemNotFound; a locked keychain yields
+	// ErrKeychainLocked; callers distinguish these (and genuine failures) via
+	// errors.Is. Presence proves setup imported the cert, not that the trust dialog
+	// was confirmed — the robust live verification stays setup/doctor's job.
+	FindCertificate(commonName string) ([]byte, error)
 }
 
 // Contract sentinels the Keychain seam models: these are the real outcomes a
@@ -65,9 +74,6 @@ type OSKeychain struct{}
 var _ Keychain = (*OSKeychain)(nil)
 
 func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), securityFindTimeout)
-	defer cancel()
-
 	// Service name alone is a unique lookup key (S2); pass -a only when an
 	// account is supplied. -w prints the secret to stdout (honors the contract).
 	args := []string{"find-generic-password", "-s", service}
@@ -75,6 +81,23 @@ func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
 		args = append(args, "-a", account)
 	}
 	args = append(args, "-w")
+	return runSecurity(args)
+}
+
+func (OSKeychain) FindCertificate(commonName string) ([]byte, error) {
+	// -c matches by common name; -p prints the matching certificate as PEM. We
+	// only need presence, so the PEM bytes are returned as-is for the caller.
+	return runSecurity([]string{"find-certificate", "-c", commonName, "-p"})
+}
+
+// runSecurity invokes /usr/bin/security with the given arguments under the
+// find-timeout, returning the trimmed stdout on success or a mapped Keychain
+// sentinel (ErrItemNotFound / ErrKeychainLocked / errUnexpectedSecurity) on
+// failure. Both lookup methods share it so the timeout and exit-code mapping
+// behave identically.
+func runSecurity(args []string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), securityFindTimeout)
+	defer cancel()
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "/usr/bin/security", args...)
@@ -82,8 +105,8 @@ func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
-		// `security -w` appends a single newline after the password; strip it so
-		// the returned bytes are the raw secret.
+		// `security` appends a trailing newline after the payload (the secret for
+		// -w, the PEM block for -p); strip it so the returned bytes are clean.
 		return bytes.TrimSuffix(stdout.Bytes(), []byte("\n")), nil
 	}
 

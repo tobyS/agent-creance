@@ -36,3 +36,20 @@ func TestOSKeychainFindGenericPasswordLive(t *testing.T) {
 	// Assert presence only — never print the secret (S2 secret hygiene).
 	require.NotEmpty(t, secret, "expected a non-empty credential payload")
 }
+
+// TestOSKeychainFindCertificateLive exercises the real find-certificate path the
+// run command's setup-precondition check uses. "Apple Root CA" is present in the
+// system roots on every macOS host, so the found case is reliable; a bogus common
+// name confirms the absent case maps to ErrItemNotFound (the exit code the cheap
+// CA check depends on).
+func TestOSKeychainFindCertificateLive(t *testing.T) {
+	pem, err := sysdep.OSKeychain{}.FindCertificate("Apple Root CA")
+	if errors.Is(err, sysdep.ErrKeychainLocked) {
+		t.Skip("login keychain is locked; unlock it to exercise this test")
+	}
+	require.NoError(t, err)
+	require.NotEmpty(t, pem, "expected a PEM certificate block")
+
+	_, err = sysdep.OSKeychain{}.FindCertificate("definitely-not-a-real-cert-cn-xyzzy")
+	require.ErrorIs(t, err, sysdep.ErrItemNotFound)
+}
