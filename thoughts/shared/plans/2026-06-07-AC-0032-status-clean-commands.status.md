@@ -9,7 +9,7 @@ started: 2026-06-07
 - [x] Phase 1 — Seams & state plumbing (FileSystem.ReadDir, Resolver.ProjectsRoot, LayoutForRoot)
 - [x] Phase 2 — proxy.lock canonical_path field
 - [x] Phase 3 — proxy.Manager.Clean
-- [ ] Phase 4 — internal/status package
+- [x] Phase 4 — internal/status package
 - [ ] Phase 5 — CLI commands (status, clean)
 - [ ] Phase 6 — Integration test
 - [ ] Final verification

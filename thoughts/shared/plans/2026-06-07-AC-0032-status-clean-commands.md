@@ -206,9 +206,9 @@ Mirror `internal/doctor`: side-effecting `Scanner`, pure golden-tested `Render`.
   empty report.
 
 **Success criteria**
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/status/...`
-- [ ] `make golden` produces only the intended new golden files (review diff)
+- [x] `go build ./...`
+- [x] `go test -race ./internal/status/...`
+- [x] `make golden` produces only the intended new golden files (review diff)
 
 ---
 

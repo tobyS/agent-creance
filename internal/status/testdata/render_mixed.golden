@@ -1,0 +1,4 @@
+PROJECT                 STATE    PORT  AGENTS
+/Users/toby/code/alpha  running  8080  1
+2222222222222222        orphan   8081  0
+/Users/toby/code/gamma  down     -     0
