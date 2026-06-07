@@ -16,6 +16,8 @@ package setup_test
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"testing"
@@ -52,6 +54,12 @@ func TestVerifyLive(t *testing.T) {
 
 	// Generating the CA (if absent) only writes ~/.mitmproxy — non-destructive.
 	if _, err := inst.EnsureCA(ctx); err != nil {
+		// A permission denial (e.g. running inside an egress cage / sandbox that
+		// blocks ~/.mitmproxy) means the host cannot support this live test, not a
+		// product bug — skip, consistent with the missing-tool / untrusted-CA skips.
+		if errors.Is(err, fs.ErrPermission) {
+			t.Skipf("cannot access the mitmproxy CA dir in this environment: %v", err)
+		}
 		t.Fatalf("EnsureCA: %v", err)
 	}
 
