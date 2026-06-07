@@ -107,8 +107,7 @@ func (i *Installer) generateCA(ctx context.Context, certPath string) error {
 	if err != nil {
 		return fmt.Errorf("setup: allocate port for CA generation: %w", err)
 	}
-	pid, err := i.proc.Spawn(ctx, mitmdumpBin,
-		"--listen-host", "127.0.0.1", "--listen-port", strconv.Itoa(port), "-q")
+	pid, err := i.proc.Spawn(ctx, mitmdumpBin, bareMitmArgs(port)...)
 	if err != nil {
 		return fmt.Errorf("setup: spawn mitmdump for CA generation: %w", err)
 	}
@@ -145,4 +144,105 @@ func (i *Installer) caCertPath() (string, error) {
 		return "", fmt.Errorf("setup: resolve home dir: %w", err)
 	}
 	return filepath.Join(home, caDirRel, caCertFile), nil
+}
+
+// bareMitmArgs builds the argv for a bare mitmdump (no enforcer addon, no policy)
+// bound to a loopback port — used both to materialise the CA and to spin up the
+// short-lived proxy the live verification routes a request through.
+func bareMitmArgs(port int) []string {
+	return []string{"--listen-host", "127.0.0.1", "--listen-port", strconv.Itoa(port), "-q"}
+}
+
+// verifyTargetURL is the public HTTPS host the post-install verification fetches
+// through the throwaway proxy (design.md "Post-install CA verification").
+const verifyTargetURL = "https://example.com"
+
+// Status is the outcome of the live CA verification.
+type Status int
+
+const (
+	// StatusTrusted means a request through the proxy validated against the system
+	// trust store — the mitmproxy CA is genuinely trusted.
+	StatusTrusted Status = iota
+	// StatusUntrusted means the chain did not validate: the CA is in the keychain
+	// but not actually trusted (the silent-cancel / missing-trust failure mode).
+	StatusUntrusted
+)
+
+// Result is the outcome of Verify.
+type Result struct {
+	Status Status
+}
+
+// OK reports whether the CA is trusted (verification passed).
+func (r Result) OK() bool { return r.Status == StatusTrusted }
+
+// Message returns the human-facing, actionable error for a failed verification,
+// or "" when trusted. The string is deterministic so it can be pinned in a golden.
+func (r Result) Message() string {
+	if r.Status == StatusUntrusted {
+		return msgUntrusted
+	}
+	return ""
+}
+
+const msgUntrusted = "CA verification failed: the mitmproxy CA is not trusted by the system " +
+	"trust store. The trust dialog may have been cancelled, or the certificate is not trusted " +
+	"for SSL. Re-run `agent-creance setup`."
+
+// Verify runs the live post-install verification: it spawns a short-lived bare
+// mitmdump on a random loopback port and fetches verifyTargetURL through it,
+// confirming the re-signed certificate validates against the system trust store
+// (no extra CA bundle). Like setupcheck.Verify and cred.Detect, the expected
+// outcomes (trusted / untrusted) are Result.Status; a non-nil error is reserved
+// for genuine failures (port allocation, spawn, or a probe that could not run /
+// errored at the environment level — distinct from a clean untrusted verdict).
+//
+// This is reusable by setup (AC-0028) and doctor (AC-0031); run uses the cheap
+// setupcheck.Verify instead and must not call this on every launch.
+func (i *Installer) Verify(ctx context.Context) (Result, error) {
+	port, err := i.ports.Allocate()
+	if err != nil {
+		return Result{}, fmt.Errorf("setup: allocate port for verification: %w", err)
+	}
+	pid, err := i.proc.Spawn(ctx, mitmdumpBin, bareMitmArgs(port)...)
+	if err != nil {
+		return Result{}, fmt.Errorf("setup: spawn mitmdump for verification: %w", err)
+	}
+	defer func() { _ = i.proc.Signal(pid, syscall.SIGTERM) }()
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	switch outcome, err := i.prober.ProbeViaProxy(ctx, proxyURL, verifyTargetURL); {
+	case err != nil:
+		return Result{}, fmt.Errorf("setup: verification probe: %w", err)
+	case outcome == sysdep.ProbeTrusted:
+		return Result{Status: StatusTrusted}, nil
+	case outcome == sysdep.ProbeUntrusted:
+		return Result{Status: StatusUntrusted}, nil
+	default: // sysdep.ProbeError — an environment failure, not a trust verdict
+		return Result{}, fmt.Errorf("setup: verification could not validate the connection " +
+			"through the proxy (curl reported an environment error, not a trust result)")
+	}
+}
+
+// Bootstrap is the end-to-end CA flow the `setup` command (AC-0028) drives:
+// generate the CA if needed, install it into the login keychain, then prove it is
+// trusted. A failed verification is returned as an error carrying the actionable
+// Message, so the caller exits non-zero with a clear pointer.
+func (i *Installer) Bootstrap(ctx context.Context) error {
+	certPath, err := i.EnsureCA(ctx)
+	if err != nil {
+		return err
+	}
+	if err := i.InstallCA(certPath); err != nil {
+		return err
+	}
+	res, err := i.Verify(ctx)
+	if err != nil {
+		return err
+	}
+	if !res.OK() {
+		return errors.New(res.Message())
+	}
+	return nil
 }
