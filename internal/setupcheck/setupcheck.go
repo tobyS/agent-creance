@@ -33,9 +33,10 @@ import (
 // setup installs into the login Keychain.
 const CACommonName = "mitmproxy"
 
-// skillFileRel is the skill location setup installs, relative to the user's home
-// directory.
-var skillFileRel = filepath.Join(".claude", "skills", "agent-creance", "SKILL.md")
+// SkillFileRel is the agent-creance skill location, relative to the user's home
+// directory. setup writes it (InstallSkill) and run's precondition check looks for
+// it; sharing one constant keeps the writer and the checker from drifting apart.
+var SkillFileRel = filepath.Join(".claude", "skills", "agent-creance", "SKILL.md")
 
 // Status is the outcome of the setup-precondition check.
 type Status int
@@ -112,7 +113,7 @@ func Verify(kc sysdep.Keychain, fsys sysdep.FileSystem, paths sysdep.PathResolve
 	if err != nil {
 		return Result{}, fmt.Errorf("setupcheck: resolve home dir: %w", err)
 	}
-	path := filepath.Join(home, skillFileRel)
+	path := filepath.Join(home, SkillFileRel)
 	switch _, err := fsys.Stat(path); {
 	case err == nil:
 		return Result{Status: StatusOK}, nil

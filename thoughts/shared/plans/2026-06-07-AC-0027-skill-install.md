@@ -61,7 +61,7 @@ AC-0027 is **library-only**: embed `SKILL.md` via `go:embed` and add an
 
 ---
 
-## Phase 1: Share the skill-path constant
+## Phase 1: Share the skill-path constant ✅
 
 Make the relative skill path a single source of truth so the writer (setup) and the
 checker (setupcheck) cannot diverge.
