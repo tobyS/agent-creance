@@ -13,6 +13,14 @@ Plan: `2026-06-07-AC-0026-ca-bootstrap-verification.md`
   - Verify (spawn bare proxy, probe via curl seam, classify), Bootstrap, Status/Result/
     Message; golden `testdata/verify_untrusted.golden`. Unit tests with fakes.
   - `go build`, `go test -race ./internal/setup/...`, `make lint` green.
-- [ ] **Phase 4 — integration tests (S1-gated)**
+- [x] **Phase 4 — integration tests (S1-gated)** (commit: test AC-0026 Phase 4)
+  - `setup_integration_test.go`: `TestVerifyLive` (non-destructive: generate-if-absent
+    + verify, skip if untrusted) and `TestBootstrapLive` (opt-in via
+    `CREANCE_LIVE_CA_INSTALL=1`, does the real `add-trusted-cert`).
+  - `go build -tags=integration ./...` + `go vet -tags=integration` green.
+  - **NOTE:** could not be *executed* in this dev harness — `~/.mitmproxy` returns
+    EPERM here even to a plain `ls`/`stat` (an environment restriction, not a code
+    issue; the code correctly surfaces the genuine stat error). Run it on an
+    unrestricted machine with `make test-integration`.
 - [ ] **Phase 5 — final verification + ticket close**
 </content>
