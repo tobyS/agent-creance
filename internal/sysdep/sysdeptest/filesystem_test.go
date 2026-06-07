@@ -110,3 +110,76 @@ func TestFakeFileSystemRenameMissingIsNotExist(t *testing.T) {
 		t.Errorf("Rename(absent) error = %v, want fs.ErrNotExist", err)
 	}
 }
+
+func TestFakeFileSystemReadDirListsImmediateChildrenSorted(t *testing.T) {
+	f := NewFakeFileSystem()
+	// Two project sub-dirs and a file directly under /projects; a grandchild file
+	// that must NOT surface as a /projects entry.
+	if err := f.MkdirAll("/projects/bbbb", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.MkdirAll("/projects/aaaa", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.WriteFile("/projects/marker", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.WriteFile("/projects/aaaa/proxy.lock", []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := f.ReadDir("/projects")
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	want := []string{"aaaa", "bbbb", "marker"} // sorted, no grandchild
+	if len(got) != len(want) {
+		t.Fatalf("ReadDir names = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ReadDir names = %v, want %v", got, want)
+		}
+	}
+	// Dir vs file is reflected on the entries.
+	for _, e := range entries {
+		wantDir := e.Name() != "marker"
+		if e.IsDir() != wantDir {
+			t.Errorf("entry %q IsDir = %v, want %v", e.Name(), e.IsDir(), wantDir)
+		}
+	}
+}
+
+func TestFakeFileSystemReadDirMissingIsNotExist(t *testing.T) {
+	f := NewFakeFileSystem()
+	if _, err := f.ReadDir("/absent"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadDir(absent) error = %v, want fs.ErrNotExist", err)
+	}
+}
+
+func TestFakeFileSystemReadDirEmptyDirIsNoError(t *testing.T) {
+	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/projects", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := f.ReadDir("/projects")
+	if err != nil {
+		t.Fatalf("ReadDir(empty dir): %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("ReadDir(empty dir) = %v, want no entries", entries)
+	}
+}
+
+func TestFakeFileSystemReadDirErrIsScripted(t *testing.T) {
+	f := NewFakeFileSystem()
+	sentinel := errors.New("io error")
+	f.ReadDirErrs["/projects"] = sentinel
+	if _, err := f.ReadDir("/projects"); !errors.Is(err, sentinel) {
+		t.Errorf("ReadDir error = %v, want %v", err, sentinel)
+	}
+}

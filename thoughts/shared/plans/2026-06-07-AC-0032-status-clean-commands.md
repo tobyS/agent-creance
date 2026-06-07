@@ -99,8 +99,8 @@ Additive, no behaviour change to existing commands.
   from Root).
 
 **Success criteria**
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/sysdep/... ./internal/state/...`
+- [x] `go build ./...`
+- [x] `go test -race ./internal/sysdep/... ./internal/state/...`
 
 ---
 

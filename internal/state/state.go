@@ -98,6 +98,16 @@ func (r *Resolver) Resolve(dir string) (Layout, error) {
 	return Layout{Canonical: canonical, Hash: hash, Root: root}, nil
 }
 
+// LayoutForRoot builds a Layout from an existing project state-dir path, taking
+// the hash from the directory's base name. It is for enumeration paths (e.g.
+// `status` iterating projects/<hash>) where only Root-derived paths (ProxyLock,
+// SessionOverlay) are needed and the canonical project directory is not known —
+// the hash is one-way, so Canonical is left empty. Do not use it where Canonical
+// is required; use Resolve for that.
+func LayoutForRoot(root string) Layout {
+	return Layout{Hash: filepath.Base(root), Root: root}
+}
+
 // hashPath derives the project identity from a canonical path: the first 8 bytes of
 // its SHA-256, rendered as 16 lowercase hex characters.
 func hashPath(canonical string) string {
@@ -112,6 +122,18 @@ func (r *Resolver) projectRoot(hash string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(cache, appCacheSubdir, projectsSubdir, hash), nil
+}
+
+// ProjectsRoot returns <cache>/agent-creance/projects — the parent of every
+// project's per-hash state dir. `status` (AC-0032) lists this directory to find
+// all projects with proxy state; it is a path-only accessor (no I/O), so the
+// caller enumerates it through a sysdep.FileSystem seam.
+func (r *Resolver) ProjectsRoot() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, projectsSubdir), nil
 }
 
 // CacheDir returns <cache>/agent-creance — the base of all agent-creance state

@@ -323,6 +323,64 @@ func TestAccessorsAreRootedAtProjectsHash(t *testing.T) {
 	}
 }
 
+func TestProjectsRootHonoursXDGThenFallsBackToHome(t *testing.T) {
+	cases := []struct {
+		name string
+		xdg  string
+		home string
+		want string
+	}{
+		{"xdg set", "/xdg/cache", "/home/u", "/xdg/cache/agent-creance/projects"},
+		{"xdg empty -> home/.cache", "", "/home/u", "/home/u/.cache/agent-creance/projects"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := sysdeptest.NewFakePathResolver()
+			fake.HomeDir = tc.home
+			if tc.xdg != "" {
+				fake.Env["XDG_CACHE_HOME"] = tc.xdg
+			}
+
+			got, err := New(fake).ProjectsRoot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("ProjectsRoot = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectsRootErrorsWhenCacheRootUnknown(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeErr = errors.New("boom") // and XDG_CACHE_HOME unset
+	if _, err := New(fake).ProjectsRoot(); err == nil {
+		t.Error("want error when cache root cannot be determined, got nil")
+	}
+}
+
+func TestLayoutForRootTakesHashFromBaseAndDerivesPaths(t *testing.T) {
+	root := "/xdg/cache/agent-creance/projects/abcd1234ef567890"
+	l := LayoutForRoot(root)
+
+	if l.Root != root {
+		t.Errorf("Root = %q, want %q", l.Root, root)
+	}
+	if l.Hash != "abcd1234ef567890" {
+		t.Errorf("Hash = %q, want the dir base name", l.Hash)
+	}
+	if l.Canonical != "" {
+		t.Errorf("Canonical = %q, want empty (not recoverable from the hash)", l.Canonical)
+	}
+	if want := filepath.Join(root, "proxy.lock"); l.ProxyLock() != want {
+		t.Errorf("ProxyLock = %q, want %q", l.ProxyLock(), want)
+	}
+	if want := filepath.Join(root, "session-overlay.yaml"); l.SessionOverlay() != want {
+		t.Errorf("SessionOverlay = %q, want %q", l.SessionOverlay(), want)
+	}
+}
+
 func TestResolveErrors(t *testing.T) {
 	sentinel := errors.New("boom")
 

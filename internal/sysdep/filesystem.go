@@ -28,6 +28,11 @@ type FileSystem interface {
 	// Stat returns file info for name, mirroring os.Stat. A non-existent path
 	// yields an error satisfying errors.Is(err, fs.ErrNotExist).
 	Stat(name string) (fs.FileInfo, error)
+	// ReadDir returns name's directory entries sorted by filename, mirroring
+	// os.ReadDir. A non-existent directory yields an error satisfying
+	// errors.Is(err, fs.ErrNotExist), so callers (e.g. `status` enumerating the
+	// projects/ root before any project exists) can treat "absent" as empty.
+	ReadDir(name string) ([]fs.DirEntry, error)
 	// MkdirAll creates name and any missing parents with perm, mirroring
 	// os.MkdirAll. It is a no-op (nil) if the directory already exists.
 	MkdirAll(name string, perm fs.FileMode) error
@@ -57,6 +62,10 @@ func (OSFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error 
 
 func (OSFileSystem) Stat(name string) (fs.FileInfo, error) {
 	return os.Stat(name)
+}
+
+func (OSFileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
+	return os.ReadDir(name)
 }
 
 func (OSFileSystem) MkdirAll(name string, perm fs.FileMode) error {
