@@ -167,11 +167,11 @@ CA only via the system keychain, so they will fail TLS inside the cage. Re-run
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `make lint` clean (`go vet` + golangci-lint).
+- [x] `go build ./...` compiles.
+- [x] `make lint` clean (`go vet` + golangci-lint).
 
 #### Manual
-- [ ] `agent-creance setup --help` lists `--no-skill` and `--no-ca-install`.
+- [x] `agent-creance setup --help` lists `--no-skill` and `--no-ca-install`.
 
 ---
 

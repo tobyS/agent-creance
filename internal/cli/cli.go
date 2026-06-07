@@ -44,6 +44,11 @@ type App struct {
 	Flock          sysdep.Flock
 	ProcessManager sysdep.ProcessManager
 	PortAllocator  sysdep.PortAllocator
+	// TLSProber and Sleeper are the two extra seams setup.Installer needs (beyond
+	// those above) for the live CA verification probe and the CA-generation poll;
+	// the setup command (AC-0028) drives them. Tests wire the sysdeptest fakes.
+	TLSProber sysdep.TLSProber
+	Sleeper   sysdep.Sleeper
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -69,6 +74,7 @@ func newRootCmd(app *App) *cobra.Command {
 	root.AddCommand(newPolicyCmd(app))
 	root.AddCommand(newLogsCmd(app))
 	root.AddCommand(newRunCmd(app))
+	root.AddCommand(newSetupCmd(app))
 	return root
 }
 
@@ -91,6 +97,8 @@ func Main() int {
 		Flock:          sysdep.OSFlock{},
 		ProcessManager: sysdep.OSProcessManager{},
 		PortAllocator:  sysdep.OSPortAllocator{},
+		TLSProber:      sysdep.OSTLSProber{},
+		Sleeper:        sysdep.OSSleeper{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.
