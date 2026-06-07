@@ -307,6 +307,12 @@ func (m *Manager) CleanOrphan(layout state.Layout) (CleanResult, error) {
 // (keeping the lock file as the flock target, like Detach/CleanOrphan). It is safe
 // to run repeatedly and when nothing is running (Cleaned=false, no error).
 func (m *Manager) Clean(layout state.Layout, force bool) (CleanResult, error) {
+	// Ensure the state dir exists so acquiring the flock (which opens/creates the
+	// lock file) does not fail when the project has never run — clean is a no-op in
+	// that case, not an error.
+	if err := m.fs.MkdirAll(layout.Root, dirPerm); err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: create state dir %q: %w", layout.Root, err)
+	}
 	lf, err := m.lock.Acquire(layout.ProxyLock())
 	if err != nil {
 		return CleanResult{}, fmt.Errorf("proxy: acquire lock: %w", err)

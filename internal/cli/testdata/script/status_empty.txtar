@@ -1,0 +1,9 @@
+# `agent-creance status` with no project state at all: nothing has ever run, so
+# the projects/ root does not exist and status reports no cages (and exits 0).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+agent-creance status
+stdout 'No active cages\.'
+! stdout 'PROJECT'

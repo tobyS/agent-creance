@@ -33,8 +33,11 @@ func TestMain(m *testing.M) {
 // isolated scenario with its own temp working directory.
 func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
-		Dir:  "testdata/script",
-		Cmds: map[string]func(*testscript.TestScript, bool, []string){"seedaudit": seedAudit},
+		Dir: "testdata/script",
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			"seedaudit": seedAudit,
+			"seedlock":  seedLock,
+		},
 		Setup: func(e *testscript.Env) error {
 			// testscript copies the registered `agent-creance` command into a
 			// bindir it prepends to PATH (see go-internal/testscript/exe.go). We
@@ -91,5 +94,39 @@ func seedAudit(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	if err := os.WriteFile(layout.EgressJSONL(), []byte(ts.ReadFile(args[1])), 0o600); err != nil {
 		ts.Fatalf("seedaudit: write current: %v", err)
+	}
+}
+
+// seedLock writes a fixture proxy.lock into the out-of-tree state dir the CLI will
+// resolve for the script's working directory, so a scenario can exercise
+// `status`/`clean` over real lock content. Like seedaudit it reproduces the CLI's
+// own path resolution (the path is hashed from the realpath of $WORK and cannot be
+// pre-seeded by a static path in the .txtar). Usage: seedlock <srcfile> (a JSON
+// proxy.lock in the script dir).
+func seedLock(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 {
+		ts.Fatalf("usage: seedlock <srcfile>")
+	}
+	work := ts.Getenv("WORK")
+	canonical, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		ts.Fatalf("seedlock: evalsymlinks %s: %v", work, err)
+	}
+	paths := sysdeptest.NewFakePathResolver()
+	paths.Cwd = work
+	paths.HomeDir = ts.Getenv("HOME")
+	if xdg := ts.Getenv("XDG_CACHE_HOME"); xdg != "" {
+		paths.Env["XDG_CACHE_HOME"] = xdg
+	}
+	paths.Symlinks = map[string]string{work: canonical}
+	layout, err := state.New(paths).Resolve(".")
+	if err != nil {
+		ts.Fatalf("seedlock: resolve layout: %v", err)
+	}
+	if err := os.MkdirAll(layout.Root, 0o755); err != nil {
+		ts.Fatalf("seedlock: mkdir %s: %v", layout.Root, err)
+	}
+	if err := os.WriteFile(layout.ProxyLock(), []byte(ts.ReadFile(args[0])), 0o600); err != nil {
+		ts.Fatalf("seedlock: write lock: %v", err)
 	}
 }

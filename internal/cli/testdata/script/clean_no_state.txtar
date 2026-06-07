@@ -1,0 +1,9 @@
+# `agent-creance clean` is safe when nothing is running and no lock exists at all:
+# it creates the lock (the flock target), finds no proxy, and reports a no-op. Exit
+# 0. This is the "safe when nothing is running" acceptance criterion.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+agent-creance clean
+stdout 'nothing to clean'

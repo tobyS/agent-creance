@@ -1,0 +1,26 @@
+# `agent-creance status` lists a project whose proxy.lock records a (now dead)
+# proxy. The PID is far above the macOS max, so it is reliably not alive: the proxy
+# reads as down and status lists the project in the table. Hermetic — no real proxy
+# is started.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+seedlock proxy.lock.json
+
+agent-creance status
+stdout 'PROJECT'
+stdout 'STATE'
+stdout 'AGENTS'
+stdout 'down'
+# the recorded project path is shown, not the opaque state-dir hash
+stdout '/code/example'
+
+-- proxy.lock.json --
+{
+  "proxy_pid": 999999,
+  "port": 8080,
+  "policy_hash": "h",
+  "agents": [],
+  "canonical_path": "/code/example"
+}

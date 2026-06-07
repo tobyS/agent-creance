@@ -10,7 +10,7 @@ started: 2026-06-07
 - [x] Phase 2 — proxy.lock canonical_path field
 - [x] Phase 3 — proxy.Manager.Clean
 - [x] Phase 4 — internal/status package
-- [ ] Phase 5 — CLI commands (status, clean)
+- [x] Phase 5 — CLI commands (status, clean)
 - [ ] Phase 6 — Integration test
 - [ ] Final verification
 

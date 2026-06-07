@@ -1,0 +1,27 @@
+# `agent-creance clean` is idempotent and orphan-safe. With a proxy.lock recording
+# a dead proxy (PID far above the macOS max) and no live agents, clean clears the
+# state without signalling anything; a second clean and a clean with no lock at all
+# are both no-ops. Hermetic — no real proxy is involved.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+seedlock proxy.lock.json
+
+# First clean: the recorded proxy is not alive, so there is nothing to stop, but
+# the (cleared) state is purged. Exit 0.
+agent-creance clean
+stdout 'nothing to clean'
+
+# Idempotent: running again is still a clean no-op.
+agent-creance clean
+stdout 'nothing to clean'
+
+-- proxy.lock.json --
+{
+  "proxy_pid": 999999,
+  "port": 8080,
+  "policy_hash": "h",
+  "agents": [],
+  "canonical_path": "/code/example"
+}

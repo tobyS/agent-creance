@@ -250,9 +250,9 @@ Mirror `internal/doctor`: side-effecting `Scanner`, pure golden-tested `Render`.
     `clean` is a no-op; `clean` with no lock at all succeeds.
 
 **Success criteria**
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/cli/...`
-- [ ] `make lint`
+- [x] `go build ./...`
+- [x] `go test -race ./internal/cli/...`
+- [x] `make lint`
 
 ---
 
