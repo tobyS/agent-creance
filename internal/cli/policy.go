@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -154,23 +152,14 @@ func resolvePolicy(ctx context.Context, app *App, dir string) (policy.Compiled, 
 	return compiled, nil
 }
 
-// requestFromURL parses an explain argument into a matcher request. A bare
-// host/path with no scheme still parses correctly once https:// is prepended; an
-// empty path normalises to "/".
+// requestFromURL parses an explain argument into a matcher request. It shares URL
+// normalisation with the allow/deny commands via splitURL, but unlike a rule a
+// concrete request needs a path, so an empty path normalises to "/".
 func requestFromURL(raw, method string) (policy.Request, error) {
-	s := raw
-	if !strings.Contains(s, "://") {
-		s = "https://" + s
-	}
-	u, err := url.Parse(s)
+	host, path, err := splitURL(raw)
 	if err != nil {
-		return policy.Request{}, fmt.Errorf("parse URL %q: %w", raw, err)
+		return policy.Request{}, err
 	}
-	host := u.Hostname()
-	if host == "" {
-		return policy.Request{}, fmt.Errorf("URL %q has no host", raw)
-	}
-	path := u.Path
 	if path == "" {
 		path = "/"
 	}

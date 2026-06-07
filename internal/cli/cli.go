@@ -76,6 +76,8 @@ func newRootCmd(app *App) *cobra.Command {
 	root.AddCommand(newLogsCmd(app))
 	root.AddCommand(newRunCmd(app))
 	root.AddCommand(newSetupCmd(app))
+	root.AddCommand(newAllowCmd(app))
+	root.AddCommand(newDenyCmd(app))
 	return root
 }
 

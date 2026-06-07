@@ -189,12 +189,14 @@ Against `sysdeptest` fakes (model on `init_test.go`):
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/cli/...` green
-- [ ] `make lint` clean
+- [x] `go build ./...`
+- [x] `go test -race ./internal/cli/...` green
+- [x] `make lint` clean
 
 #### Manual
-- [ ] `make run ARGS="allow example.com"` in a scratch dir appends the rule and reports recompile
+- [x] Smoke test in a scratch dir: `allow api.github.com/repos/foo/` appends the rule
+      (comment preserved) and reports recompile; `deny --reason` + `policy explain`
+      shows hard-deny; `allow --once` writes the overlay, not the project config
 
 ---
 
