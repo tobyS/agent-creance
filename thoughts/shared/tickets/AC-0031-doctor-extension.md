@@ -1,6 +1,6 @@
 # AC-0031: `doctor` extension (WP-6.2)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -24,10 +24,10 @@
 
 ## Acceptance Criteria
 
-- [ ] Report includes: CA live-verify (reusing AC-0026), orphan-proxy scan, exposed-host-service scan, `flock`-unreliable filesystem warning (iCloud/SMB), port-changed-under-attached-agents condition, and the existing version report (every mismatch incl. patch).
-- [ ] `--fix` cleans what it safely can (e.g. orphan proxies) and reports what it changed.
-- [ ] Exit code reflects whether actionable problems remain.
-- [ ] Existing version-report behavior and its golden tests remain green.
+- [x] Report includes: CA live-verify (reusing AC-0026), orphan-proxy scan, exposed-host-service scan, `flock`-unreliable filesystem warning (iCloud/SMB), port-changed-under-attached-agents condition (surfaced as the persistent "stranded agents" state), and the existing version report (every mismatch incl. patch).
+- [x] `--fix` cleans what it safely can (orphan proxies) and reports what it changed.
+- [x] Exit code reflects whether actionable problems remain (untrusted CA, un-fixed orphan, missing prereq → non-zero; warnings → 0).
+- [x] Existing version-report behavior and its golden tests remain green (`internal/prereq` untouched).
 
 ## Verification & Test Steps
 
@@ -62,3 +62,11 @@ Phase 6. Reuses AC-0026 + AC-0020.
 
 ### 2026-06-04
 Created from the v0.1 technical specification. Extends the existing doctor skeleton — keep current version-report tests green.
+
+### 2026-06-07
+Implemented (research + plan in thoughts/). Key decisions from the planning checkpoint:
+- **Orphan scan scoped to the current project only** — no cross-project enumeration (`ReadDir`/`ProjectsRoot`) built; left to AC-0032.
+- **CA not generated → "run setup", never generated** — doctor stays read-only (checks `CAGenerated` before the side-effecting `Verify`).
+- **Port-change condition** surfaced as the persistent, detectable "stranded agents" state (live agents but proxy not on the recorded port); AC-0020 persists no old port.
+- **Exit non-zero** only on untrusted CA, un-fixed orphan, or missing prereq.
+- New seams: `sysdep.FilesystemTyper` (statfs) and `sysdep.ListenerScanner` (lsof). New `internal/doctor` package (Checker/Report/Render). `--fix` reuses the AC-0020 teardown via `proxy.Manager.CleanOrphan`.

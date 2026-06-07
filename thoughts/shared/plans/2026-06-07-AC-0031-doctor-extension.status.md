@@ -73,7 +73,22 @@ Plan: `thoughts/shared/plans/2026-06-07-AC-0031-doctor-extension.md`
 - ✅ `go test ./...` (race) all green; `gofmt -s` + `golangci-lint` clean
 
 ### Commit
-- (pending)
+- `534a27a` feat(AC-0031): wire full doctor command with --fix (WP-6.2, Phase 4)
 
 ## Phase 5: Integration test — --fix cleans a real orphan + real seam impls
-- **Status**: ⬚ Not started
+- **Status**: ✅ Complete
+- **Completed**: 2026-06-07
+
+### Steps Performed
+1. `internal/cli/doctor_fix_integration_test.go` — spawns a real mitmdump orphan (real port + a dead agent PID in a real proxy.lock), drives the real `runDoctor(ctx, app, true)` with OS seams, asserts the orphan stops listening, the lock is cleared, the overlay purged, and "cleaned orphan proxy" is reported.
+2. `internal/sysdep/listener_integration_test.go` — real `OSListenerScanner` finds a loopback listener (not exposed) and flags a 0.0.0.0 bind as exposed.
+3. `internal/sysdep/fstype_integration_test.go` — real `OSFilesystemTyper` returns a non-empty local fstype for a temp dir; a missing path is fs.ErrNotExist.
+
+### Issues Encountered
+- Liveness via `kill(pid,0)` is unreliable in this harness: the test process is the proxy's parent and never reaps it, so a SIGTERM'd proxy lingers as a zombie that reads "alive". → Switched the assertion to the closed listen socket (`!PortAllocator.Probe(port)`), the true liveness signal; documented why. In production the short-lived spawner exits and launchd reaps the proxy.
+
+### Verification
+- ✅ new integration tests pass (`go test -tags=integration` for the three); `go test ./...` unit suite green; `golangci-lint --build-tags=integration` clean
+
+### Commit
+- (pending)

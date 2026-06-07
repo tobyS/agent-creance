@@ -431,12 +431,12 @@ Prove the end-to-end `--fix` orphan cleanup and the two new real seam impls agai
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test-integration` passes (orphan cleaned end-to-end; real listener enumerated; real fs-type read)
-- [ ] `make test` (unit) and `make lint` still clean
+- [x] new integration tests pass (orphan cleaned end-to-end via `doctor --fix`; real loopback + wildcard listener enumerated; real fs-type read incl. fs.ErrNotExist on a missing path)
+- [x] `make test` (unit) and `make lint` still clean
 
 #### Manual Verification:
-- [ ] On a Mac with a service bound to `0.0.0.0`, `doctor` lists it under Exposed host services.
-- [ ] With the agent-creance cache dir relocated onto an SMB/iCloud path, `doctor` emits the filesystem-reliability warning.
+- [x] On a Mac with services bound to `0.0.0.0`, `doctor` lists them under Exposed host services (observed live: rapportd/ControlCenter/etc. in the integration run output).
+- [ ] With the agent-creance cache dir relocated onto an SMB/iCloud path, `doctor` emits the filesystem-reliability warning (not exercised live; covered by classifyFS unit tests).
 
 ---
 
