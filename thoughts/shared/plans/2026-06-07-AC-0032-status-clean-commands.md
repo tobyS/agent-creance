@@ -168,8 +168,8 @@ Additive, no behaviour change to existing commands.
 - overlay-only purge when proxy already dead but overlay present.
 
 **Success criteria**
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/proxy/...`
+- [x] `go build ./...`
+- [x] `go test -race ./internal/proxy/...`
 
 ---
 

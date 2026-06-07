@@ -249,12 +249,18 @@ func (m *Manager) Inspect(layout state.Layout) (Diagnosis, error) {
 	}, nil
 }
 
-// CleanResult reports what CleanOrphan changed.
+// CleanResult reports what CleanOrphan / Clean changed.
 type CleanResult struct {
-	// Cleaned is true iff an orphan was found and torn down.
+	// Cleaned is true iff a live proxy was found and torn down.
 	Cleaned bool
-	// ProxyPID is the orphan proxy that was signalled (0 when nothing was cleaned).
+	// ProxyPID is the proxy that was signalled (0 when nothing was cleaned).
 	ProxyPID int
+	// Refused is true when Clean declined because live agents are attached and
+	// force was not set (warn-never-kill). LiveAgents names them. Nothing was
+	// mutated. CleanOrphan never sets this (it is always a safe no-op instead).
+	Refused bool
+	// LiveAgents are the still-attached agent PIDs when Refused is true.
+	LiveAgents []int
 }
 
 // CleanOrphan is the doctor --fix primitive (AC-0031). It re-checks under the flock
@@ -290,6 +296,47 @@ func (m *Manager) CleanOrphan(layout state.Layout) (CleanResult, error) {
 		return CleanResult{}, err
 	}
 	return CleanResult{Cleaned: true, ProxyPID: cur.ProxyPID}, nil
+}
+
+// Clean is the `agent-creance clean` primitive (AC-0032): an unconditional,
+// idempotent teardown of this project's proxy. Under the flock it prunes dead
+// agents and, unless force is set, REFUSES when live agents remain
+// (warn-never-kill) — returning Refused with their PIDs and mutating nothing, so
+// an operator does not strand running cages by accident. Otherwise it SIGTERMs the
+// recorded proxy if alive, purges the session overlay, and clears the lock state
+// (keeping the lock file as the flock target, like Detach/CleanOrphan). It is safe
+// to run repeatedly and when nothing is running (Cleaned=false, no error).
+func (m *Manager) Clean(layout state.Layout, force bool) (CleanResult, error) {
+	lf, err := m.lock.Acquire(layout.ProxyLock())
+	if err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: acquire lock: %w", err)
+	}
+	defer func() { _ = lf.Release() }()
+
+	cur, err := readLock(lf)
+	if err != nil {
+		return CleanResult{}, err
+	}
+	live := m.pruneDead(cur.Agents)
+	if len(live) > 0 && !force {
+		return CleanResult{Refused: true, LiveAgents: live}, nil
+	}
+
+	var res CleanResult
+	if cur.ProxyPID != 0 && m.proc.Alive(cur.ProxyPID) {
+		if err := m.proc.Signal(cur.ProxyPID, syscall.SIGTERM); err != nil {
+			return CleanResult{}, fmt.Errorf("proxy: stop mitmproxy: %w", err)
+		}
+		res.Cleaned = true
+		res.ProxyPID = cur.ProxyPID
+	}
+	if _, err := sysdep.RemoveIfPresent(m.fs, layout.SessionOverlay()); err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: purge session overlay: %w", err)
+	}
+	if err := writeLock(lf, lockState{}); err != nil {
+		return CleanResult{}, err
+	}
+	return res, nil
 }
 
 // pruneDead returns the subset of pids that are still alive, preserving order.
