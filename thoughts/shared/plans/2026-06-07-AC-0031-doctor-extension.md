@@ -237,9 +237,9 @@ func (m *Manager) CleanOrphan(layout state.Layout) (CleanResult, error) {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes — new table/unit tests in `internal/proxy` for `Inspect` (orphan, stranded, healthy-with-agents, no-lock, corrupt-lock) and `CleanOrphan` (cleans orphan; no-op when live agents present; no-op when proxy down) using `FakeFlock` seeded with lock JSON + `FakeProcessManager.AlivePIDs` + `FakePortAllocator.Listening`
-- [ ] `internal/state` test for `CacheDir()`
-- [ ] `make lint` clean
+- [x] `make test` passes — new table/unit tests in `internal/proxy` for `Inspect` (orphan, stranded, healthy-with-agents, no-lock) and `CleanOrphan` (cleans orphan; no-op when live agents present; no-op when proxy down) using `FakeFlock` seeded with lock JSON + `FakeProcessManager.AlivePIDs` + `FakePortAllocator.Listening`
+- [x] `internal/state` test for `CacheDir()`
+- [x] `make lint` clean
 
 #### Manual Verification:
 - [ ] Covered by the Phase 5 integration test (real proxy + lock).

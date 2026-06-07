@@ -114,6 +114,18 @@ func (r *Resolver) projectRoot(hash string) (string, error) {
 	return filepath.Join(cache, appCacheSubdir, projectsSubdir, hash), nil
 }
 
+// CacheDir returns <cache>/agent-creance — the base of all agent-creance state
+// (the parent of projects/, registries/, generators/, enforcer/). doctor (AC-0031)
+// probes its filesystem type to warn when the out-of-tree state — and therefore the
+// proxy.lock advisory locks — land on iCloud/SMB where flock is unreliable.
+func (r *Resolver) CacheDir() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir), nil
+}
+
 // RegistriesRoot returns <cache>/agent-creance/registries — the cross-project home
 // of per-package registry metadata caches (npm, Packagist). Unlike the project
 // state dir, this is a sibling of projects/<hash>/ and is intentionally

@@ -181,6 +181,107 @@ func (m *Manager) Detach(layout state.Layout, selfPID int) error {
 	return writeLock(lf, lockState{ProxyPID: cur.ProxyPID, Port: cur.Port, PolicyHash: cur.PolicyHash, Agents: agents})
 }
 
+// Diagnosis is doctor's read-only view of a project's proxy lifecycle (AC-0031),
+// computed from proxy.lock plus live PID/port probes. It mutates nothing.
+type Diagnosis struct {
+	// LockPresent is false when there is no recorded proxy state (missing, empty, or
+	// corrupt lock) — nothing to diagnose.
+	LockPresent bool
+	// ProxyPID and Port are the recorded proxy identity (may be stale).
+	ProxyPID int
+	Port     int
+	// ProxyUp is the lifecycle "is the proxy genuinely alive" composite: PID liveness
+	// AND a port probe (a bare PID may have been recycled). Mirrors Attach.
+	ProxyUp bool
+	// LiveAgents are the attached agent PIDs still alive (dead ones pruned).
+	LiveAgents []int
+	// Orphan is true when the proxy is up but no attached agent is alive — a stranded
+	// listening mitmproxy that doctor --fix can clean.
+	Orphan bool
+	// Stranded is true when live agents are attached but the proxy is not reachable on
+	// the recorded port. This is the persistent, detectable manifestation of the
+	// "port changed under attached agents" condition (AC-0020 surfaces it only
+	// transiently and persists no old port): the agents' next request hits a dead
+	// port and gets connection-refused (design.md "Multi-agent lifecycle"). doctor
+	// warns and never kills them (warn-never-kill).
+	Stranded bool
+}
+
+// Inspect reads the project's proxy.lock under the flock and reports its health
+// without mutating anything. A missing/empty/corrupt lock yields
+// Diagnosis{LockPresent: false}. It uses the same liveness checks as Attach so the
+// orphan/stranded verdicts match the lifecycle's own notion of "up".
+func (m *Manager) Inspect(layout state.Layout) (Diagnosis, error) {
+	lf, err := m.lock.Acquire(layout.ProxyLock())
+	if err != nil {
+		return Diagnosis{}, fmt.Errorf("proxy: acquire lock: %w", err)
+	}
+	defer func() { _ = lf.Release() }()
+
+	cur, err := readLock(lf)
+	if err != nil {
+		return Diagnosis{}, err
+	}
+	if cur.ProxyPID == 0 && len(cur.Agents) == 0 {
+		return Diagnosis{LockPresent: false}, nil
+	}
+
+	live := m.pruneDead(cur.Agents)
+	up := cur.ProxyPID != 0 && m.proc.Alive(cur.ProxyPID) && m.ports.Probe(cur.Port)
+	return Diagnosis{
+		LockPresent: true,
+		ProxyPID:    cur.ProxyPID,
+		Port:        cur.Port,
+		ProxyUp:     up,
+		LiveAgents:  live,
+		Orphan:      up && len(live) == 0,
+		Stranded:    !up && len(live) > 0,
+	}, nil
+}
+
+// CleanResult reports what CleanOrphan changed.
+type CleanResult struct {
+	// Cleaned is true iff an orphan was found and torn down.
+	Cleaned bool
+	// ProxyPID is the orphan proxy that was signalled (0 when nothing was cleaned).
+	ProxyPID int
+}
+
+// CleanOrphan is the doctor --fix primitive (AC-0031). It re-checks under the flock
+// and, ONLY if the project's proxy is a true orphan (up, zero live agents), tears it
+// down exactly like last-out Detach: SIGTERM the proxy by PID, purge the session
+// overlay, and clear the lock's proxy state (keeping the lock file as the flock
+// target). It never touches a proxy with live attached agents (warn-never-kill), so
+// a non-orphan is a safe no-op returning Cleaned=false.
+func (m *Manager) CleanOrphan(layout state.Layout) (CleanResult, error) {
+	lf, err := m.lock.Acquire(layout.ProxyLock())
+	if err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: acquire lock: %w", err)
+	}
+	defer func() { _ = lf.Release() }()
+
+	cur, err := readLock(lf)
+	if err != nil {
+		return CleanResult{}, err
+	}
+	live := m.pruneDead(cur.Agents)
+	up := cur.ProxyPID != 0 && m.proc.Alive(cur.ProxyPID) && m.ports.Probe(cur.Port)
+	if !up || len(live) > 0 {
+		return CleanResult{}, nil // not an orphan — safe no-op
+	}
+
+	if err := m.proc.Signal(cur.ProxyPID, syscall.SIGTERM); err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: stop orphan mitmproxy: %w", err)
+	}
+	if _, err := sysdep.RemoveIfPresent(m.fs, layout.SessionOverlay()); err != nil {
+		return CleanResult{}, fmt.Errorf("proxy: purge session overlay: %w", err)
+	}
+	if err := writeLock(lf, lockState{PolicyHash: cur.PolicyHash}); err != nil {
+		return CleanResult{}, err
+	}
+	return CleanResult{Cleaned: true, ProxyPID: cur.ProxyPID}, nil
+}
+
 // pruneDead returns the subset of pids that are still alive, preserving order.
 func (m *Manager) pruneDead(pids []int) []int {
 	var alive []int
