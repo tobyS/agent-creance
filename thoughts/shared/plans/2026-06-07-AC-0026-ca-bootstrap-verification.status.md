@@ -22,5 +22,11 @@ Plan: `2026-06-07-AC-0026-ca-bootstrap-verification.md`
     EPERM here even to a plain `ls`/`stat` (an environment restriction, not a code
     issue; the code correctly surfaces the genuine stat error). Run it on an
     unrestricted machine with `make test-integration`.
-- [ ] **Phase 5 — final verification + ticket close**
+- [x] **Phase 5 — final verification + ticket close** (commit: docs AC-0026 close)
+  - `make test` (hermetic, race), `make lint`, `go build ./...`,
+    `go build -tags=integration ./...` all green.
+  - Ticket ACs ticked, open questions answered, Notes added, Status: Done.
+
+**All phases complete.** Live integration tests await execution on an unrestricted
+machine (`make test-integration`); everything else is verified green.
 </content>
