@@ -1,0 +1,22 @@
+# .agent-creance.yaml — agent-creance project config.
+# Full schema and guidance: docs/design.md. Manage egress rules interactively
+# with `agent-creance allow` / `agent-creance deny`.
+agent:
+  command: ["claude", "--dangerously-skip-permissions"]
+  workdir: .
+
+safehouse:
+  add_dirs_rw: [.]
+
+network:
+  egress:
+    # generators:
+    #   - package_json
+    #   - composer_json
+    # allow:
+    #   - host: api.github.com
+    #     paths: ["/repos/you/your-project/"]
+    #     methods: [GET, POST]
+    # deny_always:
+    #   - host: w3schools.com
+    #     reason: "Known low-quality source. Use MDN or official docs instead."

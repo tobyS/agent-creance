@@ -215,12 +215,12 @@ Drive `runInit(ctx, app, dir, force)` against `sysdeptest.FakeFileSystem` +
 ### Success Criteria
 
 #### Automated
-- [ ] `make test` green (new `init.txtar` + `init_test.go` pass under race).
-- [ ] `make golden` produces the three goldens; committed and reviewed.
-- [ ] `make lint` clean; `go build ./...` compiles.
+- [x] `make test` green (new `init.txtar` + `init_test.go` pass under race).
+- [x] `make golden` produces the three goldens; committed and reviewed.
+- [x] `make lint` clean; `go build ./...` compiles.
 
 #### Manual
-- [ ] Golden diff reviewed — the three templates read well and are valid YAML.
+- [x] Golden diff reviewed — the three templates read well and are valid YAML.
 
 ---
 

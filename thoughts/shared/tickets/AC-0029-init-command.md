@@ -1,6 +1,6 @@
 # AC-0029: `init` command (WP-5.4)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -22,9 +22,9 @@ Starting a project should be one command that writes a sensible `.agent-creance.
 
 ## Acceptance Criteria
 
-- [ ] `init` writes a valid `.agent-creance.yaml` template (parses cleanly via AC-0007).
-- [ ] If `package.json` exists, `package_json` is added to `generators:`; if `composer.json` exists, `composer_json` is added.
-- [ ] Existing `.agent-creance.yaml` is not clobbered without explicit consent (refuse or require a flag).
+- [x] `init` writes a valid `.agent-creance.yaml` template (parses cleanly via AC-0007).
+- [x] If `package.json` exists, `package_json` is added to `generators:`; if `composer.json` exists, `composer_json` is added.
+- [x] Existing `.agent-creance.yaml` is not clobbered without explicit consent (refuse or require a flag).
 
 ## Verification & Test Steps
 
@@ -47,7 +47,10 @@ Phase 5. Depends on AC-0007 for a valid template shape.
 
 ## Questions for Research/Planning
 
-- [ ] Template contents/comments — mirror the design's example config?
+- [x] Template contents/comments — mirror the design's example config? Decided: emit a
+  minimal, commented, *valid* config (agent + safehouse + the detected generators block)
+  with commented allow/deny stubs as inline guidance — NOT the design's project-specific
+  teaching example. No-manifest → commented generators placeholder. No .gitignore block.
 
 ## References
 
@@ -60,3 +63,11 @@ Phase 5. Depends on AC-0007 for a valid template shape.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-07
+Implemented (WP-5.4). `internal/cli/init.go` adds `agent-creance init` over the App
+seams (mirrors `setup`): `--force` to overwrite, atomic temp+rename write, presence-
+based generator detection (`package.json`→`package_json`, `composer.json`→
+`composer_json`). Tests: golden render (none/package_only/both), parse+validate of
+every variant, `runInit` unit tests against the sysdep fakes, and a hermetic
+`init.txtar`. `make test` + `make lint` + `make golden` green.

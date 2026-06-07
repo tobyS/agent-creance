@@ -1,0 +1,49 @@
+# init scaffolds a .agent-creance.yaml, detecting package.json / composer.json and
+# pre-populating generators:, and refuses to clobber an existing config without
+# --force. Pure filesystem work — no host tools needed, so PATH=$CREANCE_BIN is
+# enough to keep it hermetic.
+env PATH=$CREANCE_BIN
+
+# --help advertises --force and rejects extra args before any side effect.
+agent-creance init --help
+stdout '--force'
+! agent-creance init bogus
+stderr 'unknown command'
+
+# 1. Empty dir → commented generators placeholder; re-run refuses; --force wins.
+mkdir empty
+cd empty
+agent-creance init
+stdout 'no manifests detected'
+stdout 'Next: run'
+exists .agent-creance.yaml
+grep '# generators:' .agent-creance.yaml
+! agent-creance init
+stderr 'already exists'
+stderr '--force'
+agent-creance init --force
+stdout 'Wrote .agent-creance.yaml'
+cd ..
+
+# 2. package.json only → package_json listed, composer_json absent.
+cd pkg
+agent-creance init
+stdout 'generators: package_json'
+grep '- package_json' .agent-creance.yaml
+! grep 'composer_json' .agent-creance.yaml
+cd ..
+
+# 3. Both manifests → both generators listed.
+cd both
+agent-creance init
+stdout 'package_json, composer_json'
+grep '- package_json' .agent-creance.yaml
+grep '- composer_json' .agent-creance.yaml
+cd ..
+
+-- pkg/package.json --
+{"dependencies": {"react": "^18.0.0"}}
+-- both/package.json --
+{}
+-- both/composer.json --
+{"require": {"monolog/monolog": "^3.0"}}
