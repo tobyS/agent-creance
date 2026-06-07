@@ -37,6 +37,13 @@ type App struct {
 	// SIGINT/SIGTERM to the whole group; the run command (AC-0025) drives it via
 	// cage.Runner to tear the agent's subtree down on Ctrl-C before the lock decrement.
 	ProcessGroup sysdep.ProcessGroup
+	// Flock, ProcessManager, and PortAllocator are the seams proxy.Manager needs to
+	// run the refcounted shared-proxy lifecycle the run command (AC-0025) drives:
+	// flock-guarded proxy.lock RMW, spawning/pruning/killing mitmproxy by PID, and
+	// ephemeral port allocation + liveness probing.
+	Flock          sysdep.Flock
+	ProcessManager sysdep.ProcessManager
+	PortAllocator  sysdep.PortAllocator
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -61,6 +68,7 @@ func newRootCmd(app *App) *cobra.Command {
 	root.AddCommand(newDoctorCmd(app))
 	root.AddCommand(newPolicyCmd(app))
 	root.AddCommand(newLogsCmd(app))
+	root.AddCommand(newRunCmd(app))
 	return root
 }
 
@@ -70,16 +78,19 @@ func newRootCmd(app *App) *cobra.Command {
 // runs it in-process).
 func Main() int {
 	app := &App{
-		Commander:    sysdep.ExecCommander{},
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
-		Tested:       buildinfo.TestedVersions,
-		FS:           sysdep.OSFileSystem{},
-		Paths:        sysdep.OSPathResolver{},
-		Clock:        sysdep.OSClock{},
-		HTTP:         sysdep.OSHTTPGetter{},
-		Keychain:     sysdep.OSKeychain{},
-		ProcessGroup: sysdep.OSProcessGroup{},
+		Commander:      sysdep.ExecCommander{},
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+		Tested:         buildinfo.TestedVersions,
+		FS:             sysdep.OSFileSystem{},
+		Paths:          sysdep.OSPathResolver{},
+		Clock:          sysdep.OSClock{},
+		HTTP:           sysdep.OSHTTPGetter{},
+		Keychain:       sysdep.OSKeychain{},
+		ProcessGroup:   sysdep.OSProcessGroup{},
+		Flock:          sysdep.OSFlock{},
+		ProcessManager: sysdep.OSProcessManager{},
+		PortAllocator:  sysdep.OSPortAllocator{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.

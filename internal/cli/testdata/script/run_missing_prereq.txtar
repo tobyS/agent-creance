@@ -1,0 +1,18 @@
+# `agent-creance run` when prerequisites are absent: the prereq gate is step 1,
+# so run refuses with the actionable install block and exits non-zero before
+# touching setup, the keychain, the compiler, or the proxy — no stack trace.
+#
+# $CREANCE_BIN (set by the test's Setup hook) holds only the agent-creance
+# command, so this PATH finds the CLI but neither agent-safehouse nor mitmproxy —
+# a hermetic "nothing installed" host regardless of the developer's machine. This
+# is the one run scenario that is cleanly testscript-hermetic: the later steps
+# depend on the real login Keychain (cli.Main wires OSKeychain), so the happy
+# path and the setup/credential refusals are covered by run_test.go's *App+fakes
+# unit tests instead.
+env PATH=$CREANCE_BIN
+
+# The leading ! asserts a non-zero exit code.
+! agent-creance run
+stdout 'not installed'
+stdout 'requires the following tools'
+stdout 'brew install mitmproxy'
