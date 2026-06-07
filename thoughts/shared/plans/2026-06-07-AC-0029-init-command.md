@@ -151,12 +151,12 @@ before moving on.
 ### Success Criteria
 
 #### Automated
-- [ ] `go build ./...` compiles.
-- [ ] `make test` (= `go test -race ./...`) green.
-- [ ] `make lint` (`go vet` + `golangci-lint`) clean.
+- [x] `go build ./...` compiles.
+- [x] `make test` (= `go test -race ./...`) green.
+- [x] `make lint` (`go vet` + `golangci-lint`) clean.
 
 #### Manual
-- [ ] `make run ARGS="init"` in an empty temp dir writes a sensible commented
+- [x] `make run ARGS="init"` in an empty temp dir writes a sensible commented
       template; re-running without `--force` refuses; `--force` overwrites.
 
 ---
