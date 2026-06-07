@@ -1,0 +1,6 @@
+agent:
+  command: ["claude"]
+
+network:
+  host_services:
+    - "web:3000"

@@ -1,0 +1,9 @@
+agent:
+  command: ["claude"]
+
+network:
+  host_services:
+    - "web:3000"
+  egress:
+    allow:
+      - host: example.com

@@ -117,13 +117,13 @@ Internals:
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/config/...` green
-- [ ] `make golden` produces the intended `testdata/edit/*` and re-running shows no drift
-- [ ] `make lint` clean
+- [x] `go build ./...`
+- [x] `go test -race ./internal/config/...` green
+- [x] `make golden` produces the intended `testdata/edit/*` and re-running shows no drift
+- [x] `make lint` clean (config package)
 
 #### Manual
-- [ ] Golden outputs visually preserve comments and blank lines outside the insertion point
+- [x] Golden outputs visually preserve comments and blank lines outside the insertion point
 
 ---
 

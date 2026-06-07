@@ -1,0 +1,4 @@
+network:
+  egress:
+    allow:
+      - host: example.com

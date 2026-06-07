@@ -1,0 +1,14 @@
+agent:
+  command: ["claude"]
+
+network:
+  egress:
+    # Soft-allow rules.
+    allow:
+      - host: api.github.com
+        paths: ["/repos/tobyS/this/"]
+    deny_always:
+      - host: w3schools.com
+        reason: "low quality"
+      - host: tracker.example
+        reason: "low quality source"

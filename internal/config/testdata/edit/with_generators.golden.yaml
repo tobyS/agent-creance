@@ -1,0 +1,10 @@
+agent:
+  command: ["claude"]
+
+network:
+  egress:
+    generators:
+      - package_json
+    allow:
+      - host: api.github.com
+        paths: ["/repos/foo/"]

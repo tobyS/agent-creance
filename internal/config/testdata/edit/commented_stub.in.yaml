@@ -1,0 +1,16 @@
+# .agent-creance.yaml — agent-creance project config.
+agent:
+  command: ["claude", "--dangerously-skip-permissions"]
+  workdir: .
+
+safehouse:
+  add_dirs_rw: [.]
+
+network:
+  egress:
+    # generators:
+    #   - package_json
+    # allow:
+    #   - host: api.github.com
+    # deny_always:
+    #   - host: w3schools.com

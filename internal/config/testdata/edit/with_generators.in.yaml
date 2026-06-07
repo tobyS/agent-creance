@@ -1,0 +1,7 @@
+agent:
+  command: ["claude"]
+
+network:
+  egress:
+    generators:
+      - package_json
