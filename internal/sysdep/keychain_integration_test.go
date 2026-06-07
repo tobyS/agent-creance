@@ -38,18 +38,27 @@ func TestOSKeychainFindGenericPasswordLive(t *testing.T) {
 }
 
 // TestOSKeychainFindCertificateLive exercises the real find-certificate path the
-// run command's setup-precondition check uses. "Apple Root CA" is present in the
-// system roots on every macOS host, so the found case is reliable; a bogus common
-// name confirms the absent case maps to ErrItemNotFound (the exit code the cheap
-// CA check depends on).
+// run command's setup-precondition check uses. The firm assertion is the absent
+// case: a bogus common name must map to ErrItemNotFound — this confirms the exit
+// code (errSecItemNotFound = 44) the cheap CA check depends on. The positive case
+// is best-effort: find-certificate searches the default keychain list (login +
+// search list), which is exactly where setup installs the mitmproxy CA, but on a
+// host where setup has not run there is no guaranteed-present cert to match, so we
+// only assert when the mitmproxy CA happens to be there.
 func TestOSKeychainFindCertificateLive(t *testing.T) {
-	pem, err := sysdep.OSKeychain{}.FindCertificate("Apple Root CA")
+	_, err := sysdep.OSKeychain{}.FindCertificate("definitely-not-a-real-cert-cn-xyzzy")
 	if errors.Is(err, sysdep.ErrKeychainLocked) {
 		t.Skip("login keychain is locked; unlock it to exercise this test")
 	}
-	require.NoError(t, err)
-	require.NotEmpty(t, pem, "expected a PEM certificate block")
+	require.ErrorIs(t, err, sysdep.ErrItemNotFound,
+		"an absent common name must map to ErrItemNotFound (exit 44)")
 
-	_, err = sysdep.OSKeychain{}.FindCertificate("definitely-not-a-real-cert-cn-xyzzy")
-	require.ErrorIs(t, err, sysdep.ErrItemNotFound)
+	switch pem, err := (sysdep.OSKeychain{}).FindCertificate("mitmproxy"); {
+	case errors.Is(err, sysdep.ErrItemNotFound):
+		t.Log("mitmproxy CA not in the keychain (setup not run); skipping the found assertion")
+	case err != nil:
+		t.Fatalf("FindCertificate(mitmproxy): %v", err)
+	default:
+		require.NotEmpty(t, pem, "expected a PEM certificate block for the mitmproxy CA")
+	}
 }
