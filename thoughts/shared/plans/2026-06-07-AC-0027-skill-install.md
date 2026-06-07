@@ -91,7 +91,7 @@ checker (setupcheck) cannot diverge.
 
 ---
 
-## Phase 2: Embed SKILL.md and implement InstallSkill (with tests)
+## Phase 2: Embed SKILL.md and implement InstallSkill (with tests) ✅
 
 ### 2a. Author `internal/setup/SKILL.md`
 
