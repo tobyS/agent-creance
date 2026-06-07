@@ -2,7 +2,7 @@
 date: 2026-06-07
 ticket: AC-0030
 title: "Plan: allow / deny commands (WP-6.1)"
-status: ready
+status: complete
 research: thoughts/shared/research/2026-06-07-AC-0030-allow-deny-commands.md
 commit: a4ce8c24ea55fccfebfade551e3c4e09165a94df
 ---
@@ -219,24 +219,24 @@ Verification & Test Steps:
 - Re-run an identical `allow` → "already allowed" no-op message.
 - Assert comments in the starter config survive the edits (`grep` a known comment line).
 
-**`--once` purge (AC criterion "verified end to end")** — integration test
-`internal/cli/once_lifecycle_integration_test.go` (`//go:build integration`) or a focused
-test wiring `proxy.NewManager`: `runAllow(--once)` → overlay present + rule in compiled
-policy → `Manager.Detach` as last agent → assert `RemoveIfPresent` deleted the overlay and
-a recompile drops the `once` rule. (AC-0020 already unit-tests the purge; this ties the
-AC-0030 writer to it.)
+**`--once` purge (AC criterion "verified end to end")** — implemented as a focused
+*hermetic* test (`internal/cli/once_lifecycle_test.go`, no integration tag so it runs in
+`make test`) wiring `proxy.NewManager` over the command's filesystem: `runAllow(--once)`
+→ overlay present + rule in compiled policy → `Manager.Detach` as last agent → overlay
+purged and a recompile drops the `once` rule. (AC-0020 already unit-tests the purge; this
+ties the AC-0030 writer to it.)
 
 ### Success criteria
 
 #### Automated
-- [ ] `go test -race ./internal/cli/...` (testscript) green
-- [ ] `go test -race -tags=integration ./internal/cli/...` green (lifecycle test)
-- [ ] `make test` and `make lint` clean repo-wide
+- [x] `go test -race ./internal/cli/...` (testscript + once-lifecycle) green
+- [x] `go test -race -tags=integration ./internal/cli/...` green
+- [x] `make test` and `make lint` clean repo-wide; `make golden` shows no drift
 
 #### Manual
-- [ ] Walk the ticket's Verification steps 1–5 against the testscript output; mtime
+- [x] Walk the ticket's Verification steps 1–5 against the testscript output; mtime
       advance is satisfied structurally (the recompile rewrites `policy.json` via rename)
-      and content-verified in Phase 2
+      and content-verified in Phase 2 + the once-lifecycle test
 
 ---
 

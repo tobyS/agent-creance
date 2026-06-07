@@ -1,6 +1,6 @@
 # AC-0030: `allow` / `deny` commands (WP-6.1)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +23,10 @@ When the agent hits a soft-deny, the operator needs a quick way to allow a URL �
 
 ## Acceptance Criteria
 
-- [ ] `allow URL` appends a soft-allow to `.agent-creance.yaml`; `--global` to `~/.config/agent-creance.yaml`; `--once` to the session-overlay file (not the YAML).
-- [ ] `deny URL` appends a `deny_always` rule; `--reason` sets its reason.
-- [ ] Each mutation recompiles `policy.json`; the running proxy hot-reloads (mtime touch).
-- [ ] `--once` rules survive only the session (purged on last-agent-exit by AC-0020) — verified end to end.
+- [x] `allow URL` appends a soft-allow to `.agent-creance.yaml`; `--global` to `~/.config/agent-creance.yaml`; `--once` to the session-overlay file (not the YAML).
+- [x] `deny URL` appends a `deny_always` rule; `--reason` sets its reason.
+- [x] Each mutation recompiles `policy.json`; the running proxy hot-reloads (mtime touch).
+- [x] `--once` rules survive only the session (purged on last-agent-exit by AC-0020) — verified end to end.
 
 ## Verification & Test Steps
 
@@ -65,3 +65,25 @@ Phase 6. Depends on the compiler and the overlay lifecycle.
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-07 — Implemented (Done)
+`allow`/`deny` commands shipped. Research and plan:
+`thoughts/shared/research/2026-06-07-AC-0030-allow-deny-commands.md`,
+`thoughts/shared/plans/2026-06-07-AC-0030-allow-deny-commands.md`.
+
+Resolved questions:
+- **YAML append (comment preservation):** added `config.AppendRule` — parse only to
+  locate the insertion point via `yaml.Node` positions, splice the rendered rule in as
+  text (rest of the file untouched), synthesizing missing network/egress/<list>
+  structure. Bounded by a duplicate no-op and a validation gate (re-parse + rule-set
+  diff) so a splice bug can never write a wrong policy. Chosen over node re-encode
+  (drops comments) and naive append (brittle).
+- **URL→rule:** bare host = whole host; host+path scopes to that prefix; no `--method`
+  (all methods). Shares a `splitURL` helper with `policy explain`.
+- **Forge expansion** for `allow <repo-url>`: deferred (single rule per invocation).
+- **deny** is project-only with `--reason`; `--once`/`--global` are allow-only.
+
+Recompile-then-reload reuses the existing compiler: the mutation changes the input
+hash, forcing a `policy.json` rewrite (the rename advances mtime), and the enforcer's
+1s mtime poll reloads it. `--once` purge is AC-0020's; tied to the new writer by a
+hermetic end-to-end test.

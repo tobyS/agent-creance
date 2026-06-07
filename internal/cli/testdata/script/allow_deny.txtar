@@ -1,0 +1,66 @@
+# `agent-creance allow` / `deny` append egress rules to the chosen target and
+# recompile so a running proxy hot-reloads. The config lists no generators, so the
+# whole scenario runs offline — no network, no external tools. HOME/XDG_CACHE_HOME
+# under $WORK keep it hermetic; PATH is pinned to $CREANCE_BIN so only the CLI is
+# reachable. This mirrors the ticket's Verification & Test Steps (AC-0030).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# --help advertises the flags; a missing URL and conflicting flags are rejected
+# before any side effect.
+agent-creance allow --help
+stdout '--once'
+stdout '--global'
+! agent-creance allow
+stderr 'accepts 1 arg'
+! agent-creance allow --once --global example.com
+stderr 'cannot combine --once and --global'
+
+# allow host/path → rule appended to the project config (comment preserved) and
+# visible in a subsequent policy show.
+agent-creance allow api.github.com/repos/foo/
+stdout 'allowed api\.github\.com/repos/foo/ in \.agent-creance\.yaml'
+grep '# keep this comment' .agent-creance.yaml
+grep 'host: api.github.com' .agent-creance.yaml
+agent-creance policy show
+stdout 'api\.github\.com'
+stdout '/repos/foo/'
+
+# Re-allowing the same URL is a reported no-op.
+agent-creance allow api.github.com/repos/foo/
+stdout 'already allowed'
+
+# allow --global → lands in ~/.config/agent-creance.yaml, NOT the project file.
+agent-creance allow --global globally.example
+stdout 'allowed globally.example'
+exists $WORK/home/.config/agent-creance.yaml
+grep 'host: globally.example' $WORK/home/.config/agent-creance.yaml
+! grep 'globally.example' .agent-creance.yaml
+
+# allow --once → session overlay only: not in the committed config, but live in
+# policy show with the [once] source.
+agent-creance allow --once ephemeral.example
+stdout 'allowed ephemeral.example in the session overlay'
+! grep 'ephemeral.example' .agent-creance.yaml
+agent-creance policy show
+stdout '\[once\]'
+stdout 'ephemeral\.example'
+
+# deny --reason → deny_always rule with the reason; policy explain reports hard-deny.
+agent-creance deny w3schools.com --reason 'low quality'
+stdout 'denied w3schools.com'
+grep 'host: w3schools.com' .agent-creance.yaml
+grep 'reason: "low quality"' .agent-creance.yaml
+agent-creance policy explain https://w3schools.com/
+stdout 'hard-deny'
+stdout 'reason: low quality'
+
+-- .agent-creance.yaml --
+# keep this comment
+network:
+  egress:
+    # allow rules go here
+    allow:
+      - host: seed.example
