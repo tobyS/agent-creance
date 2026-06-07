@@ -91,4 +91,14 @@ Plan: `thoughts/shared/plans/2026-06-07-AC-0031-doctor-extension.md`
 - ✅ new integration tests pass (`go test -tags=integration` for the three); `go test ./...` unit suite green; `golangci-lint --build-tags=integration` clean
 
 ### Commit
-- (pending)
+- `bd6931e` test(AC-0031): integration coverage for --fix + new seams (WP-6.2, Phase 5)
+
+---
+
+## Final verification (all phases complete)
+- ✅ `go build ./...`
+- ✅ `make test` (full unit suite, race) green
+- ✅ `make lint` clean
+- ✅ new integration tests (`-tags=integration`) green: orphan `--fix`, listener scan, fs-type
+- ✅ `internal/prereq` version golden untouched (regression-safe)
+- Ticket AC-0031 marked **Done**; all acceptance criteria checked.
