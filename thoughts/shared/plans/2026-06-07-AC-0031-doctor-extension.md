@@ -344,13 +344,13 @@ func (c *Checker) Run(ctx context.Context, fix bool) (Report, error) {
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes — `internal/doctor` golden tests (`Render` over representative `Report`s: all-healthy-trusted, all-problems, mixed-warnings) with a `-update` flag and `testdata/*.golden`; table tests for `classifyFS` and `Report.Actionable()`; `Checker.Run` tests with all fakes covering each branch (CA trusted/untrusted/not-generated/env-error; proxy healthy/orphan/orphan+fix/stranded/no-lock; exposed some/none/scan-failed; fs ok/network/icloud)
-- [ ] `internal/setup` `CAGenerated` test passes
-- [ ] `go build ./...`; `make lint` clean
-- [ ] `make golden` produces no unexpected drift (review diff)
+- [x] `make test` passes — `internal/doctor` golden tests (`Render` over representative `Report`s: healthy, problems, fixed, stranded) with a `-update` flag and `testdata/*.golden`; table tests for `classifyFS` and `Report.Actionable()`; `Checker.Run` tests with all fakes covering each branch (CA trusted/untrusted/not-generated/env-error; proxy healthy/orphan/orphan+fix/stranded/no-lock; exposed some/none/scan-failed; fs ok/network/icloud)
+- [x] `internal/setup` `CAGenerated` test passes
+- [x] `go build ./...`; `make lint` clean
+- [x] `make golden` produces no unexpected drift (review diff)
 
 #### Manual Verification:
-- [ ] Rendered report reads clearly and the glyphs/wording are accurate for each condition.
+- [x] Rendered report reads clearly and the glyphs/wording are accurate for each condition (golden fixtures reviewed).
 
 ---
 

@@ -66,6 +66,44 @@ func (a *appearingFS) Stat(name string) (fs.FileInfo, error) {
 	return a.FakeFileSystem.Stat(name)
 }
 
+func TestCAGenerated(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		f := newFakes()
+		f.fs.Files[caPath] = []byte("-----BEGIN CERTIFICATE-----")
+		got, err := f.installer().CAGenerated()
+		if err != nil {
+			t.Fatalf("CAGenerated: %v", err)
+		}
+		if !got {
+			t.Error("CAGenerated = false, want true when the CA exists")
+		}
+		// Must be read-only: no proxy spawned.
+		if len(f.proc.Spawned) != 0 {
+			t.Errorf("Spawned = %+v, want none", f.proc.Spawned)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		f := newFakes()
+		got, err := f.installer().CAGenerated()
+		if err != nil {
+			t.Fatalf("CAGenerated: %v", err)
+		}
+		if got {
+			t.Error("CAGenerated = true, want false when the CA is absent")
+		}
+		if len(f.proc.Spawned) != 0 {
+			t.Errorf("Spawned = %+v, want none (must not generate)", f.proc.Spawned)
+		}
+	})
+	t.Run("stat error surfaced", func(t *testing.T) {
+		f := newFakes()
+		f.fs.StatErrs[caPath] = errors.New("boom")
+		if _, err := f.installer().CAGenerated(); err == nil {
+			t.Error("want error when Stat fails, got nil")
+		}
+	})
+}
+
 func TestEnsureCAIdempotentWhenPresent(t *testing.T) {
 	f := newFakes()
 	f.fs.Files[caPath] = []byte("-----BEGIN CERTIFICATE-----")

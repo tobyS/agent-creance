@@ -34,10 +34,28 @@ Plan: `thoughts/shared/plans/2026-06-07-AC-0031-doctor-extension.md`
 - ✅ `go test ./...` (race) all green; `gofmt -s` + `golangci-lint` clean
 
 ### Commit
-- (pending)
+- `c1b8f90` feat(AC-0031): proxy orphan/stranded diagnosis + cleanup (WP-6.2, Phase 2)
 
 ## Phase 3: CA presence helper + internal/doctor orchestration & rendering
-- **Status**: ⬚ Not started
+- **Status**: ✅ Complete
+- **Completed**: 2026-06-07
+
+### Steps Performed
+1. `internal/setup/setup.go` — added read-only `Installer.CAGenerated()` (Stat the CA cert without generating); test in `setup_test.go`.
+2. `internal/doctor/report.go` — `Report` data model (`Status`, `CASection`/`ProxySection`/`ExposedSection`/`FSSection`), pure `Render` (golden-pinned), and `Actionable()` (untrusted CA + un-fixed orphan + missing prereqs).
+3. `internal/doctor/doctor.go` — `Checker` + `Run` orchestrating all checks with graceful degradation (status-as-data); `checkCA`/`checkProxy`/`checkExposed`/`checkFS`; `probeFS` ancestor-walk; pure `classifyFS` (iCloud path-based, network via MNT_LOCAL).
+4. Tests: `report_test.go` (4 `Render` golden fixtures via `-update`; `classifyFS` + `Actionable` tables); `doctor_test.go` (`Checker.Run` over fakes: CA trusted/untrusted/not-generated/env-error; orphan actionable→fixed; exposed warn/skipped; fs network+iCloud).
+
+### Issues Encountered
+- FakeCommander had no tools → prereqs read as missing; seeded both tools in the harness. → resolved.
+- Verify's deferred `Signal(0)` on its throwaway mitmdump pollutes `Signaled`; the orphan test filters to pid 111. → resolved.
+- revive error-var naming: renamed sentinel `assertErr`→`errBoom`. → resolved.
+
+### Verification
+- ✅ `go test ./...` (race) all green; `gofmt -s` + `golangci-lint` clean; goldens generated & reviewed
+
+### Commit
+- (pending)
 
 ## Phase 4: Wire into the doctor command + testscripts
 - **Status**: ⬚ Not started

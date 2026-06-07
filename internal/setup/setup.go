@@ -100,6 +100,26 @@ func (i *Installer) EnsureCA(ctx context.Context) (string, error) {
 	return certPath, nil
 }
 
+// CAGenerated reports whether the mitmproxy CA certificate already exists on disk,
+// WITHOUT generating it. doctor (AC-0031) uses this to stay read-only: Verify spawns
+// a bare mitmdump, which materialises the CA as a side effect of its first run, so
+// doctor only calls Verify when a CA is already present — otherwise it reports
+// "not generated, run setup" and never writes anything.
+func (i *Installer) CAGenerated() (bool, error) {
+	certPath, err := i.caCertPath()
+	if err != nil {
+		return false, err
+	}
+	switch _, err := i.fs.Stat(certPath); {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, fmt.Errorf("setup: stat CA %s: %w", certPath, err)
+	}
+}
+
 // generateCA spawns a throwaway mitmdump (which writes the CA into ~/.mitmproxy on
 // startup), waits for the cert file to appear, then tears the proxy down.
 func (i *Installer) generateCA(ctx context.Context, certPath string) error {

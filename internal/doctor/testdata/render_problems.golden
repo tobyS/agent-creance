@@ -1,0 +1,22 @@
+Version compatibility:
+  agent-safehouse:  installed 1.4.2, tested against 1.4.2     ✓
+  mitmproxy:        installed 12.0.1, tested against 12.0.1   ✓
+
+  agent-creance was tested against specific versions of its dependencies.
+  Other versions may work, but behavior is not guaranteed. If you hit
+  unexpected issues, try pinning to the tested versions or open an
+  issue with your version combination.
+
+CA trust:
+  ✗ CA verification failed: the mitmproxy CA is not trusted. Re-run `agent-creance setup`.
+
+Proxy (this project):
+  ✗ orphan proxy (pid 111, port 8080) — no live agents; run `doctor --fix`
+
+Exposed host services:
+  ⚠ node (pid 501) listening on *:8080
+  ⚠ sshd (pid 77) listening on *:22
+
+Filesystem reliability:
+  ⚠ working directory (/Users/toby/proj) is on smbfs (network mount); file locks may be unreliable
+  ⚠ state cache (/Users/toby/Library/Mobile Documents/com~apple~CloudDocs/.cache/agent-creance) is on apfs (iCloud Drive); file locks may be unreliable

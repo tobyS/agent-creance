@@ -1,0 +1,20 @@
+Version compatibility:
+  agent-safehouse:  installed 1.4.2, tested against 1.4.2     ✓
+  mitmproxy:        installed 12.0.1, tested against 12.0.1   ✓
+
+  agent-creance was tested against specific versions of its dependencies.
+  Other versions may work, but behavior is not guaranteed. If you hit
+  unexpected issues, try pinning to the tested versions or open an
+  issue with your version combination.
+
+CA trust:
+  ✓ trusted
+
+Proxy (this project):
+  ⚠ 2 attached agent(s) but proxy not reachable on recorded port 8080; relaunch them
+
+Exposed host services:
+  ✓ none on 0.0.0.0
+
+Filesystem reliability:
+  ✓ ok
