@@ -49,6 +49,11 @@ type App struct {
 	// the setup command (AC-0028) drives them. Tests wire the sysdeptest fakes.
 	TLSProber sysdep.TLSProber
 	Sleeper   sysdep.Sleeper
+	// FSType and Listeners are the two extra seams doctor (AC-0031) needs: statfs-based
+	// filesystem-type detection (the flock-unreliable iCloud/SMB warning) and host
+	// listening-socket enumeration (the exposed-0.0.0.0-service scan).
+	FSType    sysdep.FilesystemTyper
+	Listeners sysdep.ListenerScanner
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -102,6 +107,8 @@ func Main() int {
 		PortAllocator:  sysdep.OSPortAllocator{},
 		TLSProber:      sysdep.OSTLSProber{},
 		Sleeper:        sysdep.OSSleeper{},
+		FSType:         sysdep.OSFilesystemTyper{},
+		Listeners:      sysdep.OSListenerScanner{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.

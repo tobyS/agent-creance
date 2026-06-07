@@ -145,9 +145,9 @@ func IsExposed(addr string) bool { /* pure */ }
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `go build ./...` compiles
-- [ ] `make test` passes (new `ParseLsof`/`IsExposed` table tests; `FakeFilesystemTyper`/`FakeListenerScanner` compile-time interface assertions hold)
-- [ ] `make lint` clean
+- [x] `go build ./...` compiles
+- [x] `make test` passes (new `ParseLsof`/`IsExposed` table tests; `FakeFilesystemTyper`/`FakeListenerScanner` compile-time interface assertions hold)
+- [x] `make lint` clean
 
 #### Manual Verification:
 - [ ] On a real Mac, a throwaway program calling `OSListenerScanner.Listeners` lists known listeners and flags a `0.0.0.0`-bound one as `*:port`; `OSFilesystemTyper.FSType` returns `apfs`/local for a normal path (covered by Phase 5 integration tests).
