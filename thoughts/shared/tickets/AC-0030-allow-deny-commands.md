@@ -1,6 +1,6 @@
 # AC-0030: `allow` / `deny` commands (WP-6.1)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
