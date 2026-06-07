@@ -55,10 +55,25 @@ Plan: `thoughts/shared/plans/2026-06-07-AC-0031-doctor-extension.md`
 - ✅ `go test ./...` (race) all green; `gofmt -s` + `golangci-lint` clean; goldens generated & reviewed
 
 ### Commit
-- (pending)
+- `d481f09` feat(AC-0031): doctor orchestration, rendering + CA presence (WP-6.2, Phase 3)
 
 ## Phase 4: Wire into the doctor command + testscripts
-- **Status**: ⬚ Not started
+- **Status**: ✅ Complete
+- **Completed**: 2026-06-07
+
+### Steps Performed
+1. `internal/cli/doctor.go` — rewired to build `doctor.Checker` from the App seams, added `--fix` flag, render the report, and return a one-line error (→ exit 1) when `Actionable()` is non-empty.
+2. `internal/cli/doctor_test.go` — `*App`+fakes command tests: healthy exit-0; untrusted-CA exit-non-zero; orphan actionable→`--fix`-cleaned exit-0; exposed service warning exit-0.
+3. Testscripts: extended `doctor_healthy.txtar` to assert the new section headers; added `doctor_fix_noop.txtar` (no proxy state → `--fix` no-op exit 0). `doctor_missing.txtar` still green (missing-prereq block still rendered + exit 1).
+
+### Notes
+- The new checks degrade gracefully through `cli.Main`'s real seams, so the hermetic testscripts stay deterministic (CA not generated → warning, no project lock → "no proxy state", lsof-absent → skipped). Full-report correctness is the Go unit/golden tests.
+
+### Verification
+- ✅ `go test ./...` (race) all green; `gofmt -s` + `golangci-lint` clean
+
+### Commit
+- (pending)
 
 ## Phase 5: Integration test — --fix cleans a real orphan + real seam impls
 - **Status**: ⬚ Not started

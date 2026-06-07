@@ -403,12 +403,12 @@ Exit semantics: `Render` already printed the human report (incl. the missing-pre
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes including the existing `doctor_healthy`/`doctor_missing` testscripts and the new `doctor_fix_noop.txtar` and `doctor_test.go`
-- [ ] `go build ./...`; `make lint` clean
-- [ ] `make golden` no unexpected drift
+- [x] `make test` passes including the existing `doctor_healthy`/`doctor_missing` testscripts and the new `doctor_fix_noop.txtar` and `doctor_test.go`
+- [x] `go build ./...`; `make lint` clean
+- [x] `make golden` no unexpected drift
 
 #### Manual Verification:
-- [ ] `make run ARGS="doctor"` on a configured Mac prints all sections; `make run ARGS="doctor --fix"` reports no-op when nothing to clean.
+- [ ] `make run ARGS="doctor"` on a configured Mac prints all sections; `make run ARGS="doctor --fix"` reports no-op when nothing to clean. (deferred to final manual pass)
 
 ---
 

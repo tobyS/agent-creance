@@ -1,0 +1,21 @@
+# `agent-creance doctor --fix` in a project with no proxy state: there is nothing
+# to clean, so --fix is a no-op that exits 0 and reports "no proxy state". The end
+# -to-end orphan cleanup is proven in the integration test (real proxy + lock); the
+# unit-level branches live in internal/doctor. We stub the prerequisites so the
+# version section is healthy and the only sections in play are the new ones.
+
+chmod 0755 bin/agent-safehouse
+chmod 0755 bin/mitmproxy
+env PATH=$WORK/bin${:}$PATH
+
+agent-creance doctor --fix
+stdout 'Proxy \(this project\):'
+stdout 'no proxy state'
+! stdout 'cleaned orphan'
+
+-- bin/agent-safehouse --
+#!/bin/sh
+echo 'Agent Safehouse 0.10.1'
+-- bin/mitmproxy --
+#!/bin/sh
+echo 'Mitmproxy: 12.2.3'

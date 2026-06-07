@@ -14,6 +14,13 @@ stdout 'agent-safehouse'
 stdout 'mitmproxy'
 stdout '✓'
 ! stdout 'not installed'
+# The full diagnostic appends its sections after the version block. These headers
+# render deterministically regardless of host state; the findings under them
+# degrade gracefully (no CA generated, no project proxy) so the command exits 0.
+stdout 'CA trust:'
+stdout 'Proxy \(this project\):'
+stdout 'Exposed host services:'
+stdout 'Filesystem reliability:'
 
 -- bin/agent-safehouse --
 #!/bin/sh
