@@ -23,7 +23,7 @@ func TestInspectNoLock(t *testing.T) {
 
 func TestInspectHealthyWithAgents(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}, CanonicalPath: "/home/toby/proj"})
 	h.proc.AlivePIDs[111] = true // proxy alive
 	h.proc.AlivePIDs[222] = true // agent alive
 	h.ports.Listening[8080] = true
@@ -35,6 +35,7 @@ func TestInspectHealthyWithAgents(t *testing.T) {
 	assert.Equal(t, []int{222}, diag.LiveAgents)
 	assert.False(t, diag.Orphan)
 	assert.False(t, diag.Stranded)
+	assert.Equal(t, "/home/toby/proj", diag.CanonicalPath, "Inspect surfaces the recorded project path")
 }
 
 func TestInspectOrphan(t *testing.T) {

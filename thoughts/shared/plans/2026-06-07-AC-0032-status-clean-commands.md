@@ -131,9 +131,9 @@ Additive, no behaviour change to existing commands.
   surfaces it.
 
 **Success criteria**
-- [ ] `go build ./...`
-- [ ] `go test -race ./internal/proxy/...`
-- [ ] existing doctor tests still green (`go test -race ./internal/doctor/... ./internal/cli/...`)
+- [x] `go build ./...`
+- [x] `go test -race ./internal/proxy/...`
+- [x] existing doctor tests still green (`go test -race ./internal/doctor/... ./internal/cli/...`)
 
 ---
 

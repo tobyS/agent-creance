@@ -19,10 +19,11 @@ import (
 // lockJSON mirrors the manager's unexported lockState wire format so blackbox
 // tests can seed and inspect proxy.lock contents.
 type lockJSON struct {
-	ProxyPID   int    `json:"proxy_pid"`
-	Port       int    `json:"port"`
-	PolicyHash string `json:"policy_hash"`
-	Agents     []int  `json:"agents"`
+	ProxyPID      int    `json:"proxy_pid"`
+	Port          int    `json:"port"`
+	PolicyHash    string `json:"policy_hash"`
+	Agents        []int  `json:"agents"`
+	CanonicalPath string `json:"canonical_path"`
 }
 
 const projectRoot = "/cache/agent-creance/projects/abcd1234ef567890"
@@ -113,6 +114,7 @@ func TestAttachStartsProxyWhenNone(t *testing.T) {
 	assert.Equal(t, 8080, ls.Port)
 	assert.Equal(t, "hash-v1", ls.PolicyHash)
 	assert.Equal(t, []int{222}, ls.Agents)
+	assert.Equal(t, h.lay.Canonical, ls.CanonicalPath, "Attach records the project path for status")
 
 	// Lock was acquired and released around the work.
 	assert.Equal(t, []string{h.lay.ProxyLock()}, h.flock.Acquired)
@@ -162,7 +164,7 @@ func TestLastOutTearsDownAndPurgesOverlay(t *testing.T) {
 
 func TestNonFinalExitLeavesProxyAndOverlay(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "hash-v1", Agents: []int{222, 333}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "hash-v1", Agents: []int{222, 333}, CanonicalPath: h.lay.Canonical})
 	h.proc.AlivePIDs[111] = true
 	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
 
@@ -176,6 +178,7 @@ func TestNonFinalExitLeavesProxyAndOverlay(t *testing.T) {
 	assert.Equal(t, 111, ls.ProxyPID)
 	assert.Equal(t, 8080, ls.Port)
 	assert.Equal(t, []int{333}, ls.Agents)
+	assert.Equal(t, h.lay.Canonical, ls.CanonicalPath, "the project path survives a non-final exit")
 }
 
 func TestDeadAgentPidPruned(t *testing.T) {

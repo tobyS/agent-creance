@@ -42,6 +42,12 @@ type lockState struct {
 	PolicyHash string `json:"policy_hash"`
 	// Agents are the PIDs of attached agent-creance invocations.
 	Agents []int `json:"agents"`
+	// CanonicalPath is the project directory this lock belongs to, recorded so
+	// `status` (AC-0032) can show a readable path: the state-dir hash is one-way,
+	// so the project directory cannot be recovered from it. Older locks written
+	// before this field existed unmarshal with it empty; status falls back to the
+	// hash.
+	CanonicalPath string `json:"canonical_path"`
 }
 
 // Manager owns the flock-guarded proxy lifecycle for projects. Construct it with
@@ -139,7 +145,7 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 	}
 
 	agents := addPID(alive, cfg.SelfPID)
-	next := lockState{ProxyPID: att.ProxyPID, Port: att.Port, PolicyHash: cfg.PolicyHash, Agents: agents}
+	next := lockState{ProxyPID: att.ProxyPID, Port: att.Port, PolicyHash: cfg.PolicyHash, Agents: agents, CanonicalPath: cfg.Layout.Canonical}
 	if err := writeLock(lf, next); err != nil {
 		return Attachment{}, err
 	}
@@ -178,7 +184,7 @@ func (m *Manager) Detach(layout state.Layout, selfPID int) error {
 	}
 
 	// Others remain: drop our PID, leave the proxy untouched.
-	return writeLock(lf, lockState{ProxyPID: cur.ProxyPID, Port: cur.Port, PolicyHash: cur.PolicyHash, Agents: agents})
+	return writeLock(lf, lockState{ProxyPID: cur.ProxyPID, Port: cur.Port, PolicyHash: cur.PolicyHash, Agents: agents, CanonicalPath: cur.CanonicalPath})
 }
 
 // Diagnosis is doctor's read-only view of a project's proxy lifecycle (AC-0031),
@@ -190,6 +196,9 @@ type Diagnosis struct {
 	// ProxyPID and Port are the recorded proxy identity (may be stale).
 	ProxyPID int
 	Port     int
+	// CanonicalPath is the project directory recorded in the lock (empty for locks
+	// written before AC-0032). `status` shows it, falling back to the state-dir hash.
+	CanonicalPath string
 	// ProxyUp is the lifecycle "is the proxy genuinely alive" composite: PID liveness
 	// AND a port probe (a bare PID may have been recycled). Mirrors Attach.
 	ProxyUp bool
@@ -229,13 +238,14 @@ func (m *Manager) Inspect(layout state.Layout) (Diagnosis, error) {
 	live := m.pruneDead(cur.Agents)
 	up := cur.ProxyPID != 0 && m.proc.Alive(cur.ProxyPID) && m.ports.Probe(cur.Port)
 	return Diagnosis{
-		LockPresent: true,
-		ProxyPID:    cur.ProxyPID,
-		Port:        cur.Port,
-		ProxyUp:     up,
-		LiveAgents:  live,
-		Orphan:      up && len(live) == 0,
-		Stranded:    !up && len(live) > 0,
+		LockPresent:   true,
+		ProxyPID:      cur.ProxyPID,
+		Port:          cur.Port,
+		CanonicalPath: cur.CanonicalPath,
+		ProxyUp:       up,
+		LiveAgents:    live,
+		Orphan:        up && len(live) == 0,
+		Stranded:      !up && len(live) > 0,
 	}, nil
 }
 

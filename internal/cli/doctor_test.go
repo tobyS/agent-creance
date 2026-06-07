@@ -18,10 +18,11 @@ const doctorCAPath = runHome + "/.mitmproxy/mitmproxy-ca-cert.pem"
 
 // doctorLockJSON mirrors proxy's unexported lockState wire format for seeding.
 type doctorLockJSON struct {
-	ProxyPID   int    `json:"proxy_pid"`
-	Port       int    `json:"port"`
-	PolicyHash string `json:"policy_hash"`
-	Agents     []int  `json:"agents"`
+	ProxyPID      int    `json:"proxy_pid"`
+	Port          int    `json:"port"`
+	PolicyHash    string `json:"policy_hash"`
+	Agents        []int  `json:"agents"`
+	CanonicalPath string `json:"canonical_path"`
 }
 
 type doctorFixture struct {
