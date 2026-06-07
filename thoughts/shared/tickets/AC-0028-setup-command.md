@@ -1,6 +1,6 @@
 # AC-0028: `setup` command (WP-5.3)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-04
 **Updated:** 2026-06-04
@@ -23,10 +23,10 @@ Operators need one onboarding command that installs the CA (with verification) a
 
 ## Acceptance Criteria
 
-- [ ] `agent-creance setup` performs CA bootstrap+verify and skill install.
-- [ ] `--no-skill` skips skill install; `--no-ca-install` skips system trust and prints the env-var-only caveat.
-- [ ] Exit code is non-zero if CA verification fails (unless `--no-ca-install`).
-- [ ] Reuses AC-0026/AC-0027 (no duplicated logic).
+- [x] `agent-creance setup` performs CA bootstrap+verify and skill install.
+- [x] `--no-skill` skips skill install; `--no-ca-install` skips system trust and prints the env-var-only caveat.
+- [x] Exit code is non-zero if CA verification fails (unless `--no-ca-install`).
+- [x] Reuses AC-0026/AC-0027 (no duplicated logic).
 
 ## Verification & Test Steps
 
@@ -49,7 +49,10 @@ Phase 5. Wires AC-0026 + AC-0027. Precondition surface for `run` (AC-0025).
 
 ## Questions for Research/Planning
 
-- [ ] Exact env-var-only caveat wording (which tools are uncovered: `go`/`curl`?).
+- [x] Exact env-var-only caveat wording (which tools are uncovered: `go`/`curl`?).
+  Resolved: the cage injects SSL_CERT_FILE/NODE_EXTRA_CA_CERTS/REQUESTS_CA_BUNDLE/
+  GIT_SSL_CAINFO, so curl/Node/Python/git are covered; Go-on-macOS trusts the CA only via
+  the keychain and is the gap. Caveat names the GitHub CLI (`gh`) as the example.
 
 ## References
 
@@ -62,3 +65,13 @@ Phase 5. Wires AC-0026 + AC-0027. Precondition surface for `run` (AC-0025).
 
 ### 2026-06-04
 Created from the v0.1 technical specification.
+
+### 2026-06-07
+Implemented (WP-5.3). `setup` command in internal/cli/setup.go delegates to
+setup.Installer (Bootstrap / EnsureCA / InstallSkill); App gained TLSProber/Sleeper seams.
+--no-ca-install ensures the CA PEM exists, skips trust+verify, prints the coverage caveat
+(curl/Node/Python/git covered; Go-on-macOS, e.g. `gh`, is the keychain-only gap); --no-skill
+skips the skill; both opt-outs together are allowed. Fakes-based unit tests cover all flag
+combinations + the verify-failure non-zero exit; setup_help.txtar covers help/args. Research:
+thoughts/shared/research/2026-06-07-AC-0028-setup-command.md; plan:
+thoughts/shared/plans/2026-06-07-AC-0028-setup-command.md.

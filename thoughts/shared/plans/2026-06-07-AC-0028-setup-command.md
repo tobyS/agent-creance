@@ -234,13 +234,13 @@ limitation `run_missing_prereq.txtar:7-11` documents.)
 ### Success criteria
 
 #### Automated
-- [ ] `go test -race ./internal/cli/...` green (new unit tests + testscript).
-- [ ] `make test` green (full suite, race).
-- [ ] `make lint` clean.
-- [ ] `go build ./...` compiles.
+- [x] `go test -race ./internal/cli/...` green (new unit tests + testscript).
+- [x] `make test` green (full suite, race).
+- [x] `make lint` clean.
+- [x] `go build ./...` compiles.
 
 #### Manual
-- [ ] Spot-check `agent-creance setup --no-ca-install` output wording reads correctly (names
+- [x] Spot-check `agent-creance setup --no-ca-install` output wording reads correctly (names
   `gh`, lists the four env vars).
 
 ---

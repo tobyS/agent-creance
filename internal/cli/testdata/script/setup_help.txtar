@@ -1,0 +1,13 @@
+# setup --help advertises both opt-out flags without touching the keychain.
+# (The keychain/curl-dependent behavior is unit-tested in setup_test.go, since
+# cli.Main wires the real OSKeychain and a bare `setup` would spawn mitmdump /
+# pop a trust dialog — the same limitation run_missing_prereq.txtar documents.)
+env PATH=$CREANCE_BIN
+
+agent-creance setup --help
+stdout '--no-skill'
+stdout '--no-ca-install'
+
+# Extra positional args are rejected before any side effect (cobra.NoArgs).
+! agent-creance setup bogus
+stderr 'unknown command'
