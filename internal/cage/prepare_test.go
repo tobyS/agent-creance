@@ -50,6 +50,11 @@ func TestPrepareSeedsAndWritesFragment(t *testing.T) {
 	wantFrag, err := profile.RenderProxyFragment(in.ProxyPort)
 	require.NoError(t, err)
 	require.Equal(t, wantFrag, string(fsys.Files[in.Layout.ProxyProfileSB()]))
+
+	// CA read-grant fragment matches the renderer for the resolved CA path (AC-0034).
+	wantCA, err := profile.RenderCAReadFragment(in.CACertPath)
+	require.NoError(t, err)
+	require.Equal(t, wantCA, string(fsys.Files[in.Layout.CAProfileSB()]))
 }
 
 func TestPreparePreservesExistingSettings(t *testing.T) {
@@ -85,10 +90,11 @@ func TestPrepareRewritesFragmentOnPortChange(t *testing.T) {
 
 func prepareInputs() cage.Inputs {
 	return cage.Inputs{
-		Config:    &config.Config{},
-		Layout:    state.Layout{Root: "/root"},
-		ProxyPort: 18081,
-		HomeDir:   "/home/test",
+		Config:     &config.Config{},
+		Layout:     state.Layout{Root: "/root"},
+		ProxyPort:  18081,
+		HomeDir:    "/home/test",
+		CACertPath: "/home/test/.mitmproxy/mitmproxy-ca-cert.pem",
 	}
 }
 

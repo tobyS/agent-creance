@@ -96,11 +96,14 @@ func Build(in Inputs) (Invocation, error) {
 		args = append(args, "--workdir", expandPath(wd, in.HomeDir, in.Layout.Canonical))
 	}
 
-	// Two append-profiles, in order: the cached deny-all baseline, then the
+	// Append-profiles, in order: the cached deny-all network baseline, then the
 	// launch-time proxy-port allow fragment (which relies on the baseline preceding
-	// it — the ordering contract in profile.RenderProxyFragment).
+	// it — the ordering contract in profile.RenderProxyFragment), then the CA
+	// read-grant fragment (AC-0034; filesystem rule, order-independent of the network
+	// ones — last-match-wins over safehouse's (deny default) base).
 	args = append(args, "--append-profile", in.Layout.NetworkSB())
 	args = append(args, "--append-profile", in.Layout.ProxyProfileSB())
+	args = append(args, "--append-profile", in.Layout.CAProfileSB())
 
 	env := buildEnv(in)
 	keys := sortedKeys(env)
@@ -157,6 +160,11 @@ func caCertPath(home string) string {
 //     wiping this dir.
 //   - (Re)writes the launch-time proxy-port Seatbelt fragment to ProxyProfileSB.
 //     Always overwritten because the port is ephemeral and changes per launch.
+//   - (Re)writes the CA read-grant Seatbelt fragment to CAProfileSB (AC-0034). The
+//     CA path is symlink-resolved first because Seatbelt literals match the kernel's
+//     resolved path (macOS firmlinks make /Users/... and /System/Volumes/Data/Users/...
+//     the same file); EvalSymlinks failing means the CA does not exist yet (setup not
+//     run), in which case the unresolved path is used as a best-effort literal.
 //
 // network.sb is NOT written here — it is the compile step's output (internal/
 // profile), guaranteed present before cage runs.
@@ -182,6 +190,19 @@ func (b *Builder) Prepare(in Inputs) error {
 	if err := b.fs.WriteFile(dst, []byte(frag), 0o600); err != nil {
 		return fmt.Errorf("cage: write proxy fragment %q: %w", dst, err)
 	}
+
+	caPath := in.CACertPath
+	if resolved, err := b.paths.EvalSymlinks(caPath); err == nil {
+		caPath = resolved
+	}
+	caFrag, err := profile.RenderCAReadFragment(caPath)
+	if err != nil {
+		return fmt.Errorf("cage: render CA fragment: %w", err)
+	}
+	caDst := in.Layout.CAProfileSB()
+	if err := b.fs.WriteFile(caDst, []byte(caFrag), 0o600); err != nil {
+		return fmt.Errorf("cage: write CA fragment %q: %w", caDst, err)
+	}
 	return nil
 }
 
@@ -191,8 +212,11 @@ func (b *Builder) Prepare(in Inputs) error {
 //
 // The proxy + CA set is the one confirmed by spike S4: all proxy vars (upper and
 // lower case) point at the loopback proxy; all four CA vars point at the single
-// mitmproxy CA PEM. go is intentionally not special-cased (on macOS it trusts the
-// CA only via the keychain), and ALL_PROXY is intentionally omitted.
+// mitmproxy CA PEM. That PEM is made readable in-cage by the CA read-grant fragment
+// (AC-0034; see Prepare / profile.RenderCAReadFragment) — without it ~/.mitmproxy is
+// denied and env-var-CA clients (node, python) cannot trust the proxy. go is
+// intentionally not special-cased (on macOS it trusts the CA only via the keychain),
+// and ALL_PROXY is intentionally omitted.
 func buildEnv(in Inputs) map[string]string {
 	env := make(map[string]string, len(in.Config.Env)+12)
 	for k, v := range in.Config.Env {

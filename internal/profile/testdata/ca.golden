@@ -1,0 +1,6 @@
+;; agent-creance ca.sb — appended after safehouse's base via --append-profile (AC-0034).
+;; Re-open read of exactly the one mitmproxy CA PEM so env-var-CA clients (node,
+;; python) trust the proxy in-cage; the sibling CA private key stays unreadable.
+;; Generated; do not edit.
+(allow file-read-metadata (literal "/home/test/.mitmproxy"))
+(allow file-read* (literal "/home/test/.mitmproxy/mitmproxy-ca-cert.pem"))

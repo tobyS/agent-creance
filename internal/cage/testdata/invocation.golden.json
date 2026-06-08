@@ -12,6 +12,8 @@
     "/home/test/.cache/agent-creance/projects/0123456789abcdef/network.sb",
     "--append-profile",
     "/home/test/.cache/agent-creance/projects/0123456789abcdef/proxy.sb",
+    "--append-profile",
+    "/home/test/.cache/agent-creance/projects/0123456789abcdef/ca.sb",
     "--env-pass",
     "CLAUDE_CONFIG_DIR,GIT_SSL_CAINFO,HTTPS_PROXY,HTTP_PROXY,MY_VAR,NODE_EXTRA_CA_CERTS,NO_PROXY,REQUESTS_CA_BUNDLE,SSL_CERT_FILE,http_proxy,https_proxy,no_proxy",
     "--",

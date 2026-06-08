@@ -14,5 +14,17 @@ present on this host, so the live red→green integration proof can be attempted
       UNABLE_TO_VERIFY_LEAF_SIGNATURE, env-ca-python → ERR; both runtimes ran
       in-cage; other 16 vectors PASS; count=18.
 
-## Phase 2 — CA read-grant fix (GREEN) — IN PROGRESS
-## Phase 3 — docs & ticket — NOT STARTED
+## Phase 2 — CA read-grant fix (GREEN) — DONE
+- [x] profile.RenderCAReadFragment + golden + unit tests (grants file-read* on the
+      cert only, metadata-only on the parent dir)
+- [x] state.Layout.CAProfileSB (ca.sb)
+- [x] cage Prepare writes ca.sb (EvalSymlinks for firmlinks); Build appends a third
+      --append-profile; buildEnv doc updated
+- [x] invocation.golden regenerated (one new --append-profile ca.sb)
+- [x] make test / make build / make lint green
+- [x] Integration GREEN: env-ca-node + env-ca-python → 200; all 18 PASS; negative
+      control still detects the escape; stable -count=2
+- [x] Empirically verified in-cage: CA private key (mitmproxy-ca.pem) denied, cert
+      readable (temp probe, reverted)
+
+## Phase 3 — docs & ticket — IN PROGRESS

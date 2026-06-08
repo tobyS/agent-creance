@@ -1,7 +1,11 @@
-// Package profile generates the cage's network Seatbelt (SBPL) profile: an
-// --append-profile fragment that narrows agent-safehouse's "network open by default"
-// base to a deny-all baseline plus narrow per-port allows for whitelisted host
-// services and the mitmproxy.
+// Package profile generates the cage's Seatbelt (SBPL) --append-profile fragments.
+//
+// The primary fragment is the network profile: it narrows agent-safehouse's
+// "network open by default" base to a deny-all baseline plus narrow per-port allows
+// for whitelisted host services and the mitmproxy. A second, filesystem fragment
+// (RenderCAReadFragment, AC-0034) re-opens read of exactly the one mitmproxy CA PEM
+// so env-var-CA clients (node, python) trust the proxy in-cage — agent-safehouse's
+// base denies ~/.mitmproxy, where the four injected CA env vars point.
 //
 // Rule form (per spikes S3/AC-0003 and S5/AC-0005): each allowed port is emitted as
 //
@@ -22,6 +26,7 @@ package profile
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -42,6 +47,10 @@ const (
 	DenyBaseline = "(deny network*)"
 	proxyHeader  = ";; agent-creance proxy fragment — live ephemeral proxy port; regenerated per launch.\n" +
 		";; Relies on network.sb's (deny network*) being appended BEFORE this fragment (AC-0023).\n"
+	caHeader = ";; agent-creance ca.sb — appended after safehouse's base via --append-profile (AC-0034).\n" +
+		";; Re-open read of exactly the one mitmproxy CA PEM so env-var-CA clients (node,\n" +
+		";; python) trust the proxy in-cage; the sibling CA private key stays unreadable.\n" +
+		";; Generated; do not edit.\n"
 )
 
 // allowRule renders one outbound allow for the loopback at the given port. The host
@@ -79,6 +88,28 @@ func RenderProxyFragment(port int) (string, error) {
 		return "", fmt.Errorf("profile: proxy port %d out of range %d-%d", port, minPort, maxPort)
 	}
 	return proxyHeader + allowRule(port) + "\n", nil
+}
+
+// RenderCAReadFragment renders the ca.sb append fragment: a read grant for exactly the
+// one mitmproxy CA PEM, plus a metadata-only grant on its parent directory so the file
+// is reachable for open() under safehouse's (deny default) base. The metadata grant
+// exposes the directory's entries' existence — NOT the contents of any sibling file, so
+// the CA private key (mitmproxy-ca.pem) in the same dir stays unreadable. caCertPath
+// must be an absolute, symlink-resolved path (Seatbelt literals match the resolved path;
+// see internal/cage Prepare). The result ends with a trailing newline.
+func RenderCAReadFragment(caCertPath string) (string, error) {
+	if caCertPath == "" {
+		return "", fmt.Errorf("profile: empty CA cert path")
+	}
+	if !filepath.IsAbs(caCertPath) {
+		return "", fmt.Errorf("profile: CA cert path %q is not absolute", caCertPath)
+	}
+	dir := filepath.Dir(caCertPath)
+	var b strings.Builder
+	b.WriteString(caHeader)
+	fmt.Fprintf(&b, "(allow file-read-metadata (literal %q))\n", dir)
+	fmt.Fprintf(&b, "(allow file-read* (literal %q))\n", caCertPath)
+	return b.String(), nil
 }
 
 // dedupeByPort drops repeated ports, preserving first-seen order, so two host_services

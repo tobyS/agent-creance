@@ -38,6 +38,7 @@ const (
 	policyJSONName     = "policy.json"
 	networkSBName      = "network.sb"
 	proxyProfileSBName = "proxy.sb"
+	caProfileSBName    = "ca.sb"
 	proxyLockName      = "proxy.lock"
 	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
@@ -218,6 +219,11 @@ func (l Layout) NetworkSB() string { return filepath.Join(l.Root, networkSBName)
 // contract enforced by profile.RenderProxyFragment). Rewritten every launch
 // because the port is ephemeral.
 func (l Layout) ProxyProfileSB() string { return filepath.Join(l.Root, proxyProfileSBName) }
+
+// CAProfileSB is the launch-time Seatbelt fragment that grants in-cage read of the
+// single mitmproxy CA PEM (AC-0034), passed to Safehouse via a third --append-profile.
+// Rewritten every launch because the resolved CA path depends on the host.
+func (l Layout) CAProfileSB() string { return filepath.Join(l.Root, caProfileSBName) }
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }

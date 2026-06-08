@@ -130,3 +130,57 @@ func TestRenderProxyFragment_NoForbiddenLiterals(t *testing.T) {
 	}
 	assertNoForbiddenLiterals(t, got)
 }
+
+func TestRenderCAReadFragment_Golden(t *testing.T) {
+	// A fixed, host-independent path keeps the golden stable.
+	got, err := RenderCAReadFragment("/home/test/.mitmproxy/mitmproxy-ca-cert.pem")
+	if err != nil {
+		t.Fatalf("RenderCAReadFragment: %v", err)
+	}
+
+	golden := filepath.Join("testdata", "ca.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("ca.sb mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderCAReadFragment_GrantsOnlyTheOnePEM(t *testing.T) {
+	got, err := RenderCAReadFragment("/home/test/.mitmproxy/mitmproxy-ca-cert.pem")
+	if err != nil {
+		t.Fatalf("RenderCAReadFragment: %v", err)
+	}
+	// Exactly one file-read* (data) grant, on the cert only — the private key
+	// (mitmproxy-ca.pem) in the same dir must NOT be read-data-granted.
+	if n := strings.Count(got, "file-read*"); n != 1 {
+		t.Errorf("expected exactly one file-read* grant, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(got, `(allow file-read* (literal "/home/test/.mitmproxy/mitmproxy-ca-cert.pem"))`) {
+		t.Errorf("missing the cert read grant:\n%s", got)
+	}
+	// The parent dir gets metadata-only (for traversal), never file-read* (contents).
+	if !strings.Contains(got, `(allow file-read-metadata (literal "/home/test/.mitmproxy"))`) {
+		t.Errorf("missing the parent-dir metadata grant:\n%s", got)
+	}
+	if strings.Contains(got, `file-read* (literal "/home/test/.mitmproxy")`) {
+		t.Errorf("must not grant read-data on the whole .mitmproxy dir:\n%s", got)
+	}
+}
+
+func TestRenderCAReadFragment_Errors(t *testing.T) {
+	if _, err := RenderCAReadFragment(""); err == nil {
+		t.Error("empty path: want error, got nil")
+	}
+	if _, err := RenderCAReadFragment("relative/ca.pem"); err == nil {
+		t.Error("relative path: want error, got nil")
+	}
+}
