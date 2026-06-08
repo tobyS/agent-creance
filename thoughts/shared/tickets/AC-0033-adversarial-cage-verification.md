@@ -1,9 +1,9 @@
 # AC-0033: Adversarial cage verification harness ("fake agent" escape battery) (WP-4.5)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Extra Large
 **Created:** 2026-06-04
-**Updated:** 2026-06-04
+**Updated:** 2026-06-08
 **Plan reference:** new WP-4.5 (verification capstone) — derived from `docs/design.md` "What the cage prevents — and what it doesn't"
 **Depends on:** AC-0014 (.sb), AC-0017 (enforcer), AC-0020 (lifecycle), AC-0023 (Safehouse invocation), AC-0025 (run)
 **Spike gate:** inherits S1–S5 via dependencies
@@ -35,33 +35,33 @@ This harness is the **acceptance gate for Milestone M3** — "caged run" isn't d
 The harness contains one assertion per bullet of the design's threat model. Each is labeled BLOCKED (must be refused), ALLOWED (must succeed — false-negative guard), or DOCUMENTED (must behave as the "Not prevented" section states).
 
 **BLOCKED — kernel/Seatbelt (assert refused from inside the cage):**
-- [ ] Read a host file outside `./` (e.g. `~/.ssh/id_rsa`, `~/.aws/credentials`) → permission denied.
-- [ ] Read/write the **real** `~/.claude` (settings, hooks, skills) → denied / not writable.
-- [ ] Raw outbound TCP to an arbitrary host bypassing the proxy (e.g. `nc`/`curl` direct to `example.com:443`, no proxy) → blocked.
-- [ ] Connect to a **non-allowlisted** localhost port over **both** `127.0.0.1` and `::1` → refused.
-- [ ] A child process spawned by the payload inherits the same restrictions (re-run a blocked vector from a subprocess) → still blocked.
+- [x] Read a host file outside `./` (e.g. `~/.ssh/id_rsa`, `~/.aws/credentials`) → permission denied. *(`fs-outside`)*
+- [x] Read/write the **real** `~/.claude` (settings, hooks, skills) → denied / not writable. *(`fs-real-claude`)*
+- [x] Raw outbound TCP to an arbitrary host bypassing the proxy → blocked. *(`net-raw-tcp`)*
+- [x] Connect to a **non-allowlisted** localhost port over **both** `127.0.0.1` and `::1` → refused. *(`net-localhost-v4` / `net-localhost-v6`)*
+- [x] A child process spawned by the payload inherits the same restrictions → still blocked. *(`net-child`)*
 
 **BLOCKED — proxy (assert the structured refusal):**
-- [ ] Egress via the proxy to a non-allowlisted host → 403 `X-Cage-Reason: soft-deny`.
-- [ ] Egress to a `deny_always` host → 403 `X-Cage-Reason: hard-deny` + reason.
-- [ ] Disallowed path/method on an intercepted allowlisted host → soft-deny.
-- [ ] DNS query to an arbitrary external nameserver directly → blocked (resolution only via the proxy).
+- [x] Egress via the proxy to a non-allowlisted host → 403 `X-Cage-Reason: soft-deny`. *(`proxy-soft-deny`)*
+- [x] Egress to a `deny_always` host → 403 `X-Cage-Reason: hard-deny` + reason. *(`proxy-hard-deny`)*
+- [x] Disallowed path/method on an intercepted allowlisted host → soft-deny. *(`proxy-offpath`)*
+- [x] DNS query to an arbitrary external nameserver directly → blocked (resolution only via the proxy). *(`net-dns`)*
 
 **ALLOWED — false-negative guard (assert success):**
-- [ ] Egress via the proxy to an allowlisted host/path/method → 200 upstream.
-- [ ] A generated-rule host (a dep homepage/repo from a generator) → allowed.
-- [ ] A `host_services` entry at `127.0.0.1:<port>` → connects.
-- [ ] A `mode: passthrough` host → tunnels and validates against the **real** upstream certificate (not mitmproxy's CA).
+- [x] Egress via the proxy to an allowlisted host/path/method → 200 upstream. *(`allow-200`)*
+- [~] A generated-rule host (a dep homepage/repo from a generator) → allowed. *(Not a distinct cage vector: at the cage/proxy layer a generated allow rule is byte-identical to an explicit one in `policy.json` — exercised by `allow-200`. The generator that produces such rules has its own live integration test, `internal/generator/live_integration_test.go`.)*
+- [x] A `host_services` entry at `127.0.0.1:<port>` → connects. *(`svc-allowed`)*
+- [x] A `mode: passthrough` host → tunnels and validates against the **real** upstream certificate (not mitmproxy's CA). *(`passthrough`)*
 
 **DOCUMENTED — honesty assertions (assert the design's stated non-guarantees):**
-- [ ] `rm`/write within `./` succeeds (project files are damageable by design) → the cage does **not** block it.
-- [ ] A `POST` with an agent-controlled body to an **allowlisted** host succeeds (residual exfil surface the allowlist narrows but does not eliminate) → goes through, and is recorded in the audit log.
-- [ ] The redirected ephemeral `CLAUDE_CONFIG_DIR` is writable but a hook/skill planted there does **not** appear in the real `~/.claude` after the session (config-persistence vector closed).
+- [x] `rm`/write within `./` succeeds → the cage does **not** block it. *(`doc-rm`)*
+- [x] A `POST` with an agent-controlled body to an **allowlisted** host succeeds → goes through, and is recorded in the audit log (body NOT recorded). *(`doc-post` + `assertAuditedPOST`)*
+- [x] The redirected ephemeral `CLAUDE_CONFIG_DIR` is writable but a plant there does **not** appear in the real `~/.claude`. *(`doc-config-dir` + structural Go assertion)*
 
 **Harness integrity:**
-- [ ] **Negative control:** running the battery against a cage with the network deny-baseline removed (or a host-service rule widened) makes the battery **report an escape and fail** — proving the harness can detect a broken cage, not just rubber-stamp.
-- [ ] Every assertion maps to a named bullet in `docs/design.md` (a comment/table linking assertion → design line), so the threat model and the test never drift.
-- [ ] A checked-in human red-team checklist documents the vectors not automated (confused-deputy via a real DB/Redis `REPLICAOF`, interactive token exfil) with step-by-step repro + expected result.
+- [x] **Negative control:** the battery against a cage with the deny-baseline removed **reports an escape and fails** — proving it can detect a broken cage. *(`TestCageVerificationNegativeControl`)*
+- [x] Every assertion maps to a named bullet in `docs/design.md` via `internal/verify.Vectors`, with a fast drift guard (`coverage_test.go`) that fails if a mapped keyword leaves the design's threat-model section.
+- [x] A checked-in human red-team checklist documents the non-automated vectors. *(`docs/cage-verification.md`)*
 
 ## Verification & Test Steps
 
@@ -104,3 +104,19 @@ New Phase-4 capstone (WP-4.5). Requires a runnable cage, so it lands after AC-00
 
 ### 2026-06-04
 Created after review feedback: the per-ticket integration steps verified isolation only piecemeal and host-side. This capstone runs a hostile "fake agent" *inside* the real cage across the full threat-model matrix, with a negative control so the harness can actually fail. Gates Milestone M3.
+
+### 2026-06-08 — Implemented (M3 gate green)
+Research → plan → implement via `/tce:work`. New package `internal/verify`:
+- `matrix.go` — `Vectors`, the single source of truth mapping 16 probes (BLOCKED / ALLOWED / DOCUMENTED) to `docs/design.md` bullets.
+- `battery.go` — `ParseProbeOutput` + `Evaluate` → a `Verdict` distinguishing a security **Escape** (a BLOCKED vector that leaked) from a plain **Failure** (over-blocking / missing line), with a per-vector `Summary`.
+- `coverage_test.go` — fast drift guard (runs in `make test`): fails if a mapped keyword leaves the design's threat-model section.
+- `testdata/fake-agent.sh` — the hostile `/bin/sh` payload, run as `agent.command` inside the cage.
+- `verification_integration_test.go` — composes a real `mitmdump`+enforcer (via `proxy.Manager.Attach`, reusing the AC-0020 lock/port machinery) with a real `agent-safehouse` cage; `TestCageVerificationBattery` (no escape, no failure) + `TestCageVerificationNegativeControl` (deny-baseline stripped → escape detected). Verified on an unsandboxed macOS host: all 16 vectors green, negative control detects the raw-egress escape, stable across `-count=2`.
+
+**Checkpoint decisions:** real public hosts (`example.com` intercept / `example.org` passthrough) for proxy-egress ALLOWED vectors with skip-on-offline (matches `enforcer/test_integration.py`); shell+curl fake-agent (not a Go binary).
+
+**Findings surfaced by the harness (candidate follow-up tickets):**
+1. The injected CA env vars (`SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS` / `REQUESTS_CA_BUNDLE` / `GIT_SSL_CAINFO`) point at `~/.mitmproxy/mitmproxy-ca-cert.pem`, which is **not readable inside the cage** (safehouse denies `~/.mitmproxy`). So those belt-and-suspenders CA files are non-functional in-cage; CA trust reaches the cage only via the keychain (`trustd`), making `agent-creance setup` a hard prerequisite. The battery works around it with an in-mount `--cacert` copy.
+2. `CLAUDE_CONFIG_DIR` resolves under `~/.cache/agent-creance`, but safehouse's base policy grants RW only to `/tmp`, `$TMPDIR`, and specific toolchain dirs — **not** a generic `~/.cache`. The battery passes because `XDG_CACHE_HOME=t.TempDir()` lands under `$TMPDIR` (writable); with the real `~/.cache` location the redirected config dir may not be writable in-cage. Worth confirming a real `run` mounts it (or relies on `$TMPDIR`).
+
+Both findings are recorded in `docs/cage-verification.md` ("Known limitations") as host checks for the manual pass.
