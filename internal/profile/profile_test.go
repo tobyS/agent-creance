@@ -53,7 +53,7 @@ func TestRenderNetworkSB_Golden(t *testing.T) {
 
 func TestRenderNetworkSB_Empty(t *testing.T) {
 	got := RenderNetworkSB(nil)
-	if !strings.Contains(got, denyBaseline) {
+	if !strings.Contains(got, DenyBaseline) {
 		t.Errorf("empty render is missing the deny baseline:\n%s", got)
 	}
 	if strings.Contains(got, "(allow") {
@@ -115,7 +115,7 @@ func TestRenderProxyFragment(t *testing.T) {
 			// The proxy fragment must NOT restate the deny baseline as a rule line
 			// (ordering contract); it may appear inside a header comment.
 			for _, line := range strings.Split(got, "\n") {
-				if strings.TrimSpace(line) == denyBaseline {
+				if strings.TrimSpace(line) == DenyBaseline {
 					t.Errorf("proxy fragment must not restate the deny baseline:\n%s", got)
 				}
 			}

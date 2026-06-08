@@ -36,7 +36,10 @@ const (
 const (
 	networkHeader = ";; agent-creance network.sb — appended after safehouse's base via --append-profile (AC-0023).\n" +
 		";; Deny-all network baseline; re-open only allowlisted host-service ports. Generated; do not edit.\n"
-	denyBaseline = "(deny network*)"
+	// DenyBaseline is the deny-all network line emitted first in every network.sb.
+	// Exported so the AC-0033 cage-verification negative control can strip it to
+	// build a deliberately-weakened profile without hardcoding the literal.
+	DenyBaseline = "(deny network*)"
 	proxyHeader  = ";; agent-creance proxy fragment — live ephemeral proxy port; regenerated per launch.\n" +
 		";; Relies on network.sb's (deny network*) being appended BEFORE this fragment (AC-0023).\n"
 )
@@ -54,7 +57,7 @@ func allowRule(port int) string {
 func RenderNetworkSB(services []config.HostService) string {
 	var b strings.Builder
 	b.WriteString(networkHeader)
-	b.WriteString(denyBaseline)
+	b.WriteString(DenyBaseline)
 	b.WriteByte('\n')
 	for _, svc := range dedupeByPort(services) {
 		b.WriteString(allowRule(svc.Port))
