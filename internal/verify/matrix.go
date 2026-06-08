@@ -117,6 +117,22 @@ var Vectors = []Vector{
 		Keyword: "passthrough", DesignRef: "design.md:68",
 		Desc: "a mode: passthrough host → tunnels, validates the real upstream cert",
 	},
+	{
+		// AC-0034: a client that trusts the proxy CA ONLY via the injected env-var
+		// file (not the keychain) must get 200 in-cage — proves the single-file CA
+		// read-grant works. ALLOWED, so a regression (CA unreadable) shows as a
+		// failure, not an escape. Egress; skipped offline or if node is absent.
+		ID: "env-ca-node", Label: LabelAllowed, Expected: "200", Egress: true,
+		Keyword: "NODE_EXTRA_CA_CERTS", DesignRef: "AC-0034",
+		Desc: "node trusts the injected env-var CA file and gets 200 through the proxy in-cage",
+	},
+	{
+		// AC-0034: same guard for the OpenSSL CA-file path (SSL_CERT_FILE /
+		// REQUESTS_CA_BUNDLE), the mechanism python/requests use.
+		ID: "env-ca-python", Label: LabelAllowed, Expected: "200", Egress: true,
+		Keyword: "SSL_CERT_FILE", DesignRef: "AC-0034",
+		Desc: "python trusts the injected env-var CA file and gets 200 through the proxy in-cage",
+	},
 	// DOCUMENTED — honesty assertions.
 	{
 		ID: "doc-rm", Label: LabelDocumented, Expected: "rm-ok",

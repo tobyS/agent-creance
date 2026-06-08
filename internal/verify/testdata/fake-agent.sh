@@ -12,14 +12,17 @@
 # token or a "blocked:*" token; egress vectors emit "skip" when run offline.
 #
 # Inputs arrive as CREANCE_* env vars (passed via config.env) plus the cage's own
-# injected env (HTTPS_PROXY, CLAUDE_CONFIG_DIR). We deliberately drop the injected
-# CA env vars: they point at ~/.mitmproxy, which is unreadable inside the cage, so
-# we trust mitmproxy's CA via an explicit, in-mount --cacert copy (CREANCE_CA)
-# instead. This isolates "does the proxy enforce the policy" from CA plumbing.
+# injected env (HTTPS_PROXY, CLAUDE_CONFIG_DIR). Most proxy probes deliberately drop
+# the injected CA env vars and trust mitmproxy's CA via an explicit, in-mount
+# --cacert copy (CREANCE_CA): that isolates "does the proxy enforce the policy" from
+# CA plumbing. The two env-ca-* probes are the exception (AC-0034) — they trust the
+# CA ONLY via the injected env-var file to prove that file is readable in-cage, so we
+# stash its path before the unset below.
 #
 # POSIX sh only (the cage runs /bin/sh). No `set -e`: every probe must run even
 # when an earlier one fails, and a non-zero rc is frequently the expected result.
 
+CREANCE_INJECTED_CA="${NODE_EXTRA_CA_CERTS:-$SSL_CERT_FILE}"
 unset SSL_CERT_FILE NODE_EXTRA_CA_CERTS REQUESTS_CA_BUNDLE GIT_SSL_CAINFO CURL_CA_BUNDLE
 
 PROJ="${CREANCE_PROJ:-.}"
@@ -136,9 +139,59 @@ if [ "$CREANCE_EGRESS" = "1" ]; then
 	set -- $(http_through_proxy "https://$CREANCE_PASS_HOST/")
 	code="$1"
 	[ "$code" = "200" ] && emit passthrough 200 || emit passthrough "blocked:$code"
+
+	# AC-0034: node trusts the proxy CA ONLY via NODE_EXTRA_CA_CERTS (the injected
+	# env-var file — NOT the keychain, NOT CREANCE_CA). It CONNECTs through the proxy
+	# then completes TLS using node's default trust store augmented by that file. A
+	# 200 proves the file was readable in-cage; a CA error proves it was not.
+	if command -v node >/dev/null 2>&1; then
+		code=$(NODE_EXTRA_CA_CERTS="$CREANCE_INJECTED_CA" node - <<'NODEJS' 2>/dev/null
+const http=require('http'),tls=require('tls');
+const m=(process.env.HTTPS_PROXY||'').replace(/^https?:\/\//,'').split(':');
+const host=process.env.CREANCE_ALLOW_HOST;
+const done=v=>{console.log(v);process.exit(0);};
+const req=http.request({host:m[0],port:m[1]||80,method:'CONNECT',path:host+':443'});
+req.on('connect',(_res,socket)=>{
+  const s=tls.connect({socket,servername:host},()=>{
+    s.write('GET / HTTP/1.1\r\nHost: '+host+'\r\nConnection: close\r\n\r\n');
+  });
+  let buf='';
+  s.on('data',d=>{buf+=d;});
+  s.on('end',()=>{const mm=buf.match(/^HTTP\/1\.[01] (\d+)/);done(mm?mm[1]:'ERR');});
+  s.on('error',e=>done('ERR:'+(e.code||'tls')));
+});
+req.on('error',e=>done('ERR:'+(e.code||'conn')));
+req.setTimeout(25000,()=>done('ERR:timeout'));
+req.end();
+NODEJS
+		)
+		[ "$code" = "200" ] && emit env-ca-node 200 || emit env-ca-node "blocked:${code:-000}"
+	else
+		emit env-ca-node skip
+	fi
+
+	# AC-0034: python trusts the proxy CA ONLY via SSL_CERT_FILE/REQUESTS_CA_BUNDLE
+	# (the injected env-var file; the OpenSSL CA-file path requests also uses). urllib
+	# honors the proxy env and the SSL_CERT_FILE default-verify path.
+	if command -v python3 >/dev/null 2>&1; then
+		code=$(SSL_CERT_FILE="$CREANCE_INJECTED_CA" REQUESTS_CA_BUNDLE="$CREANCE_INJECTED_CA" \
+			python3 - "https://$CREANCE_ALLOW_HOST/" <<'PYEOF' 2>/dev/null
+import sys, urllib.request
+try:
+    print(urllib.request.urlopen(sys.argv[1], timeout=25).status)
+except Exception:
+    print("ERR")
+PYEOF
+		)
+		[ "$code" = "200" ] && emit env-ca-python 200 || emit env-ca-python "blocked:${code:-000}"
+	else
+		emit env-ca-python skip
+	fi
 else
 	emit allow-200 skip
 	emit passthrough skip
+	emit env-ca-node skip
+	emit env-ca-python skip
 fi
 
 # ---- DOCUMENTED: honesty assertions -------------------------------------------
