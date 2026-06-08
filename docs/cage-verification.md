@@ -37,7 +37,7 @@ Record each item as **PASS** (behaved as the "Expected" column states) or **FAIL
 
 | Step | Command | Expected |
 |------|---------|----------|
-| 1.1 | `make test-integration` (or `go test -tags=integration ./internal/verify/ -v`) | `TestCageVerificationBattery` green: all 16 vectors PASS. |
+| 1.1 | `make test-integration` (or `go test -tags=integration ./internal/verify/ -v`) | `TestCageVerificationBattery` green: all 18 vectors PASS. |
 | 1.2 | (same run) | `TestCageVerificationNegativeControl` green: the weakened cage is reported as an ESCAPE (proves the harness can fail a broken cage). |
 | 1.3 | `go test -tags=integration ./internal/verify/ -count=2` | Stable across two runs (no port-race flakes). |
 
@@ -113,14 +113,17 @@ audit log at least records the request.
 
 These were surfaced while building the automated battery and affect manual runs:
 
-1. **CA trust reaches the cage via the keychain, not the env-var CA files.** The
-   cage injects `SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS` / `REQUESTS_CA_BUNDLE` /
-   `GIT_SSL_CAINFO` pointing at `~/.mitmproxy/mitmproxy-ca-cert.pem`, but that path
-   is **not readable inside the cage**. So an OpenSSL-based tool that relies on
-   those files will not trust the proxy; macOS `curl`/CFNetwork tools trust it via
-   the keychain (`trustd`), which is why `agent-creance setup` (keychain install)
-   is a hard prerequisite. If a caged HTTPS client fails with a CA error, check
-   that `setup` actually trusted the CA.
+1. **CA trust reaches the cage via both the keychain and the env-var CA files**
+   (since AC-0034). The cage injects `SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS` /
+   `REQUESTS_CA_BUNDLE` / `GIT_SSL_CAINFO` pointing at
+   `~/.mitmproxy/mitmproxy-ca-cert.pem`, and a third `--append-profile` fragment
+   (`ca.sb`) grants in-cage read of exactly that one PEM — so env-var-CA clients
+   (node, python) trust the proxy in-cage, guarded by the `env-ca-node` /
+   `env-ca-python` vectors. macOS `curl`/CFNetwork and `go` additionally trust it
+   via the keychain (`trustd`), so `agent-creance setup` (keychain install) is still
+   a hard prerequisite for keychain-only clients. The CA *private key*
+   (`~/.mitmproxy/mitmproxy-ca.pem`) remains unreadable in-cage. If a caged HTTPS
+   client still fails with a CA error, check that `setup` trusted the CA.
 2. **The redirected `CLAUDE_CONFIG_DIR` lives under `~/.cache/agent-creance`**,
    and safehouse's base policy grants RW to `/tmp`, `$TMPDIR`, and specific
    toolchain dirs — confirm on your host that the agent can actually write its

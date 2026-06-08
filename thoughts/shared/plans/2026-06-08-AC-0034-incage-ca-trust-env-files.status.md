@@ -27,4 +27,9 @@ present on this host, so the live red→green integration proof can be attempted
 - [x] Empirically verified in-cage: CA private key (mitmproxy-ca.pem) denied, cert
       readable (temp probe, reverted)
 
-## Phase 3 — docs & ticket — IN PROGRESS
+## Phase 3 — docs & ticket — DONE
+- [x] cage-verification.md: vector count 18; known-limitation #1 rewritten (env-var
+      CA files now work in-cage; private key stays unreadable)
+- [x] design.md: ca.sb bullet + single-CA-PEM exception note in "What the cage prevents"
+- [x] ticket: ACs ticked, Status Done, dated note with red→green commit refs
+- [x] drift guards still green after design.md edits

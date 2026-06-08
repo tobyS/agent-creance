@@ -1,6 +1,6 @@
 # AC-0034: Caged tools can't load the mitmproxy CA from the injected env-var files
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-08
 **Updated:** 2026-06-08
@@ -48,18 +48,21 @@ behavior is proven by a caged reproduction, and AC-0033 guards it going forward.
 
 ## Acceptance Criteria
 
-- [ ] A caged reproduction demonstrates the failure first: a tool that trusts the
-      CA only via an env-var file (e.g. node `https.get` with `NODE_EXTRA_CA_CERTS`,
-      or `pip`/`requests`) fails its TLS handshake to an allowlisted host through
-      the proxy from inside the cage, with the CA file unreadable.
-- [ ] After the fix, the same caged reproduction succeeds (the tool trusts the
-      proxy CA and gets a 200 from the allowlisted upstream).
-- [ ] macOS keychain-based clients (`curl`/CFNetwork) continue to work as before.
-- [ ] The fix does not broaden the cage's filesystem access beyond what is needed
-      to read the single CA PEM (no general `~/.mitmproxy` or home read-grant if a
-      narrower option exists).
-- [ ] The AC-0033 battery is extended with a vector that would catch a regression
-      of this (a caged env-var-CA TLS probe), so the gap can't silently reopen.
+- [x] A caged reproduction demonstrates the failure first: node (`NODE_EXTRA_CA_CERTS`)
+      and python (`SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE`) fail their TLS handshake to an
+      allowlisted host through the proxy from inside the cage — `env-ca-node` →
+      `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, `env-ca-python` → `ERR` (commit `6081186`).
+- [x] After the fix, the same caged reproduction succeeds: both get a 200 from the
+      allowlisted upstream in-cage (commit `644498f`).
+- [x] macOS keychain-based clients (`curl`/CFNetwork, `go`) continue to work as
+      before — the existing proxy/allow/passthrough vectors stay green; the fix only
+      adds a filesystem read-grant.
+- [x] The fix does not broaden filesystem access beyond the single CA PEM: a third
+      `--append-profile` fragment (`ca.sb`) grants `file-read*` on exactly
+      `mitmproxy-ca-cert.pem` + metadata-only on its parent dir. Verified in-cage:
+      the CA private key (`mitmproxy-ca.pem`) stays unreadable.
+- [x] The AC-0033 battery is extended with two caged env-var-CA TLS probes
+      (`env-ca-node`, `env-ca-python`); a regression turns the battery red (count: 18).
 
 ## Out of Scope
 
@@ -103,6 +106,23 @@ behavior is proven by a caged reproduction, and AC-0033 guards it going forward.
 ## Implementation Plan
 
 ## Notes & Updates
+
+### 2026-06-08 — Done
+Implemented Option A (single-file SBPL read-grant), chosen at the planning
+checkpoint because the mitmproxy CA is a single global host-wide cert at a stable
+path (not per-project), so a fixed literal-path grant needs no per-project logic and
+the env vars stay unchanged. `profile.RenderCAReadFragment` emits `(allow file-read*
+(literal <cert>))` + `(allow file-read-metadata (literal <dir>))`; `cage.Prepare`
+writes it to `ca.sb` with the symlink-resolved CA path (macOS firmlinks), and
+`cage.Build` appends it as a third `--append-profile`. The AC-0033 battery gained
+`env-ca-node` + `env-ca-python` (both runtimes proven to execute in-cage).
+
+Red→green proof on a real host: Phase-1 commit reproduced the failure
+(`UNABLE_TO_VERIFY_LEAF_SIGNATURE` / `ERR`); Phase-2 commit turned it green (both →
+200), all 18 vectors PASS, negative control still detects the escape, stable
+`-count=2`. Empirically confirmed the CA private key remains unreadable in-cage.
+Research: `thoughts/shared/research/2026-06-08-AC-0034-incage-ca-trust-env-files.md`;
+plan: `thoughts/shared/plans/2026-06-08-AC-0034-incage-ca-trust-env-files.md`.
 
 ### 2026-06-08
 Created from a finding surfaced by the AC-0033 cage-verification battery. Framed as
