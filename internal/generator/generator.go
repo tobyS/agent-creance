@@ -29,14 +29,47 @@ type Generator struct {
 	generatorsRoot string
 }
 
+// Metadata is the scanner-facing description of a generator type: the manifest file
+// it reads at a package root and the installed-dependency directories it owns. It lets
+// callers (the compiler's default-path resolution, init's bounded scan) consume a
+// generator's filename and skip-set without constructing a full Generator.
+type Metadata struct {
+	Type           string
+	ManifestFile   string
+	DependencyDirs []string
+}
+
+// All returns the metadata for every known generator, in registry order.
+func All() []Metadata {
+	out := make([]Metadata, 0, len(ecosystems))
+	for _, eco := range ecosystems {
+		out = append(out, metadataOf(eco))
+	}
+	return out
+}
+
+// Lookup returns the metadata for the named generator, or ok=false if unknown.
+func Lookup(name string) (Metadata, bool) {
+	for _, eco := range ecosystems {
+		if eco.name() == name {
+			return metadataOf(eco), true
+		}
+	}
+	return Metadata{}, false
+}
+
+func metadataOf(eco ecosystem) Metadata {
+	return Metadata{
+		Type:           eco.name(),
+		ManifestFile:   eco.manifestFile(),
+		DependencyDirs: eco.dependencyDirs(),
+	}
+}
+
 // Known reports whether name is a recognised generator (one this package can build).
 func Known(name string) bool {
-	switch name {
-	case GeneratorPackageJSON, GeneratorComposerJSON:
-		return true
-	default:
-		return false
-	}
+	_, ok := Lookup(name)
+	return ok
 }
 
 // New constructs the generator for name, wiring the matching registry client. An

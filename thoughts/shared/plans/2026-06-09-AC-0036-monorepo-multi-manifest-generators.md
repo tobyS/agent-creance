@@ -142,8 +142,8 @@ func Lookup(typ string) (Metadata, bool) { /* by name */ }
 - Existing generator tests stay green (no behavior change).
 
 ### Success criteria
-- [ ] `make test` green; `go build ./...` clean.
-- [ ] `generator.All()` / `generator.Lookup` / `generator.Known` all derive from
+- [x] `make test` green; `go build ./...` clean.
+- [x] `generator.All()` / `generator.Lookup` / `generator.Known` all derive from
       the single `ecosystems` table.
 
 ---

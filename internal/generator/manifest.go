@@ -13,18 +13,34 @@ const (
 	GeneratorComposerJSON = "composer_json"
 )
 
-// ecosystem is the per-manifest strategy: the generator's name and how to extract the
-// direct dependency names from that manifest. The manifest is decoded leniently — it
-// is a third-party file, not one of our own strict-schema configs.
+// ecosystem is the per-manifest strategy: the generator's name, the manifest file it
+// recognises, the installed-dependency directory it owns (so a scanner can skip it),
+// and how to extract the direct dependency names from that manifest. The manifest is
+// decoded leniently — it is a third-party file, not one of our own strict-schema
+// configs.
 type ecosystem interface {
 	name() string
+	// manifestFile is the manifest filename this ecosystem reads at a package root,
+	// e.g. "package.json". It is the default path for a bare generator entry.
+	manifestFile() string
+	// dependencyDirs are the directory names that hold this ecosystem's installed
+	// dependencies (e.g. "node_modules"). A manifest discovered inside one of these
+	// is an installed dependency, not a monorepo package, so scanners skip them.
+	dependencyDirs() []string
 	deps(manifest []byte) ([]string, error)
 }
+
+// ecosystems is the single registry of known ecosystems. Known, Lookup, All, and New
+// all derive from it, so adding a generator is a one-line change here (plus its New
+// wiring of a registry client).
+var ecosystems = []ecosystem{packageJSON{}, composerJSON{}}
 
 // packageJSON walks an npm package.json's direct dependencies.
 type packageJSON struct{}
 
-func (packageJSON) name() string { return GeneratorPackageJSON }
+func (packageJSON) name() string             { return GeneratorPackageJSON }
+func (packageJSON) manifestFile() string     { return "package.json" }
+func (packageJSON) dependencyDirs() []string { return []string{"node_modules"} }
 
 func (packageJSON) deps(manifest []byte) ([]string, error) {
 	var doc struct {
@@ -41,7 +57,9 @@ func (packageJSON) deps(manifest []byte) ([]string, error) {
 // and meta requirements that are not Packagist packages.
 type composerJSON struct{}
 
-func (composerJSON) name() string { return GeneratorComposerJSON }
+func (composerJSON) name() string             { return GeneratorComposerJSON }
+func (composerJSON) manifestFile() string     { return "composer.json" }
+func (composerJSON) dependencyDirs() []string { return []string{"vendor"} }
 
 func (composerJSON) deps(manifest []byte) ([]string, error) {
 	var doc struct {
