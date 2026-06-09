@@ -2,7 +2,7 @@
 date: 2026-06-09
 ticket: AC-0037
 title: "CA trust UX — skip redundant prompts, explain the dialog, point to the cert"
-status: ready
+status: done
 branch: main
 research: thoughts/shared/research/2026-06-09-AC-0037-ca-trust-prompt-ux.md
 tags: [plan, setup, ca-trust, keychain, cli-ux, AC-0037]
@@ -349,10 +349,10 @@ open Keychain Access (login keychain → Certificates) and search for %q, or run
 ### Success criteria
 
 #### Automated
-- [ ] `make test` and `make lint` green.
+- [x] `make test` and `make lint` green.
 
 #### Manual
-- [ ] Walk each ticket Acceptance Criterion against the diff; all satisfied.
+- [x] Walk each ticket Acceptance Criterion against the diff; all satisfied.
 
 ---
 

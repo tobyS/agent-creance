@@ -1,6 +1,6 @@
 # AC-0037: CA trust UX — skip redundant prompts, explain the dialog, point to the cert
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-09
 **Updated:** 2026-06-09
@@ -60,28 +60,35 @@ When this is complete:
 
 ## Acceptance Criteria
 
-- [ ] On a machine where the CA already validates against the system trust store,
+- [x] On a machine where the CA already validates against the system trust store,
       `setup` does **not** call `security add-trusted-cert` and the auth dialog
-      does not appear; setup still reports success.
-- [ ] Idempotency is gated on **actual trust** (the existing live verification),
+      does not appear; setup still reports success. *(verify-first in `Bootstrap`;
+      `TestSetupAlreadyTrusted` / `TestBootstrapAlreadyTrusted` assert
+      `AddedCerts == 0`.)*
+- [x] Idempotency is gated on **actual trust** (the existing live verification),
       not mere keychain presence: a cert that is present but not trusted is still
-      (re-)installed so trust is established.
-- [ ] When trust is not yet established, setup prints an explanatory message
+      (re-)installed so trust is established. *(first `Verify` decides; untrusted →
+      `InstallCA` runs — `TestBootstrapFreshInstall` / `TestSetupVerifyFailure`.)*
+- [x] When trust is not yet established, setup prints an explanatory message
       **before** invoking the install (naming agent-creance, the mitmproxy egress
-      CA, and that a macOS approval dialog will appear).
-- [ ] After a successful install — and on the already-trusted skip path — setup
+      CA, and that a macOS approval dialog will appear). *(`msgPrePrompt` via the
+      `beforeInstall` hook; `TestSetupFreshInstall`.)*
+- [x] After a successful install — and on the already-trusted skip path — setup
       prints a note stating the cert name ("mitmproxy"), that it is in the login
       keychain, and how to locate/remove it (Keychain Access or a `security`
-      command).
-- [ ] First-run behavior is unchanged in outcome: a fresh machine still generates
+      command). *(`keychainNote()` on both paths.)*
+- [x] First-run behavior is unchanged in outcome: a fresh machine still generates
       the CA, installs trust (with the new pre-prompt message), verifies, and
-      ends trusted.
-- [ ] A verification failure after install still produces the existing actionable
+      ends trusted. *(`TestSetupFreshInstall`.)*
+- [x] A verification failure after install still produces the existing actionable
       error and non-zero exit (the silent-cancel failure mode stays caught).
-- [ ] `--no-ca-install` mode is unaffected by the new messaging (no keychain note
-      claiming an install that didn't happen).
-- [ ] `make test`, `make lint` green; any new/changed user-facing strings that
-      are golden-pinned are updated and the golden diff reviewed.
+      *(`msgUntrusted` unchanged; `TestBootstrapUntrustedReturnsActionableError`.)*
+- [x] `--no-ca-install` mode is unaffected by the new messaging (no keychain note
+      claiming an install that didn't happen). *(negative assertions in
+      `TestSetupNoCAInstall` / `TestSetupBothOptOuts`.)*
+- [x] `make test`, `make lint` green; any new/changed user-facing strings that
+      are golden-pinned are updated and the golden diff reviewed. *(no new golden;
+      `make golden` produced no diff — new strings are substring-pinned.)*
 
 ## Out of Scope
 
@@ -138,7 +145,12 @@ _None — scope decisions resolved during ticket creation (see Notes)._
 
 ## Implementation Plan
 
-_To be filled by `/create_plan`._
+See `thoughts/shared/plans/2026-06-09-AC-0037-ca-trust-prompt-ux.md` (research:
+`thoughts/shared/research/2026-06-09-AC-0037-ca-trust-prompt-ux.md`).
+
+Seam decision (question checkpoint): `Bootstrap` keeps the verify-first
+sequencing in the `internal/setup` library and gains a `beforeInstall func()`
+hook + `BootstrapResult{AlreadyTrusted bool}`; the CLI owns all strings.
 
 ## Notes & Updates
 
@@ -165,3 +177,10 @@ Complexity (Medium): the verify-first reorder is small, but it needs a clean
 library→CLI seam to drive three distinct messaging paths, careful handling of the
 `--no-ca-install` and verification-failure branches, and golden/test updates for
 the new user-facing strings.
+
+**Closed 2026-06-09.** Implemented in three commits: `FakeTLSProber.Outcomes`
+(scriptable two-probe verify path), `Bootstrap` reworked to verify-first with a
+`beforeInstall` hook + `BootstrapResult`, and the CLI wired to print the
+pre-prompt / already-trusted skip / installed lines plus the keychain
+discoverability note. `doctor` and `run` untouched. All acceptance criteria met;
+`make test` (race) and `make lint` green, no golden diff.
