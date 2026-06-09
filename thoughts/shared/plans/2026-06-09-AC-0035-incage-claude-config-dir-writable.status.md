@@ -22,7 +22,11 @@ Plan: `2026-06-09-AC-0035-incage-claude-config-dir-writable.md`
 - [ ] Commit GREEN
 
 ## Phase 3 — Docs & close
-- [ ] cage-verification.md limitation #2 rewritten
-- [ ] design.md light note
-- [ ] Ticket ACs ticked, Status: Done
+- [x] cage-verification.md limitation #2 rewritten (resolved)
+- [x] design.md light note (explicit --add-dirs mechanism)
+- [x] Ticket ACs ticked, research questions answered, Status: Done, dated note
 - [ ] Commit docs/close
+
+## Result
+All five acceptance criteria met. Fix is a one-line `--add-dirs` mount in
+`cage.Build`; guarded by the AC-0033 battery at a non-granted cache location.

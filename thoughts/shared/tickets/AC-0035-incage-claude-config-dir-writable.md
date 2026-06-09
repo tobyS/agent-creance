@@ -1,9 +1,9 @@
 # AC-0035: Redirected CLAUDE_CONFIG_DIR may not be writable inside the cage
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-08
-**Updated:** 2026-06-08
+**Updated:** 2026-06-09
 
 ## Problem Statement
 
@@ -47,21 +47,21 @@ reproduction and guarded by AC-0033.
 
 ## Acceptance Criteria
 
-- [ ] A caged reproduction at the **real** cache location (`~/.cache/agent-creance`,
-      not a `$TMPDIR`-backed test cache) shows whether the caged agent can write to
-      `CLAUDE_CONFIG_DIR`; if it currently cannot, the repro demonstrates the
-      failure first.
-- [ ] After the fix, the caged agent can create directories and write files under
-      `CLAUDE_CONFIG_DIR` at the real location.
-- [ ] The redirected dir remains distinct from the real `~/.claude` (the
-      config-persistence security property — a plant there still does not appear in
-      `~/.claude`) — i.e. the fix must not re-open AC-0033's `doc-config-dir`
-      security assertion.
-- [ ] The fix does not broaden cage writability beyond the specific config dir
-      (no blanket `~/.cache` write-grant if a narrower mount suffices).
-- [ ] The AC-0033 battery is adjusted so its `doc-config-dir` vector exercises the
-      real-location writability (or an equivalent guard), so the gap can't silently
-      reopen.
+- [x] A caged reproduction at a non-granted cache location (a temp dir under `$HOME`,
+      outside safehouse's base RW grants — the production-equivalent of
+      `~/.cache/agent-creance`, without touching the real cache) demonstrated the
+      failure first: `doc-config-dir want=planted got=blocked` (RED commit).
+- [x] After the fix, the caged agent creates dirs and writes files under
+      `CLAUDE_CONFIG_DIR` at that location: `doc-config-dir got=planted` (GREEN).
+- [x] The redirected dir remains distinct from the real `~/.claude`: `fs-real-claude`
+      stays BLOCKED and the host-side assert confirms the plant lands only in the
+      ephemeral dir — AC-0033's `doc-config-dir` security assertion is not re-opened.
+- [x] The fix does not broaden cage writability beyond the config dir: `cage.Build`
+      mounts exactly `…/projects/<hash>/claude` via `--add-dirs`, not the state root
+      and not a blanket `~/.cache`.
+- [x] The AC-0033 battery now exercises real-location writability — `runBattery`
+      places the cache under `$HOME` (a non-granted path), so `doc-config-dir` would
+      turn RED again if the mount regressed.
 
 ## Out of Scope
 
@@ -75,22 +75,25 @@ reproduction and guarded by AC-0033.
 
 - None blocking — maintainer-facing correctness fix.
 
-## Questions for Research/Planning
+## Questions for Research/Planning — resolved
 
-- [ ] Confirm empirically whether the caged agent can write `CLAUDE_CONFIG_DIR` at
-      the real `~/.cache/agent-creance` location (the AC-0033 battery only tested a
-      `$TMPDIR`-backed cache). Does safehouse's base policy already cover it via
-      some grant not obvious from a static read of the default policy?
-- [ ] What is the right mechanism to make the config dir writable: add the
-      `CLAUDE_CONFIG_DIR` (or the project state root) to the cage's `--add-dirs`
-      automatically in `cage.Build`, or emit a scoped `--append-profile` write-grant
-      for it? Which is more consistent with how safehouse expects extra RW paths?
-- [ ] Should the project state root more broadly be mounted (the agent also can't
-      read network.sb/proxy.sb at runtime, but those are read by the uncaged
-      safehouse wrapper, so likely only the config dir needs in-cage RW)?
-- [ ] Does this interact with AC-0034's question about where the CA copy lives (if
-      the state dir becomes a mounted, in-cage-readable location, it could serve
-      both)?
+- [x] Empirically confirmed: the caged agent **cannot** write `CLAUDE_CONFIG_DIR` at
+      a non-granted cache location. safehouse's base policy does not cover `~/.cache`
+      (only `/tmp`, `$TMPDIR`, specific toolchain dirs). The `$TMPDIR`-backed test
+      cache passed only because `$TMPDIR` is granted. Reproduced RED in the battery.
+- [x] Mechanism (maintainer decision): add `CLAUDE_CONFIG_DIR` to `--add-dirs` in
+      `cage.Build`. `--add-dirs` is safehouse's idiomatic "extra RW path" mechanism,
+      narrowest, and avoids the firmlink/symlink-literal handling an `--append-profile`
+      SBPL write-grant would need. AC-0034 used an SBPL fragment only because its
+      target dir held a secret (the CA private key); the config dir holds nothing
+      secret, so a directory mount is appropriate here.
+- [x] Only the config dir is mounted, not the project state root. The other state
+      files (network.sb/proxy.sb/policy.json/egress.jsonl/lock) are read/written by
+      the uncaged side, so they need no in-cage access — keeping them unmounted
+      preserves their integrity.
+- [x] No interaction with AC-0034: the CA copy lives in `~/.mitmproxy` (granted via
+      `ca.sb`), not in the state dir, so mounting the config dir does not affect CA
+      trust.
 
 ## References
 
@@ -105,7 +108,29 @@ reproduction and guarded by AC-0033.
 
 ## Implementation Plan
 
+See `thoughts/shared/plans/2026-06-09-AC-0035-incage-claude-config-dir-writable.md`
+and the research at
+`thoughts/shared/research/2026-06-09-AC-0035-incage-claude-config-dir-writable.md`.
+
 ## Notes & Updates
+
+### 2026-06-09 — Done
+
+Fixed via a one-line mount in `cage.Build`: the redirected `CLAUDE_CONFIG_DIR`
+(`…/projects/<hash>/claude`) is always appended to safehouse's `--add-dirs`, so it
+is writable in-cage even when the cache is outside safehouse's base RW grants.
+RED→GREEN flow against the AC-0033 battery, whose cache was relocated to a
+non-granted `$HOME` temp dir so `doc-config-dir` exercises the real-location
+writability:
+
+- RED `ae77ccd` — `doc-config-dir want=planted got=blocked` (gap reproduced).
+- GREEN `f9647a1` — all 18 vectors PASS (`doc-config-dir got=planted`),
+  `fs-real-claude` still BLOCKED, negative control still detects escapes, stable
+  across `-count=2`.
+
+`make test` + `make lint` green; invocation golden updated (single `--add-dirs`
+segment). Docs: cage-verification.md limitation #2 rewritten as resolved;
+design.md notes the explicit `--add-dirs` mechanism.
 
 ### 2026-06-08
 Created from a finding surfaced by the AC-0033 cage-verification battery. Framed as

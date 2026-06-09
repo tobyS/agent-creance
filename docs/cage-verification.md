@@ -124,11 +124,16 @@ These were surfaced while building the automated battery and affect manual runs:
    a hard prerequisite for keychain-only clients. The CA *private key*
    (`~/.mitmproxy/mitmproxy-ca.pem`) remains unreadable in-cage. If a caged HTTPS
    client still fails with a CA error, check that `setup` trusted the CA.
-2. **The redirected `CLAUDE_CONFIG_DIR` lives under `~/.cache/agent-creance`**,
-   and safehouse's base policy grants RW to `/tmp`, `$TMPDIR`, and specific
-   toolchain dirs — confirm on your host that the agent can actually write its
-   config dir during a real run (the automated battery uses a `$TMPDIR`-backed
-   cache, which is writable).
+2. **The redirected `CLAUDE_CONFIG_DIR` is mounted read-write into the cage**
+   (since AC-0035). It lives under `~/.cache/agent-creance`, which safehouse's base
+   policy does *not* grant (the base grants RW only to `/tmp`, `$TMPDIR`, and
+   specific toolchain dirs), so `cage.Build` adds exactly that one dir
+   (`…/projects/<hash>/claude`) to safehouse's `--add-dirs`. The caged agent can
+   therefore persist its own config/session state at the real cache location while
+   the dir stays distinct from the real `~/.claude` (still unwritable — the
+   `fs-real-claude` vector). The `doc-config-dir` vector now exercises this with a
+   cache placed *outside* safehouse's base grants (a temp dir under `$HOME`, not a
+   `$TMPDIR`-backed one), so the gap can't silently reopen.
 
 ---
 
