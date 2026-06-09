@@ -12,10 +12,13 @@ Plan: `2026-06-09-AC-0035-incage-claude-config-dir-writable.md`
 - [ ] Commit RED
 
 ## Phase 2 — Mount CLAUDE_CONFIG_DIR read-write (GREEN)
-- [ ] `cage.Build` always emits `--add-dirs` incl. `ClaudeConfigDir()`
-- [ ] Update `TestExpandPathViaArgs`; add `TestBuildAlwaysMountsConfigDir`
-- [ ] `make golden` (review single-segment diff)
-- [ ] `make test` + `make lint` green; integration battery GREEN (or skip noted)
+- [x] `cage.Build` always emits `--add-dirs` incl. `ClaudeConfigDir()`
+- [x] Updated `TestExpandPathViaArgs`; added `TestBuildAlwaysMountsConfigDir`
+- [x] `make golden` — single-segment diff (`/proj` → `/proj:.../claude`)
+- [x] `make test` + `make lint` green
+- [x] Integration battery GREEN: all 18 vectors PASS (`doc-config-dir` now `planted`),
+      `fs-real-claude` still BLOCKED, negative control still detects escapes; stable
+      across `-count=2`
 - [ ] Commit GREEN
 
 ## Phase 3 — Docs & close

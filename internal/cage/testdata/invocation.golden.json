@@ -2,7 +2,7 @@
   "Path": "safehouse",
   "Args": [
     "--add-dirs",
-    "/proj",
+    "/proj:/home/test/.cache/agent-creance/projects/0123456789abcdef/claude",
     "--add-dirs-ro",
     "/home/test/.config/git",
     "--enable=shell-init",

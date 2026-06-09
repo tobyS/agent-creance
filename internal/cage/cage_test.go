@@ -83,9 +83,30 @@ func TestExpandPathViaArgs(t *testing.T) {
 			in.Config.Safehouse.AddDirsRW = []string{tc.in}
 			inv, err := cage.Build(in)
 			require.NoError(t, err)
-			require.Equal(t, tc.want, argValue(t, inv.Args, "--add-dirs"))
+			// CLAUDE_CONFIG_DIR is always appended as a RW mount (AC-0035).
+			want := tc.want + ":" + in.Layout.ClaudeConfigDir()
+			require.Equal(t, want, argValue(t, inv.Args, "--add-dirs"))
 		})
 	}
+}
+
+// TestBuildAlwaysMountsConfigDir guards AC-0035: the redirected CLAUDE_CONFIG_DIR is
+// mounted read-write even when the user configured no add_dirs_rw (the golden fixture
+// has a non-empty list, so it does not cover this path).
+func TestBuildAlwaysMountsConfigDir(t *testing.T) {
+	t.Run("empty AddDirsRW still mounts config dir", func(t *testing.T) {
+		in := fixtureInputs()
+		in.Config.Safehouse.AddDirsRW = nil
+		inv, err := cage.Build(in)
+		require.NoError(t, err)
+		require.Equal(t, in.Layout.ClaudeConfigDir(), argValue(t, inv.Args, "--add-dirs"))
+	})
+	t.Run("config dir mounted alongside user dirs", func(t *testing.T) {
+		in := fixtureInputs()
+		inv, err := cage.Build(in)
+		require.NoError(t, err)
+		require.Contains(t, argValue(t, inv.Args, "--add-dirs"), in.Layout.ClaudeConfigDir())
+	})
 }
 
 func TestBuildNeverMountsRealClaude(t *testing.T) {

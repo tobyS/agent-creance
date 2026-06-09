@@ -82,9 +82,13 @@ func Build(in Inputs) (Invocation, error) {
 
 	// Mount dirs: colon-separated paths, ~ and relative ("."/sub) expanded here
 	// (config keeps them verbatim by design). The real ~/.claude is never added.
-	if len(sh.AddDirsRW) > 0 {
-		args = append(args, "--add-dirs", expandColonList(sh.AddDirsRW, in))
-	}
+	//
+	// CLAUDE_CONFIG_DIR is always mounted read-write so the caged agent can persist its
+	// own ephemeral config/session state (AC-0035), even when the cache lives outside
+	// safehouse's base RW grants (the real ~/.cache/agent-creance). It is created and
+	// seeded by Prepare before Build runs; it is the redirected dir, never ~/.claude.
+	rw := append(append([]string{}, sh.AddDirsRW...), in.Layout.ClaudeConfigDir())
+	args = append(args, "--add-dirs", expandColonList(rw, in))
 	if len(sh.AddDirsRO) > 0 {
 		args = append(args, "--add-dirs-ro", expandColonList(sh.AddDirsRO, in))
 	}
