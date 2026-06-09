@@ -11,7 +11,8 @@ safehouse:
 network:
   egress:
     generators:
-      - package_json
+      - type: package_json
+        path: package.json
     # allow:
     #   - host: api.github.com
     #     paths: ["/repos/you/your-project/"]

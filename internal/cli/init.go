@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
@@ -54,7 +56,7 @@ func runInit(_ context.Context, app *App, dir string, force bool) error {
 		return fmt.Errorf("init: stat %q: %w", dest, err)
 	}
 
-	gens := detectGenerators(app.FS, dir)
+	gens := scanGenerators(app.FS, dir)
 	content := renderConfigTemplate(gens)
 	if err := writeFileAtomic(app.FS, dest, []byte(content), configFilePerm); err != nil {
 		return fmt.Errorf("init: write %q: %w", dest, err)
@@ -68,32 +70,93 @@ func runInit(_ context.Context, app *App, dir string, force bool) error {
 // configFilePerm is the mode for the human-authored, in-tree project config.
 const configFilePerm fs.FileMode = 0o644
 
-// detectGenerators returns the generator names whose manifests are present in dir,
-// in a deterministic order (package_json before composer_json). Detection is purely
-// presence-based — init lists the generators; running them (reading the manifest's
-// dependencies) is the generators' job at policy-compile time.
-func detectGenerators(fsys sysdep.FileSystem, dir string) []string {
-	var gens []string
-	for _, m := range []struct {
-		manifest string
-		name     string
-	}{
-		{"package.json", generator.GeneratorPackageJSON},
-		{"composer.json", generator.GeneratorComposerJSON},
-	} {
-		if _, err := fsys.Stat(filepath.Join(dir, m.manifest)); err == nil {
-			gens = append(gens, m.name)
+// scanDepth bounds the init manifest scan: a manifest at the project root is depth 0,
+// one directory down is depth 1, two down is depth 2 — the deepest a standard monorepo
+// puts a package (apps/web/package.json, packages/ui/package.json). Anything deeper is
+// skipped, as are the generators' own installed-dependency directories.
+const scanDepth = 2
+
+// scanGenerators discovers each package's manifest under dir, bounded to scanDepth
+// directory levels, and returns one config.Generator per detected manifest (object
+// form: the path is filled, relative to dir). It does not descend into a generator's
+// installed-dependency directory (node_modules/, vendor/) — those hold installed
+// dependencies, not monorepo packages — nor into symlinked or dot-prefixed directories.
+// The recognised manifest filenames and the dependency-dir skip-set both come from the
+// generator metadata, so a new ecosystem generator extends both with no change here.
+// Results are ordered by (depth, path) for deterministic output, root manifests first.
+func scanGenerators(fsys sysdep.FileSystem, dir string) []config.Generator {
+	byFile := map[string]string{} // manifest filename → generator type
+	skip := map[string]bool{}     // installed-dependency dir names to skip
+	typeOrder := map[string]int{} // generator type → registry order (for stable sort)
+	for i, m := range generator.All() {
+		byFile[m.ManifestFile] = m.Type
+		typeOrder[m.Type] = i
+		for _, d := range m.DependencyDirs {
+			skip[d] = true
 		}
 	}
-	return gens
+
+	var found []config.Generator
+	var walk func(rel string, depth int)
+	walk = func(rel string, depth int) {
+		entries, err := fsys.ReadDir(filepath.Join(dir, rel))
+		if err != nil {
+			return // absent or unreadable directory contributes nothing
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.Type()&fs.ModeSymlink != 0 {
+				continue // never follow symlinks (cycle safety)
+			}
+			if e.IsDir() {
+				if depth >= scanDepth || skip[name] || strings.HasPrefix(name, ".") {
+					continue
+				}
+				walk(filepath.Join(rel, name), depth+1)
+				continue
+			}
+			if typ, ok := byFile[name]; ok {
+				found = append(found, config.Generator{Type: typ, Path: filepath.Join(rel, name)})
+			}
+		}
+	}
+	walk("", 0)
+
+	// Order root manifests first (by depth), then by generator type's registry order
+	// (keeping the conventional package_json-before-composer_json grouping), then by
+	// path — fully deterministic for stable golden output.
+	sort.Slice(found, func(i, j int) bool {
+		di, dj := pathDepth(found[i].Path), pathDepth(found[j].Path)
+		if di != dj {
+			return di < dj
+		}
+		if ti, tj := typeOrder[found[i].Type], typeOrder[found[j].Type]; ti != tj {
+			return ti < tj
+		}
+		return found[i].Path < found[j].Path
+	})
+	return found
+}
+
+// pathDepth is the number of directory levels in a relative manifest path (root
+// manifest → 0), used to order scan results root-first.
+func pathDepth(p string) int {
+	if filepath.Dir(p) == "." {
+		return 0
+	}
+	return strings.Count(filepath.ToSlash(p), "/")
 }
 
 // generatorsNote summarises the detection result for the success line.
-func generatorsNote(gens []string) string {
+func generatorsNote(gens []config.Generator) string {
 	if len(gens) == 0 {
 		return "(no manifests detected — generators left commented)"
 	}
-	return fmt.Sprintf("(generators: %s)", strings.Join(gens, ", "))
+	paths := make([]string, len(gens))
+	for i, g := range gens {
+		paths[i] = g.Path
+	}
+	return fmt.Sprintf("(%d manifest(s): %s)", len(gens), strings.Join(paths, ", "))
 }
 
 // writeFileAtomic writes data to name via a temp file + rename, so a crash mid-write
@@ -114,23 +177,27 @@ func writeFileAtomic(fsys sysdep.FileSystem, name string, data []byte, perm fs.F
 // generators block for the detected manifests. The result is a minimal but valid
 // config with commented allow/deny stubs as inline guidance; per docs/design.md it
 // never writes a .gitignore block (all runtime state lives out-of-tree).
-func renderConfigTemplate(generators []string) string {
+func renderConfigTemplate(generators []config.Generator) string {
 	return fmt.Sprintf(configTemplate, generatorsBlock(generators))
 }
 
-// generatorsBlock renders the network.egress.generators: region: a real list when
-// manifests were detected, otherwise a commented placeholder listing the available
-// names so the user can uncomment the one(s) they want.
-func generatorsBlock(generators []string) string {
+// generatorsBlock renders the network.egress.generators: region: a real list of
+// object-form entries (type + path) when manifests were detected, otherwise a
+// commented placeholder showing both forms so the user can uncomment the one(s) they
+// want. Every detected entry is written parameterized (explicit path) so the form is
+// uniform whether the repo is single-package or a monorepo.
+func generatorsBlock(generators []config.Generator) string {
 	if len(generators) == 0 {
 		return "    # generators:\n" +
-			"    #   - package_json\n" +
-			"    #   - composer_json\n"
+			"    #   - package_json                 # = ./package.json\n" +
+			"    #   - type: composer_json\n" +
+			"    #     path: services/api/composer.json\n"
 	}
 	var b strings.Builder
 	b.WriteString("    generators:\n")
 	for _, g := range generators {
-		fmt.Fprintf(&b, "      - %s\n", g)
+		fmt.Fprintf(&b, "      - type: %s\n", g.Type)
+		fmt.Fprintf(&b, "        path: %s\n", g.Path)
 	}
 	return b.String()
 }

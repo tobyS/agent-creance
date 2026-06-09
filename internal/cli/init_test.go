@@ -23,16 +23,24 @@ import (
 // (or `make golden`) after an intentional template change, then eyeball the diff.
 var update = flag.Bool("update", false, "regenerate golden files")
 
-// renderCases pins the three template variants: no manifests (commented
-// placeholder), package.json only, and both manifests.
+// renderCases pins the template variants: no manifests (commented placeholder),
+// package.json only, both root manifests, and a monorepo (root + sub-packages).
 var renderCases = []struct {
 	name   string
-	gens   []string
+	gens   []config.Generator
 	golden string
 }{
 	{"none", nil, "none.golden"},
-	{"package_only", []string{generator.GeneratorPackageJSON}, "package_only.golden"},
-	{"both", []string{generator.GeneratorPackageJSON, generator.GeneratorComposerJSON}, "both.golden"},
+	{"package_only", []config.Generator{{Type: generator.GeneratorPackageJSON, Path: "package.json"}}, "package_only.golden"},
+	{"both", []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorComposerJSON, Path: "composer.json"},
+	}, "both.golden"},
+	{"monorepo", []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorPackageJSON, Path: "apps/web/package.json"},
+		{Type: generator.GeneratorComposerJSON, Path: "services/api/composer.json"},
+	}, "monorepo.golden"},
 }
 
 // TestRenderConfigTemplate golden-tests the generated template (a generated
@@ -55,27 +63,15 @@ func TestRenderConfigTemplate(t *testing.T) {
 	}
 }
 
-// wantGenerators converts bare generator names to the parsed config.Generator shape
-// (bare form → empty Path), nil for none.
-func wantGenerators(names []string) []config.Generator {
-	if len(names) == 0 {
-		return nil
-	}
-	out := make([]config.Generator, len(names))
-	for i, n := range names {
-		out[i] = config.Generator{Type: n}
-	}
-	return out
-}
-
 // TestRenderConfigTemplateParses guards acceptance criterion 1 (and the null-egress
-// concern): every variant of the emitted template must parse + validate cleanly.
+// concern): every variant of the emitted template must parse + validate cleanly, and
+// the parsed generators must round-trip the scanned entries (object form, paths kept).
 func TestRenderConfigTemplateParses(t *testing.T) {
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens)))
 			require.NoError(t, err)
-			require.Equal(t, wantGenerators(tc.gens), cfg.Network.Egress.Generators)
+			require.Equal(t, tc.gens, cfg.Network.Egress.Generators)
 		})
 	}
 }
@@ -136,8 +132,10 @@ func TestInitPackageJSONOnly(t *testing.T) {
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
-	require.Equal(t, wantGenerators([]string{generator.GeneratorPackageJSON}), cfg.Network.Egress.Generators)
-	require.Contains(t, f.out.String(), generator.GeneratorPackageJSON)
+	require.Equal(t,
+		[]config.Generator{{Type: generator.GeneratorPackageJSON, Path: "package.json"}},
+		cfg.Network.Egress.Generators)
+	require.Contains(t, f.out.String(), "package.json")
 }
 
 func TestInitBothManifests(t *testing.T) {
@@ -150,7 +148,10 @@ func TestInitBothManifests(t *testing.T) {
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
 	require.Equal(t,
-		wantGenerators([]string{generator.GeneratorPackageJSON, generator.GeneratorComposerJSON}),
+		[]config.Generator{
+			{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+			{Type: generator.GeneratorComposerJSON, Path: "composer.json"},
+		},
 		cfg.Network.Egress.Generators)
 }
 
@@ -196,4 +197,95 @@ func TestInitWritesNoGitignore(t *testing.T) {
 		require.False(t, strings.HasSuffix(name, ".gitignore"),
 			"init must not write a .gitignore (%s)", name)
 	}
+}
+
+// seedManifest writes a manifest at a path relative to initDir, creating the ancestor
+// directories the fake's ReadDir needs to surface them as directory entries.
+func (f *initFixture) seedManifest(rel string) {
+	full := filepath.Join(initDir, rel)
+	f.fs.Files[full] = []byte(`{}`)
+	for d := filepath.Dir(full); d != initDir && d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
+		f.fs.Dirs[d] = true
+	}
+}
+
+func TestScanGenerators_MonorepoRootAndSubPackages(t *testing.T) {
+	f := newInitFixture()
+	f.seedManifest("package.json")               // depth 0
+	f.seedManifest("composer.json")              // depth 0
+	f.seedManifest("apps/web/package.json")      // depth 2
+	f.seedManifest("apps/api/package.json")      // depth 2
+	f.seedManifest("services/php/composer.json") // depth 2
+
+	got := scanGenerators(f.fs, initDir)
+
+	require.Equal(t, []config.Generator{
+		// depth 0 first, then within a depth by type (package_json before
+		// composer_json), then by path.
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorComposerJSON, Path: "composer.json"},
+		{Type: generator.GeneratorPackageJSON, Path: "apps/api/package.json"},
+		{Type: generator.GeneratorPackageJSON, Path: "apps/web/package.json"},
+		{Type: generator.GeneratorComposerJSON, Path: "services/php/composer.json"},
+	}, got)
+}
+
+func TestScanGenerators_DepthBound(t *testing.T) {
+	f := newInitFixture()
+	f.seedManifest("package.json")             // depth 0 — kept
+	f.seedManifest("apps/web/package.json")    // depth 2 — kept
+	f.seedManifest("apps/web/ui/package.json") // depth 3 — too deep
+
+	got := scanGenerators(f.fs, initDir)
+
+	require.Equal(t, []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorPackageJSON, Path: "apps/web/package.json"},
+	}, got)
+}
+
+func TestScanGenerators_SkipsDependencyDirs(t *testing.T) {
+	f := newInitFixture()
+	f.seedManifest("package.json")
+	f.seedManifest("composer.json")
+	// The stated trap: installed dependencies under node_modules/ and vendor/ must NOT
+	// be mistaken for monorepo packages.
+	f.seedManifest("node_modules/react/package.json")
+	f.seedManifest("vendor/monolog/monolog/composer.json")
+
+	got := scanGenerators(f.fs, initDir)
+
+	require.Equal(t, []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorComposerJSON, Path: "composer.json"},
+	}, got)
+}
+
+func TestScanGenerators_SkipsSymlinkedDirs(t *testing.T) {
+	f := newInitFixture()
+	f.seedManifest("package.json")
+	// A symlinked subdirectory with a manifest inside it must not be followed.
+	f.fs.Symlinks[filepath.Join(initDir, "linked")] = true
+	f.fs.Files[filepath.Join(initDir, "linked", "package.json")] = []byte(`{}`)
+
+	got := scanGenerators(f.fs, initDir)
+
+	require.Equal(t, []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+	}, got)
+}
+
+func TestInitMonorepoWritesObjectForm(t *testing.T) {
+	f := newInitFixture()
+	f.seedManifest("package.json")
+	f.seedManifest("apps/web/package.json")
+
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false))
+
+	cfg, err := config.Parse(f.configAt(t))
+	require.NoError(t, err)
+	require.Equal(t, []config.Generator{
+		{Type: generator.GeneratorPackageJSON, Path: "package.json"},
+		{Type: generator.GeneratorPackageJSON, Path: "apps/web/package.json"},
+	}, cfg.Network.Egress.Generators)
 }

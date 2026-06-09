@@ -21,6 +21,11 @@ type FakeFileSystem struct {
 	Files map[string][]byte
 	// Dirs records directories created via MkdirAll (path → present).
 	Dirs map[string]bool
+	// Symlinks records paths that ReadDir surfaces as symlink entries (Type() has
+	// fs.ModeSymlink, IsDir() is false), mirroring os.ReadDir's Lstat semantics. The
+	// fake does not resolve them — a scanner that skips symlinks never reaches their
+	// "target" — so they are the seam for testing symlink-skip behaviour.
+	Symlinks map[string]bool
 	// Perms records the mode passed to WriteFile/MkdirAll for a path.
 	Perms map[string]fs.FileMode
 
@@ -51,6 +56,7 @@ func NewFakeFileSystem() *FakeFileSystem {
 	return &FakeFileSystem{
 		Files:       map[string][]byte{},
 		Dirs:        map[string]bool{},
+		Symlinks:    map[string]bool{},
 		Perms:       map[string]fs.FileMode{},
 		Errs:        map[string]error{},
 		WriteErrs:   map[string]error{},
@@ -121,13 +127,23 @@ func (f *FakeFileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
 			return
 		}
 		seen[base] = true
-		entries = append(entries, fakeDirEntry{name: base, dir: dir})
+		mode := fs.FileMode(0)
+		switch {
+		case f.Symlinks[path]:
+			mode, dir = fs.ModeSymlink, false
+		case dir:
+			mode = fs.ModeDir
+		}
+		entries = append(entries, fakeDirEntry{name: base, dir: dir, mode: mode})
 	}
 	for p := range f.Files {
 		add(p, false)
 	}
 	for p := range f.Dirs {
 		add(p, true)
+	}
+	for p := range f.Symlinks {
+		add(p, false)
 	}
 	if len(entries) == 0 && !f.Dirs[name] {
 		return nil, fs.ErrNotExist
@@ -202,16 +218,12 @@ func (fi fakeFileInfo) Sys() any           { return nil }
 type fakeDirEntry struct {
 	name string
 	dir  bool
+	mode fs.FileMode
 }
 
-func (e fakeDirEntry) Name() string { return e.name }
-func (e fakeDirEntry) IsDir() bool  { return e.dir }
-func (e fakeDirEntry) Type() fs.FileMode {
-	if e.dir {
-		return fs.ModeDir
-	}
-	return 0
-}
+func (e fakeDirEntry) Name() string      { return e.name }
+func (e fakeDirEntry) IsDir() bool       { return e.dir }
+func (e fakeDirEntry) Type() fs.FileMode { return e.mode }
 func (e fakeDirEntry) Info() (fs.FileInfo, error) {
-	return fakeFileInfo{name: e.name, mode: e.Type(), dir: e.dir}, nil
+	return fakeFileInfo{name: e.name, mode: e.mode, dir: e.dir}, nil
 }

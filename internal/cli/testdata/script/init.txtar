@@ -1,7 +1,8 @@
-# init scaffolds a .agent-creance.yaml, detecting package.json / composer.json and
-# pre-populating generators:, and refuses to clobber an existing config without
-# --force. Pure filesystem work — no host tools needed, so PATH=$CREANCE_BIN is
-# enough to keep it hermetic.
+# init scaffolds a .agent-creance.yaml, scanning for package.json / composer.json
+# manifests (root + up to two directory levels deep, skipping installed-dependency
+# dirs) and pre-populating generators: in object form. It refuses to clobber an
+# existing config without --force. Pure filesystem work — no host tools needed, so
+# PATH=$CREANCE_BIN is enough to keep it hermetic.
 env PATH=$CREANCE_BIN
 
 # --help advertises --force and rejects extra args before any side effect.
@@ -25,20 +26,30 @@ agent-creance init --force
 stdout 'Wrote .agent-creance.yaml'
 cd ..
 
-# 2. package.json only → package_json listed, composer_json absent.
+# 2. package.json only → package_json listed (object form), composer_json absent.
 cd pkg
 agent-creance init
-stdout 'generators: package_json'
-grep '- package_json' .agent-creance.yaml
+stdout 'package.json'
+grep '- type: package_json' .agent-creance.yaml
+grep 'path: package.json' .agent-creance.yaml
 ! grep 'composer_json' .agent-creance.yaml
 cd ..
 
-# 3. Both manifests → both generators listed.
+# 3. Both root manifests → both generators listed.
 cd both
 agent-creance init
-stdout 'package_json, composer_json'
-grep '- package_json' .agent-creance.yaml
-grep '- composer_json' .agent-creance.yaml
+stdout 'package.json, composer.json'
+grep 'type: package_json' .agent-creance.yaml
+grep 'type: composer_json' .agent-creance.yaml
+cd ..
+
+# 4. Monorepo → sub-package manifest detected with its path; node_modules ignored.
+cd mono
+agent-creance init
+stdout 'apps/web/package.json'
+grep 'path: package.json' .agent-creance.yaml
+grep 'path: apps/web/package.json' .agent-creance.yaml
+! grep 'node_modules' .agent-creance.yaml
 cd ..
 
 -- pkg/package.json --
@@ -47,3 +58,9 @@ cd ..
 {}
 -- both/composer.json --
 {"require": {"monolog/monolog": "^3.0"}}
+-- mono/package.json --
+{}
+-- mono/apps/web/package.json --
+{"dependencies": {"react": "^18.0.0"}}
+-- mono/node_modules/react/package.json --
+{"name": "react"}

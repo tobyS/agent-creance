@@ -315,11 +315,11 @@ in the **same phase** (it is the only other reader of `.Generators` besides
   `vendor` manifests; keep the existing empty/`--force`/no-clobber scenarios.
 
 ### Success criteria
-- [ ] `make test` green; `make golden` reviewed.
-- [ ] `init` writes one entry per detected manifest ≤2 levels deep (AC #3).
-- [ ] No entry for manifests under `node_modules/`/`vendor/` (AC #4); skip-set is
+- [x] `make test` green; `make golden` reviewed.
+- [x] `init` writes one entry per detected manifest ≤2 levels deep (AC #3).
+- [x] No entry for manifests under `node_modules/`/`vendor/` (AC #4); skip-set is
       generator-sourced (AC #5); scan bounded to ≤2 levels (AC #6).
-- [ ] No-clobber + `--force` preserved (AC #7 of ticket / AC-0029).
+- [x] No-clobber + `--force` preserved (AC #7 of ticket / AC-0029).
 
 ---
 
