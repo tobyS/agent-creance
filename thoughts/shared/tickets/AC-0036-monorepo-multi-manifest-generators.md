@@ -1,6 +1,6 @@
 # AC-0036: Monorepo support — multiple manifests per generator type
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-09
 **Updated:** 2026-06-09
@@ -63,29 +63,30 @@ When this is complete:
 
 ## Acceptance Criteria
 
-- [ ] A config may list the same generator type more than once, each scoped to a
+- [x] A config may list the same generator type more than once, each scoped to a
       different manifest path, and the compiled policy contains the dependency
       allow-rules for **every** listed manifest.
-- [ ] The bare-string form (`package_json`, `composer_json`) still parses, loads,
+- [x] The bare-string form (`package_json`, `composer_json`) still parses, loads,
       merges, and compiles, and resolves to the root manifest (`./package.json`,
       `./composer.json`) — verified against an existing-style config unchanged.
-- [ ] `init` on a monorepo (manifests at root and/or under sub-dirs ≤2 levels
+- [x] `init` on a monorepo (manifests at root and/or under sub-dirs ≤2 levels
       deep) writes one generator entry per detected manifest.
-- [ ] `init` does **not** emit a generator entry for any manifest located inside
+- [x] `init` does **not** emit a generator entry for any manifest located inside
       a directory declared as a dependency dir by some generator — specifically,
       a `composer.json` inside `vendor/<anything>/` and a `package.json` inside
       `node_modules/<anything>/` are ignored (the stated trap).
-- [ ] The dependency-dir skip-set is sourced from the generator implementations,
+- [x] The dependency-dir skip-set is sourced from the generator implementations,
       not a separate hardcoded list in the scanner — adding a new generator with
       its own dependency dir extends the skip-set with no scanner edit.
-- [ ] The scan is bounded to ≤2 directory levels deep (it does not walk the
+- [x] The scan is bounded to ≤2 directory levels deep (it does not walk the
       entire tree).
-- [ ] `init`'s no-clobber behavior (AC-0029) is preserved: an existing
+- [x] `init`'s no-clobber behavior (AC-0029) is preserved: an existing
       `.agent-creance.yaml` is not overwritten without `--force`.
-- [ ] `policy show` (AC-0015) still attributes each generated rule to its source,
+- [x] `policy show` (AC-0015) still attributes each generated rule to its source,
       and the attribution disambiguates which manifest produced a rule when two
-      generators of the same type are present.
-- [ ] `make test`, `make lint`, and `make golden` (reviewed) are green.
+      generators of the same type are present (sub-package manifests carry the
+      path in the source label; root manifests keep the bare form).
+- [x] `make test`, `make lint`, and `make golden` (reviewed) are green.
 
 ## Out of Scope
 
@@ -156,7 +157,27 @@ _None — business/scope decisions resolved during ticket creation (see Notes)._
 
 ## Implementation Plan
 
-_To be filled by `/create_plan`._
+- Research: `thoughts/shared/research/2026-06-09-AC-0036-monorepo-multi-manifest-generators.md`
+- Plan: `thoughts/shared/plans/2026-06-09-AC-0036-monorepo-multi-manifest-generators.md`
+
+Delivered in four phases:
+
+1. **Generator-owned metadata** — extended the `ecosystem` strategy with
+   `manifestFile()` + `dependencyDirs()`, exposed a single `ecosystems` registry
+   plus public `Metadata`/`All`/`Lookup`; `Known` derives from it.
+2. **Config + compiler** — `Egress.Generators` is now `[]config.Generator`
+   (object form `{type, path}` parsed via a `yaml.Node` post-decode pass that
+   keeps strict `KnownFields`; bare string still valid). The compiler fans out
+   per `(type, path)`, resolves a bare entry to the generator's default filename,
+   dedupes by resolved path, keys the input hash by `type:path`, and weaves the
+   manifest path into the source label for sub-package manifests only (injected
+   after the content-addressed output cache, so single-repo output is
+   byte-identical — the only golden change was the input-hash key format).
+3. **init bounded scan** — root + ≤2 levels, skip-set + filenames sourced from
+   `generator.All()`, skips symlinked/dot dirs, emits object-form entries.
+4. **Docs + edit-robustness** — `docs/design.md` documents the object form,
+   monorepo model, scan, and attribution; an `edit.go` golden proves the
+   `allow` splice survives object-form generators.
 
 ## Notes & Updates
 

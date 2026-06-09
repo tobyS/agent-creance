@@ -23,6 +23,7 @@ var editGoldenCases = []struct {
 	{"existing_list", AllowList, Rule{Host: "example.com", Paths: strs("/api/")}},
 	{"commented_stub", AllowList, Rule{Host: "example.com"}},
 	{"with_generators", AllowList, Rule{Host: "api.github.com", Paths: strs("/repos/foo/")}},
+	{"with_generators_objform", AllowList, Rule{Host: "api.github.com", Paths: strs("/repos/foo/")}},
 	{"from_scratch", AllowList, Rule{Host: "example.com"}},
 	{"network_only", AllowList, Rule{Host: "example.com"}},
 	{"deny_reason", DenyList, Rule{Host: "tracker.example", Reason: "low quality source"}},

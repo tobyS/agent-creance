@@ -1,0 +1,13 @@
+agent:
+  command: ["claude"]
+
+network:
+  egress:
+    generators:
+      - type: package_json
+        path: package.json
+      - type: package_json
+        path: apps/web/package.json
+    allow:
+      - host: api.github.com
+        paths: ["/repos/foo/"]

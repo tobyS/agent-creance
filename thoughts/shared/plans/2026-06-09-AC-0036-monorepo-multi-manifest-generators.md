@@ -343,9 +343,9 @@ in the **same phase** (it is the only other reader of `.Generators` besides
   manual `policy show` sanity check description in the ticket close-out.
 
 ### Success criteria
-- [ ] `make test`, `make lint`, `make golden` (reviewed) all green (AC #8).
-- [ ] `design.md` documents the object form, scan, and attribution.
-- [ ] `edit.go` golden proves object-form generators survive an `allow` splice.
+- [x] `make test`, `make lint`, `make golden` (reviewed) all green (AC #8).
+- [x] `design.md` documents the object form, scan, and attribution.
+- [x] `edit.go` golden proves object-form generators survive an `allow` splice.
 
 ---
 

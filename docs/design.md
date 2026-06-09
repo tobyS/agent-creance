@@ -113,10 +113,15 @@ network:
 
   egress:
     # Built-in generators that produce allow rules from project
-    # manifests. See "Allowlist generators" below.
+    # manifests. A bare name reads the root manifest; the object form
+    # (type + path) points a generator at a specific manifest, so a
+    # monorepo lists the same type once per package. See "Allowlist
+    # generators" below.
     generators:
       - package_json
       - composer_json
+      # - type: package_json
+      #   path: apps/web/package.json
 
     # Soft-allow rules. URLs not matched here get a soft-deny (the agent
     # may escalate to the user if it really needs them).
@@ -155,8 +160,10 @@ Default behavior for unmatched URLs is implicit: anything not in `allow:` and no
 
 Manually allowlisting every library a project depends on is tedious and bit-rotty. v0.1 ships two generators that read the project's dependency manifests and emit allow rules for the libraries' official homepages and source repositories:
 
-- **`package_json`** — reads `./package.json`, walks the direct dependencies (`dependencies` + `devDependencies`, no transitives), and looks each one up on the npm registry (`registry.npmjs.org`).
-- **`composer_json`** — reads `./composer.json`, walks `require` + `require-dev` direct dependencies, and looks each one up on Packagist (`packagist.org`).
+- **`package_json`** — reads `package.json`, walks the direct dependencies (`dependencies` + `devDependencies`, no transitives), and looks each one up on the npm registry (`registry.npmjs.org`).
+- **`composer_json`** — reads `composer.json`, walks `require` + `require-dev` direct dependencies, and looks each one up on Packagist (`packagist.org`).
+
+A bare entry (`- package_json`) reads the manifest at the project root (`./package.json`). The default path is owned by the generator itself, which also declares the installed-dependency directory it manages (`node_modules/` for `package_json`, `vendor/` for `composer_json`) — used by the init scan below.
 
 For each direct dependency, the generator emits:
 
@@ -174,7 +181,23 @@ If a package has no homepage in its registry metadata, no homepage rule is emitt
 
 GitLab and other forges get analogous companion-host tables (`gitlab.com` → `*.gitlab.io`, etc.) as they're added. The forge→content-host mapping is data, not per-generator code, so extending it is a table edit — and the same table is what `agent-creance allow <repo-url>` consults, so a manual repo allow expands to the same companion set.
 
-**No options in v0.1.** A generator's behavior is hardcoded; the user lists generators by name and gets the defaults above. Per-generator configuration (custom paths, transitive-deps mode, narrower path scoping) is a future extension if a concrete use case justifies it.
+**Monorepos — one generator per manifest.** A generator may be listed more than once for the same type, each scoped to a manifest path, so a monorepo gets dependency allow-rules for every one of its packages:
+
+```yaml
+generators:
+  - type: package_json
+    path: apps/web/package.json
+  - type: package_json
+    path: apps/api/package.json
+  - type: composer_json
+    path: services/billing/composer.json
+```
+
+The bare-string form is unchanged and equivalent to the object form with the root manifest path (`- package_json` ≡ `{type: package_json, path: package.json}`), so existing single-package configs keep working untouched. Identical `(type, path)` entries dedupe across the global/project/include layers, and the input-hash cache watches every referenced manifest, so editing any package's manifest triggers a recompile. When a generated rule comes from a sub-package manifest, its `policy show` annotation carries the path (`generated:package_json:apps/web/package.json:react`) to disambiguate which package produced it; a root-manifest rule keeps the bare `generated:package_json:react` form.
+
+`agent-creance init` pre-populates these entries automatically — see "The `init` command".
+
+**No further options in v0.1.** Beyond the manifest path, a generator's behavior is hardcoded; the user gets the defaults above. Other per-generator configuration (transitive-deps mode, narrower path scoping) is a future extension if a concrete use case justifies it.
 
 **Trust model.** The generator trusts registry-reported `homepage` and `repository` fields verbatim, without validation. The reasoning: if you've decided to depend on a package, you're already going to execute its code (and its `postinstall`/scripts) — at that point, trusting the maintainer's stated homepage URL is a strictly smaller leap of faith. A malicious maintainer can already do far worse than getting a domain allowlisted. The honest consequence: malicious packages can declare arbitrary `homepage:` values to get arbitrary hosts allowlisted. Users with stricter threat models should pin/audit dependencies and avoid this generator, or use `deny_always:` to shadow specific hosts they don't want allowed regardless of generator output.
 
@@ -356,9 +379,10 @@ agent-creance setup                 # one-time: install mitmproxy CA into keycha
 agent-creance setup --no-skill      # opt out of the skill install
 agent-creance setup --no-ca-install # use the CA via env vars only, don't trust system-wide
 
-agent-creance init                  # writes .agent-creance.yaml template in the project; detects
-                                    #   existing manifests (package.json, composer.json) and
-                                    #   pre-populates the generators: list accordingly
+agent-creance init                  # writes .agent-creance.yaml template in the project; scans for
+                                    #   manifests (package.json, composer.json) at the root and up to
+                                    #   two directory levels deep — skipping node_modules/ & vendor/ —
+                                    #   and pre-populates one generators: entry per detected manifest
 agent-creance run                   # starts the cage and the agent; if setup hasn't been run
                                     #   yet (no trusted CA, no skill), prints a clear pointer
                                     #   to `agent-creance setup` and exits non-zero rather than

@@ -8,8 +8,10 @@ updated: 2026-06-09
 
 - [x] Phase 1 — Generator-owned metadata
 - [x] Phase 2 — Config schema: object form, merge, validation + compiler fan-out
-- [x] Phase 3 — init bounded scan + object-form emission (commit pending)
-- [ ] Phase 4 — Docs, edit-robustness, final review
+- [x] Phase 3 — init bounded scan + object-form emission
+- [x] Phase 4 — Docs, edit-robustness, final review (commit pending)
+
+All phases complete. make test / make lint / make golden green. Ticket marked Done.
 
 ## Notes
 (none yet)
