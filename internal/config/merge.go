@@ -31,7 +31,7 @@ func merge(base, over Config) Config {
 		Network: Network{
 			HostServices: dedupeHostServices(concatHS(base.Network.HostServices, over.Network.HostServices)),
 			Egress: Egress{
-				Generators: dedupeStrings(concat(base.Network.Egress.Generators, over.Network.Egress.Generators)),
+				Generators: dedupeGenerators(concatGenerators(base.Network.Egress.Generators, over.Network.Egress.Generators)),
 				Allow:      dedupeRules(concatRules(base.Network.Egress.Allow, over.Network.Egress.Allow)),
 				DenyAlways: dedupeRules(concatRules(base.Network.Egress.DenyAlways, over.Network.Egress.DenyAlways)),
 			},
@@ -83,6 +83,18 @@ func concatHS(a, b []HostService) []HostService {
 	return append(out, b...)
 }
 
+func concatGenerators(a, b []Generator) []Generator {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	out := make([]Generator, 0, len(a)+len(b))
+	out = append(out, a...)
+	return append(out, b...)
+}
+
 func concatRules(a, b []Rule) []Rule {
 	if len(a) == 0 {
 		return b
@@ -122,6 +134,26 @@ func dedupeHostServices(xs []HostService) []HostService {
 	}
 	seen := make(map[HostService]bool, len(xs))
 	out := make([]HostService, 0, len(xs))
+	for _, x := range xs {
+		if seen[x] {
+			continue
+		}
+		seen[x] = true
+		out = append(out, x)
+	}
+	return out
+}
+
+// dedupeGenerators removes exact duplicate generator entries, keeping the first
+// occurrence. Identity is the (Type, Path) pair — Generator is a comparable struct, so
+// a value-keyed set works. A bare entry (Path:"") is distinct from an explicit root
+// path here; the compiler collapses entries that resolve to the same manifest file.
+func dedupeGenerators(xs []Generator) []Generator {
+	if len(xs) == 0 {
+		return nil
+	}
+	seen := make(map[Generator]bool, len(xs))
+	out := make([]Generator, 0, len(xs))
 	for _, x := range xs {
 		if seen[x] {
 			continue

@@ -65,9 +65,21 @@ type HostService struct {
 // Egress is the TLS-terminating egress policy: built-in generators plus explicit
 // soft-allow and hard-deny rules.
 type Egress struct {
-	Generators []string
+	Generators []Generator
 	Allow      []Rule
 	DenyAlways []Rule
+}
+
+// Generator is one entry in network.egress.generators. Type is the generator name
+// (e.g. "package_json"); Path is the optional manifest path it reads, relative to the
+// project root. A bare-string entry (`- package_json`) decodes to a Generator with an
+// empty Path, which the compiler resolves to the generator's root manifest. The
+// object form (`- {type: package_json, path: apps/web/package.json}`) lets a monorepo
+// list the same type once per package. Generator is a comparable struct so merge can
+// dedupe it by (Type, Path) value.
+type Generator struct {
+	Type string
+	Path string
 }
 
 // Rule is one egress allow/deny entry. Paths and Methods are pointers so an omitted
@@ -116,9 +128,13 @@ type rawNetwork struct {
 }
 
 type rawEgress struct {
-	Generators []string `yaml:"generators"`
-	Allow      []Rule   `yaml:"allow"`
-	DenyAlways []Rule   `yaml:"deny_always"`
+	// Generators is captured as raw nodes so a list entry may be either a bare
+	// scalar (`- package_json`) or a mapping (`- {type:, path:}`). yaml.Node carries
+	// no custom UnmarshalYAML, so top-level KnownFields strictness is preserved; the
+	// inner keys are validated in the parseGenerator post-decode pass.
+	Generators []yaml.Node `yaml:"generators"`
+	Allow      []Rule      `yaml:"allow"`
+	DenyAlways []Rule      `yaml:"deny_always"`
 }
 
 // Parse decodes one .agent-creance.yaml document strictly, applies defaults, and
@@ -142,7 +158,12 @@ func Parse(data []byte) (*Config, error) {
 		Safehouse: Safehouse(raw.Safehouse),
 		Include:   raw.Include,
 		Network: Network{
-			Egress: Egress(raw.Network.Egress),
+			Egress: Egress{
+				// Generators is filled in applyDefaults (post-decode parse of the
+				// raw nodes); Allow/DenyAlways copy straight across.
+				Allow:      raw.Network.Egress.Allow,
+				DenyAlways: raw.Network.Egress.DenyAlways,
+			},
 		},
 		Env: raw.Env,
 	}
@@ -167,6 +188,15 @@ func (c *Config) applyDefaults(raw rawConfig, verr *ValidationError) {
 			continue
 		}
 		c.Network.HostServices = append(c.Network.HostServices, hs)
+	}
+
+	for _, node := range raw.Network.Egress.Generators {
+		g, err := parseGenerator(&node)
+		if err != nil {
+			verr.add("%s", err.Error())
+			continue
+		}
+		c.Network.Egress.Generators = append(c.Network.Egress.Generators, g)
 	}
 
 	defaultRuleModes(c.Network.Egress.Allow)

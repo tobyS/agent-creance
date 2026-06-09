@@ -50,7 +50,7 @@ func TestParse_ExampleRoundTrips(t *testing.T) {
 		t.Errorf("Network.HostServices = %v, want %v", cfg.Network.HostServices, wantHS)
 	}
 
-	if !reflect.DeepEqual(cfg.Network.Egress.Generators, []string{"package_json", "composer_json"}) {
+	if !reflect.DeepEqual(cfg.Network.Egress.Generators, []Generator{{Type: "package_json"}, {Type: "composer_json"}}) {
 		t.Errorf("Egress.Generators = %v", cfg.Network.Egress.Generators)
 	}
 

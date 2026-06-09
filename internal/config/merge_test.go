@@ -56,18 +56,26 @@ func TestMerge_StringListUnionDedupe(t *testing.T) {
 func TestMerge_GeneratorsAndHostServicesUnionDedupe(t *testing.T) {
 	base := Config{Network: Network{
 		HostServices: []HostService{{"mysql", 3306}},
-		Egress:       Egress{Generators: []string{"package_json"}},
+		Egress:       Egress{Generators: []Generator{{Type: "package_json"}}},
 	}}
 	over := Config{Network: Network{
 		HostServices: []HostService{{"mysql", 3306}, {"redis", 6379}}, // mysql dup
-		Egress:       Egress{Generators: []string{"package_json", "composer_json"}},
+		Egress: Egress{Generators: []Generator{
+			{Type: "package_json"},                                // dup of base
+			{Type: "composer_json"},                               // new
+			{Type: "package_json", Path: "apps/api/package.json"}, // same type, new path
+		}},
 	}}
 	got := merge(base, over).Network
 	wantHS := []HostService{{"mysql", 3306}, {"redis", 6379}}
 	if !reflect.DeepEqual(got.HostServices, wantHS) {
 		t.Errorf("HostServices = %v, want %v", got.HostServices, wantHS)
 	}
-	wantGen := []string{"package_json", "composer_json"}
+	wantGen := []Generator{
+		{Type: "package_json"},
+		{Type: "composer_json"},
+		{Type: "package_json", Path: "apps/api/package.json"},
+	}
 	if !reflect.DeepEqual(got.Egress.Generators, wantGen) {
 		t.Errorf("Generators = %v, want %v", got.Egress.Generators, wantGen)
 	}

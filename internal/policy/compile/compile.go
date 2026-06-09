@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
@@ -50,11 +51,20 @@ const (
 // projectConfigName is the per-project config file at the project root.
 const projectConfigName = ".agent-creance.yaml"
 
-// manifestFiles maps a generator name to the in-tree manifest it reads. The generator
-// itself takes bytes, not a path, so the compiler owns this mapping (and the read).
-var manifestFiles = map[string]string{
-	generator.GeneratorPackageJSON:  "package.json",
-	generator.GeneratorComposerJSON: "composer.json",
+// resolvedGenerator is a generator entry with a concrete manifest path: a bare config
+// entry's empty Path has been filled from the generator's default manifest filename
+// (generator.Lookup), so two entries of the same type for different packages are
+// distinct here. The path is relative to the project root.
+type resolvedGenerator struct {
+	Type string
+	Path string
+}
+
+// manifestInput pairs a resolved generator with its manifest bytes (only generators
+// whose manifest exists on disk get one).
+type manifestInput struct {
+	gen  resolvedGenerator
+	data []byte
 }
 
 // generatorRunner runs one named generator over manifest bytes. It is the hermetic seam
@@ -166,8 +176,7 @@ type compileInputs struct {
 	global    *config.Config
 	project   *config.Config
 	overlay   *config.Config
-	gens      []string
-	manifests map[string][]byte
+	manifests []manifestInput
 	hash      string
 }
 
@@ -198,11 +207,9 @@ func (c *Compiler) resolve(projectDir string) (compileInputs, error) {
 		return compileInputs{}, err
 	}
 
-	gens := mergeGenerators(global.Network.Egress.Generators, project.Network.Egress.Generators)
-	for _, name := range gens {
-		if !generator.Known(name) {
-			return compileInputs{}, fmt.Errorf("compile: unknown generator %q", name)
-		}
+	gens, err := resolveGenerators(mergeGenerators(global.Network.Egress.Generators, project.Network.Egress.Generators))
+	if err != nil {
+		return compileInputs{}, err
 	}
 
 	manifests, err := c.readManifests(layout.Canonical, gens)
@@ -220,7 +227,6 @@ func (c *Compiler) resolve(projectDir string) (compileInputs, error) {
 		global:    global,
 		project:   project,
 		overlay:   overlay,
-		gens:      gens,
 		manifests: manifests,
 		hash:      hash,
 	}, nil
@@ -265,17 +271,13 @@ func (c *Compiler) Refresh(ctx context.Context, projectDir string) (RefreshResul
 	}
 
 	var refreshed []GeneratorRefresh
-	for _, name := range in.gens {
-		manifest, ok := in.manifests[name]
-		if !ok {
-			continue // no manifest on disk → nothing was ever cached for this generator
-		}
-		stats, err := c.runner.Invalidate(name, manifest)
+	for _, m := range in.manifests {
+		stats, err := c.runner.Invalidate(m.gen.Type, m.data)
 		if err != nil {
-			return RefreshResult{}, fmt.Errorf("compile: refresh generator %q: %w", name, err)
+			return RefreshResult{}, fmt.Errorf("compile: refresh generator %q: %w", m.gen.Type, err)
 		}
 		refreshed = append(refreshed, GeneratorRefresh{
-			Name:                name,
+			Name:                refreshName(m.gen),
 			Packages:            stats.Packages,
 			CacheEntriesCleared: stats.CacheEntriesCleared,
 			OutputCacheCleared:  stats.OutputCacheCleared,
@@ -298,7 +300,7 @@ func (c *Compiler) Refresh(ctx context.Context, projectDir string) (RefreshResul
 // policy.json — the shared tail of Compile (on a cache miss) and Refresh (always). It
 // never consults the cache gate; the caller decides whether to skip it.
 func (c *Compiler) build(ctx context.Context, in compileInputs) (Result, error) {
-	rs, err := c.buildRuleSet(ctx, in.global, in.project, in.overlay, in.gens, in.manifests)
+	rs, err := c.buildRuleSet(ctx, in.global, in.project, in.overlay, in.manifests)
 	if err != nil {
 		return Result{}, err
 	}
@@ -338,38 +340,69 @@ func (c *Compiler) loadOverlay(path string) (*config.Config, error) {
 }
 
 // mergeGenerators unions the global and project generator lists (global first), deduping
-// while preserving first-seen order.
-func mergeGenerators(global, project []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, list := range [][]string{global, project} {
-		for _, name := range list {
-			if !seen[name] {
-				seen[name] = true
-				out = append(out, name)
+// by (Type, Path) while preserving first-seen order.
+func mergeGenerators(global, project []config.Generator) []config.Generator {
+	seen := map[config.Generator]bool{}
+	var out []config.Generator
+	for _, list := range [][]config.Generator{global, project} {
+		for _, g := range list {
+			if !seen[g] {
+				seen[g] = true
+				out = append(out, g)
 			}
 		}
 	}
 	return out
 }
 
-// readManifests reads each generator's in-tree manifest. A listed generator whose
-// manifest is absent contributes nothing (no rules) rather than failing the compile.
-func (c *Compiler) readManifests(projectDir string, gens []string) (map[string][]byte, error) {
-	manifests := map[string][]byte{}
-	for _, name := range gens {
-		file, ok := manifestFiles[name]
+// resolveGenerators validates each generator name and fills in a bare entry's manifest
+// path from the generator's default filename, then dedupes by resolved (Type, Path) so
+// two entries that point at the same manifest (e.g. a bare `package_json` and an
+// explicit `package_json: package.json`) run only once. Order is preserved.
+func resolveGenerators(gens []config.Generator) ([]resolvedGenerator, error) {
+	seen := map[resolvedGenerator]bool{}
+	var out []resolvedGenerator
+	for _, g := range gens {
+		meta, ok := generator.Lookup(g.Type)
 		if !ok {
-			continue // Known() already validated the name; defensive.
+			return nil, fmt.Errorf("compile: unknown generator %q", g.Type)
 		}
-		data, err := c.fs.ReadFile(filepath.Join(projectDir, file))
+		path := g.Path
+		if path == "" {
+			path = meta.ManifestFile
+		}
+		rg := resolvedGenerator{Type: g.Type, Path: filepath.Clean(path)}
+		if seen[rg] {
+			continue
+		}
+		seen[rg] = true
+		out = append(out, rg)
+	}
+	return out, nil
+}
+
+// refreshName labels a generator in the `policy refresh` report, disambiguating
+// sub-package manifests by path (a root manifest keeps the bare type name).
+func refreshName(rg resolvedGenerator) string {
+	if filepath.Dir(rg.Path) == "." {
+		return rg.Type
+	}
+	return rg.Type + " (" + rg.Path + ")"
+}
+
+// readManifests reads each resolved generator's manifest. A generator whose manifest is
+// absent contributes nothing (no rules) rather than failing the compile.
+func (c *Compiler) readManifests(projectDir string, gens []resolvedGenerator) ([]manifestInput, error) {
+	var manifests []manifestInput
+	for _, rg := range gens {
+		data, err := c.fs.ReadFile(filepath.Join(projectDir, rg.Path))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			return nil, fmt.Errorf("compile: read %s: %w", file, err)
+			return nil, fmt.Errorf("compile: read %s: %w", rg.Path, err)
 		}
-		manifests[name] = data
+		manifests = append(manifests, manifestInput{gen: rg, data: data})
 	}
 	return manifests, nil
 }
@@ -378,10 +411,13 @@ func (c *Compiler) readManifests(projectDir string, gens []string) (map[string][
 // config layers plus the referenced manifest bytes. json.Marshal sorts map keys and the
 // config structs marshal in fixed field order, so it is deterministic and
 // environment-independent (a resolved Config carries no absolute paths).
-func inputHash(global, project, overlay *config.Config, manifests map[string][]byte) (string, error) {
+func inputHash(global, project, overlay *config.Config, manifests []manifestInput) (string, error) {
+	// Key by "type:path" so two manifests of the same type are distinct in the payload
+	// (a type-only key would let the second overwrite the first). Editing any referenced
+	// manifest changes its bytes here and so changes the hash.
 	man := make(map[string]string, len(manifests))
-	for name, data := range manifests {
-		man[name] = string(data)
+	for _, m := range manifests {
+		man[m.gen.Type+":"+m.gen.Path] = string(m.data)
 	}
 	payload := struct {
 		Global    *config.Config    `json:"global"`
@@ -414,8 +450,8 @@ func (c *Compiler) readCompiled(path string) (policy.Compiled, bool) {
 // buildRuleSet unions the annotated rules from every source into the compiled rule set.
 // Order is baseline → project → generated → session (then dedupe); matching itself is
 // order-independent (most-specific-wins), so this only fixes a stable, readable artifact.
-func (c *Compiler) buildRuleSet(ctx context.Context, global, project, overlay *config.Config, gens []string, manifests map[string][]byte) (policy.RuleSet, error) {
-	generated, err := c.runGenerators(ctx, gens, manifests)
+func (c *Compiler) buildRuleSet(ctx context.Context, global, project, overlay *config.Config, manifests []manifestInput) (policy.RuleSet, error) {
+	generated, err := c.runGenerators(ctx, manifests)
 	if err != nil {
 		return policy.RuleSet{}, err
 	}
@@ -437,22 +473,21 @@ func (c *Compiler) buildRuleSet(ctx context.Context, global, project, overlay *c
 	}, nil
 }
 
-// runGenerators runs each configured generator and flattens its output into matcher
-// rules carrying the generator's source annotation and lower-trust flag.
-func (c *Compiler) runGenerators(ctx context.Context, gens []string, manifests map[string][]byte) ([]policy.Rule, error) {
+// runGenerators runs each resolved generator over its manifest and flattens the output
+// into matcher rules carrying the generator's source annotation and lower-trust flag.
+// For a manifest below the project root the manifest path is woven into the source so
+// `policy show` can disambiguate which package produced a rule; a root manifest keeps
+// the bare `generated:<type>:<pkg>` label, leaving single-repo output unchanged.
+func (c *Compiler) runGenerators(ctx context.Context, manifests []manifestInput) ([]policy.Rule, error) {
 	var out []policy.Rule
-	for _, name := range gens {
-		manifest, ok := manifests[name]
-		if !ok {
-			continue // manifest absent → no rules
-		}
-		rules, err := c.runner.Run(ctx, name, manifest)
+	for _, m := range manifests {
+		rules, err := c.runner.Run(ctx, m.gen.Type, m.data)
 		if err != nil {
-			return nil, fmt.Errorf("compile: run generator %q: %w", name, err)
+			return nil, fmt.Errorf("compile: run generator %q: %w", m.gen.Type, err)
 		}
 		for _, gr := range rules {
 			r := gr.Rule
-			r.Source = gr.Source
+			r.Source = sourceWithPath(gr.Source, m.gen)
 			r.LowerTrust = gr.LowerTrust
 			// Generators emit rules without a mode; default to intercept so every rule
 			// in the artifact carries an explicit mode (the config layer already defaults
@@ -464,6 +499,23 @@ func (c *Compiler) runGenerators(ctx context.Context, gens []string, manifests m
 		}
 	}
 	return out, nil
+}
+
+// sourceWithPath weaves a sub-package manifest's path into a generated rule's source
+// label, turning "generated:<type>:<pkg>" into "generated:<type>:<path>:<pkg>". A root
+// manifest (path has no directory component) is left untouched so single-repo policy
+// output is byte-identical to before. The path is injected here, after the
+// content-addressed output cache, so two identical-byte manifests at different paths
+// still share a cache entry yet get distinct labels.
+func sourceWithPath(src string, rg resolvedGenerator) string {
+	if filepath.Dir(rg.Path) == "." {
+		return src
+	}
+	prefix := "generated:" + rg.Type + ":"
+	if !strings.HasPrefix(src, prefix) {
+		return src // not a generated source (defensive); leave as-is.
+	}
+	return prefix + rg.Path + ":" + strings.TrimPrefix(src, prefix)
 }
 
 // annotate converts config rules to matcher rules and stamps them with a source.

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // validate checks cross-field schema constraints, recording every problem on verr
@@ -49,6 +51,45 @@ func ruleRef(i int, r Rule) string {
 		return fmt.Sprintf("for host %q", r.Host)
 	}
 	return fmt.Sprintf("#%d", i+1)
+}
+
+// parseGenerator parses one network.egress.generators entry from its raw yaml node.
+// A scalar is the bare form (`- package_json`) → Generator{Type: <scalar>}. A mapping
+// is the object form (`- {type:, path:}`); its keys are validated here (KnownFields
+// does not reach into a captured yaml.Node) — only "type" (required, non-empty) and
+// "path" (optional) are allowed, anything else is an error citing the line. The
+// generator name's validity (Known) is checked later, by the compiler.
+func parseGenerator(node *yaml.Node) (Generator, error) {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Value == "" {
+			return Generator{}, fmt.Errorf("egress generators line %d: empty generator name", node.Line)
+		}
+		return Generator{Type: node.Value}, nil
+	case yaml.MappingNode:
+		var g Generator
+		var sawType bool
+		// MappingNode content is a flat [key, value, key, value, …] list.
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			val := node.Content[i+1]
+			switch key.Value {
+			case "type":
+				g.Type = val.Value
+				sawType = true
+			case "path":
+				g.Path = val.Value
+			default:
+				return Generator{}, fmt.Errorf("egress generators line %d: unknown key %q (want %q or %q)", key.Line, key.Value, "type", "path")
+			}
+		}
+		if !sawType || g.Type == "" {
+			return Generator{}, fmt.Errorf("egress generators line %d: missing %q", node.Line, "type")
+		}
+		return g, nil
+	default:
+		return Generator{}, fmt.Errorf("egress generators line %d: a generator must be a name or a {type, path} mapping", node.Line)
+	}
 }
 
 // parseHostService parses a "label:port" entry into a typed HostService. The label

@@ -251,13 +251,13 @@ in the **same phase** (it is the only other reader of `.Generators` besides
   `[]config.Generator{{Type: ...}}` (e.g. `config_test.go:53`, compiler tests).
 
 ### Success criteria
-- [ ] `make test` green; `go build ./...` clean; `make lint` green.
-- [ ] Compiled policy contains rules for every listed manifest (AC #1).
-- [ ] Bare form resolves to root and is byte-identical in output (AC #2);
-      existing compiler/policy goldens unchanged.
-- [ ] `policy show` attributes a non-root rule by path and disambiguates two
+- [x] `make test` green; `go build ./...` clean; `make lint` green.
+- [x] Compiled policy contains rules for every listed manifest (AC #1).
+- [x] Bare form resolves to root and is byte-identical in output (AC #2);
+      existing compiler/policy goldens unchanged (only input_hash format changed).
+- [x] `policy show` attributes a non-root rule by path and disambiguates two
       same-type generators (AC #7); root-only output unchanged.
-- [ ] Input hash watches every referenced manifest (AC #5).
+- [x] Input hash watches every referenced manifest (AC #5).
 
 ---
 

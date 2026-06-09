@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "input_hash": "02c3f8990f8181bf49c2d3aa767927779a03598387edb3cb6097a91840ffecd8",
+  "input_hash": "43f67dc2f9d1e7116001853de9219a4c2c8e3ab5ec874e64bbfe818f98ca467d",
   "allow": [
     {
       "host": "api.anthropic.com",

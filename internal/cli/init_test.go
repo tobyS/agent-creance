@@ -55,6 +55,19 @@ func TestRenderConfigTemplate(t *testing.T) {
 	}
 }
 
+// wantGenerators converts bare generator names to the parsed config.Generator shape
+// (bare form → empty Path), nil for none.
+func wantGenerators(names []string) []config.Generator {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]config.Generator, len(names))
+	for i, n := range names {
+		out[i] = config.Generator{Type: n}
+	}
+	return out
+}
+
 // TestRenderConfigTemplateParses guards acceptance criterion 1 (and the null-egress
 // concern): every variant of the emitted template must parse + validate cleanly.
 func TestRenderConfigTemplateParses(t *testing.T) {
@@ -62,7 +75,7 @@ func TestRenderConfigTemplateParses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens)))
 			require.NoError(t, err)
-			require.Equal(t, tc.gens, cfg.Network.Egress.Generators)
+			require.Equal(t, wantGenerators(tc.gens), cfg.Network.Egress.Generators)
 		})
 	}
 }
@@ -123,7 +136,7 @@ func TestInitPackageJSONOnly(t *testing.T) {
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
-	require.Equal(t, []string{generator.GeneratorPackageJSON}, cfg.Network.Egress.Generators)
+	require.Equal(t, wantGenerators([]string{generator.GeneratorPackageJSON}), cfg.Network.Egress.Generators)
 	require.Contains(t, f.out.String(), generator.GeneratorPackageJSON)
 }
 
@@ -137,7 +150,7 @@ func TestInitBothManifests(t *testing.T) {
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
 	require.Equal(t,
-		[]string{generator.GeneratorPackageJSON, generator.GeneratorComposerJSON},
+		wantGenerators([]string{generator.GeneratorPackageJSON, generator.GeneratorComposerJSON}),
 		cfg.Network.Egress.Generators)
 }
 
