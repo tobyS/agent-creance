@@ -135,7 +135,16 @@ func TestCageVerificationNegativeControl(t *testing.T) {
 func runBattery(t *testing.T, weakened bool) batteryRun {
 	t.Helper()
 
-	cacheDir := t.TempDir()
+	// Real-location guard (AC-0035): place the cache under $HOME — NOT $TMPDIR — so it
+	// falls outside safehouse's base RW grants (/tmp, $TMPDIR, toolchain dirs), matching
+	// the production ~/.cache/agent-creance. This exercises whether the cage actually
+	// mounts CLAUDE_CONFIG_DIR RW (the doc-config-dir vector). A t.TempDir() cache lives
+	// under $TMPDIR, which safehouse grants, and would mask the gap.
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	cacheDir, err := os.MkdirTemp(home, ".agent-creance-battery-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(cacheDir) })
 	t.Setenv("XDG_CACHE_HOME", cacheDir)
 	proj := t.TempDir()
 
@@ -147,8 +156,6 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 	// Fixtures: a planted secret OUTSIDE every cage mount (under real $HOME, a
 	// non-granted subpath → denied), and dual-stack loopback listeners for the
 	// allowlisted host-service port and a non-allowlisted blocked port.
-	home, err := os.UserHomeDir()
-	require.NoError(t, err)
 	secretDir, err := os.MkdirTemp(home, ".creance-verify-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(secretDir) })
