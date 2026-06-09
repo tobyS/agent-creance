@@ -142,8 +142,8 @@ func (f *FakeTLSProber) ProbeViaProxy(_ context.Context, proxyURL, targetURL str
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` passes.
-- [ ] `make test` passes (existing prober/setup tests still green — `Outcomes`
+- [x] `go build ./...` passes.
+- [x] `make test` passes (existing prober/setup tests still green — `Outcomes`
       defaults empty, so the fallback path is identical to today).
 
 #### Manual

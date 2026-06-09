@@ -10,8 +10,13 @@ import (
 // verdict ProbeViaProxy should return; it records each call in Calls so a test
 // can assert the proxy/target URLs the caller built.
 type FakeTLSProber struct {
-	// Outcome is returned by ProbeViaProxy when Err is nil.
+	// Outcome is returned by ProbeViaProxy when Err is nil and Outcomes is empty.
 	Outcome sysdep.ProbeOutcome
+	// Outcomes, when non-empty, is consumed one entry per call (in order); once
+	// exhausted, ProbeViaProxy falls back to Outcome. This models a verify-first
+	// flow where the first probe is untrusted (pre-install) and the second
+	// trusted (post-install).
+	Outcomes []sysdep.ProbeOutcome
 	// Err, if set, is returned by ProbeViaProxy (the probe could not run).
 	Err error
 	// Calls records each ProbeViaProxy call, in order.
@@ -35,6 +40,11 @@ func (f *FakeTLSProber) ProbeViaProxy(_ context.Context, proxyURL, targetURL str
 	f.Calls = append(f.Calls, TLSProbe{ProxyURL: proxyURL, TargetURL: targetURL})
 	if f.Err != nil {
 		return sysdep.ProbeError, f.Err
+	}
+	if len(f.Outcomes) > 0 {
+		out := f.Outcomes[0]
+		f.Outcomes = f.Outcomes[1:]
+		return out, nil
 	}
 	return f.Outcome, nil
 }
