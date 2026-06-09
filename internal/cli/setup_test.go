@@ -64,32 +64,76 @@ func newSetupFixture() *setupFixture {
 	}
 }
 
-func TestSetupDefault(t *testing.T) {
-	f := newSetupFixture()
+func TestSetupAlreadyTrusted(t *testing.T) {
+	f := newSetupFixture() // default prober is trusted → verify-first skips install
 
 	if err := runSetup(context.Background(), f.app, false, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
-	// CA installed (Bootstrap → InstallCA) and verified (live probe ran).
-	if len(f.kc.AddedCerts) != 1 || f.kc.AddedCerts[0] != setupCAPath {
-		t.Errorf("AddedCerts = %v, want one entry %q", f.kc.AddedCerts, setupCAPath)
+	// Verify-first passed, so the keychain dialog is skipped entirely.
+	if len(f.kc.AddedCerts) != 0 {
+		t.Errorf("AddedCerts = %v, want none when the CA is already trusted", f.kc.AddedCerts)
 	}
+	// Only the pre-install verification probe ran.
 	if len(f.prober.Calls) != 1 || f.prober.Calls[0].TargetURL != "https://example.com" {
-		t.Errorf("prober Calls = %+v, want one probe to https://example.com", f.prober.Calls)
+		t.Errorf("prober Calls = %+v, want one verify probe to https://example.com", f.prober.Calls)
 	}
 	// Skill written to the canonical path.
 	if _, ok := f.fs.Files[skillPath]; !ok {
 		t.Errorf("skill not written to %q; files: %v", skillPath, keys(f.fs.Files))
 	}
-	if got := f.out.String(); !strings.Contains(got, "CA installed and verified") ||
-		!strings.Contains(got, "Skill installed") {
+	got := f.out.String()
+	// Already-trusted notice + discoverability note + skill success.
+	if !strings.Contains(got, "already trusted") || !strings.Contains(got, "Skill installed") {
+		t.Errorf("stdout = %q, want the already-trusted + skill success lines", got)
+	}
+	if !strings.Contains(got, "mitmproxy") || !strings.Contains(got, "login keychain") ||
+		!strings.Contains(got, "Keychain Access") {
+		t.Errorf("stdout = %q, want the keychain discoverability note", got)
+	}
+	// The pre-prompt explanation must NOT appear when no dialog is shown.
+	if strings.Contains(got, "authorization dialog") {
+		t.Errorf("stdout = %q, want no pre-prompt on the already-trusted path", got)
+	}
+}
+
+func TestSetupFreshInstall(t *testing.T) {
+	f := newSetupFixture()
+	// Untrusted pre-install, trusted post-install → the install path.
+	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
+
+	if err := runSetup(context.Background(), f.app, false, false); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	// CA installed (Bootstrap → InstallCA) and verified twice (pre + post).
+	if len(f.kc.AddedCerts) != 1 || f.kc.AddedCerts[0] != setupCAPath {
+		t.Errorf("AddedCerts = %v, want one entry %q", f.kc.AddedCerts, setupCAPath)
+	}
+	if len(f.prober.Calls) != 2 {
+		t.Errorf("prober Calls = %d, want 2 (verify-first then post-install)", len(f.prober.Calls))
+	}
+	if _, ok := f.fs.Files[skillPath]; !ok {
+		t.Errorf("skill not written to %q; files: %v", skillPath, keys(f.fs.Files))
+	}
+	got := f.out.String()
+	// Pre-prompt before the dialog, then install success + discoverability + skill.
+	if !strings.Contains(got, "authorization dialog") {
+		t.Errorf("stdout = %q, want the pre-prompt explanation before install", got)
+	}
+	if !strings.Contains(got, "CA installed and verified") || !strings.Contains(got, "Skill installed") {
 		t.Errorf("stdout = %q, want CA + skill success lines", got)
+	}
+	if !strings.Contains(got, "mitmproxy") || !strings.Contains(got, "login keychain") {
+		t.Errorf("stdout = %q, want the keychain discoverability note", got)
 	}
 }
 
 func TestSetupNoSkill(t *testing.T) {
 	f := newSetupFixture()
+	// Drive a real install so "CA still installed" stays meaningful.
+	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
 
 	if err := runSetup(context.Background(), f.app, true /*noSkill*/, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
@@ -123,9 +167,14 @@ func TestSetupNoCAInstall(t *testing.T) {
 		t.Errorf("prober Calls = %+v, want no verify under --no-ca-install", f.prober.Calls)
 	}
 	// Caveat printed, naming the env vars and the Go-based `gh` gap.
-	if got := f.out.String(); !strings.Contains(got, "env") ||
+	got := f.out.String()
+	if !strings.Contains(got, "env") ||
 		!strings.Contains(got, "Go-based") || !strings.Contains(got, "`gh`") {
 		t.Errorf("stdout = %q, want the env-var-only coverage caveat", got)
+	}
+	// No keychain discoverability note when nothing was installed.
+	if strings.Contains(got, "login keychain") {
+		t.Errorf("stdout = %q, want no keychain note under --no-ca-install", got)
 	}
 	// Skill still installed.
 	if _, ok := f.fs.Files[skillPath]; !ok {
@@ -144,9 +193,10 @@ func TestSetupVerifyFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "CA verification failed") {
 		t.Errorf("err = %q, want the actionable untrusted message", err)
 	}
-	// InstallCA runs before Verify, so the cert was added before the failure.
+	// Verify-first is untrusted, so InstallCA runs; the post-install verify still
+	// fails, but the cert was added before the failure.
 	if len(f.kc.AddedCerts) != 1 {
-		t.Errorf("AddedCerts = %v, want the cert added before verify", f.kc.AddedCerts)
+		t.Errorf("AddedCerts = %v, want the cert added before the failing verify", f.kc.AddedCerts)
 	}
 	// Setup aborts before the skill step on a CA failure.
 	if _, ok := f.fs.Files[skillPath]; ok {
@@ -171,8 +221,12 @@ func TestSetupBothOptOuts(t *testing.T) {
 	if _, ok := f.fs.Files[skillPath]; ok {
 		t.Errorf("skill written despite --no-skill")
 	}
-	if got := f.out.String(); !strings.Contains(got, "Skipping system trust install") {
+	got := f.out.String()
+	if !strings.Contains(got, "Skipping system trust install") {
 		t.Errorf("stdout = %q, want the caveat", got)
+	}
+	if strings.Contains(got, "login keychain") {
+		t.Errorf("stdout = %q, want no keychain note when nothing was installed", got)
 	}
 }
 

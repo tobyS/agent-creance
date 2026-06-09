@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobyS/agent-creance/internal/setup"
+	"github.com/tobyS/agent-creance/internal/setupcheck"
 )
 
 // newSetupCmd implements `agent-creance setup` — the one-time onboarding command
@@ -50,11 +51,22 @@ func runSetup(ctx context.Context, app *App, noSkill, noCAInstall bool) error {
 		}
 		fmt.Fprintln(app.Stdout, caCaveat)
 	} else {
-		fmt.Fprintln(app.Stdout, "Trusting the mitmproxy CA (you may be prompted for keychain access)…")
-		if err := inst.Bootstrap(ctx); err != nil {
+		fmt.Fprintln(app.Stdout, "Checking whether the mitmproxy CA is already trusted…")
+		// Bootstrap verifies trust first and only installs (popping the macOS
+		// authorization dialog) when needed; the beforeInstall hook lets us explain
+		// that prompt right before it appears, never on the already-trusted path.
+		res, err := inst.Bootstrap(ctx, func() {
+			fmt.Fprintln(app.Stdout, msgPrePrompt)
+		})
+		if err != nil {
 			return err // carries the actionable Message; Main → exit 1
 		}
-		fmt.Fprintln(app.Stdout, "✓ CA installed and verified.")
+		if res.AlreadyTrusted {
+			fmt.Fprintln(app.Stdout, "✓ mitmproxy CA already trusted — skipped the keychain prompt.")
+		} else {
+			fmt.Fprintln(app.Stdout, "✓ CA installed and verified.")
+		}
+		fmt.Fprintln(app.Stdout, keychainNote())
 	}
 
 	// Skill step.
@@ -82,3 +94,23 @@ covers curl, Node / Claude Code, Python, and git.
 NOT covered: Go-based tools on macOS (for example the GitHub CLI, ` + "`gh`" + `) trust the
 CA only via the system keychain, so they will fail TLS inside the cage. Re-run
 ` + "`agent-creance setup`" + ` without --no-ca-install to trust them too.`
+
+// msgPrePrompt is printed immediately before the keychain authorization dialog
+// (the install path only), so the generic OS "security" prompt reads as expected
+// rather than alarming. It mirrors the honest, concrete tone of caCaveat.
+const msgPrePrompt = `agent-creance needs to trust the mitmproxy CA it uses to filter the cage's
+network egress. macOS will now show an authorization dialog (titled "security")
+asking you to allow a trusted-certificate change — that is agent-creance adding
+its egress-proxy CA to your login keychain. Approve it with Touch ID or your
+password to continue.`
+
+// keychainNote tells the user what was installed and where — printed on both the
+// install and already-trusted paths so the cert is never a mystery in Keychain
+// Access. setupcheck.CACommonName keeps the cert name in sync with the
+// run/setupcheck presence probe.
+func keychainNote() string {
+	return fmt.Sprintf(`The %q certificate is trusted in your login keychain. To inspect or remove it,
+open Keychain Access (login keychain → Certificates) and search for %q, or run:
+  security delete-certificate -c %q ~/Library/Keychains/login.keychain-db`,
+		setupcheck.CACommonName, setupcheck.CACommonName, setupcheck.CACommonName)
+}

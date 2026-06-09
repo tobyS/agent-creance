@@ -245,24 +245,51 @@ func (i *Installer) Verify(ctx context.Context) (Result, error) {
 	}
 }
 
-// Bootstrap is the end-to-end CA flow the `setup` command (AC-0028) drives:
-// generate the CA if needed, install it into the login keychain, then prove it is
-// trusted. A failed verification is returned as an error carrying the actionable
-// Message, so the caller exits non-zero with a clear pointer.
-func (i *Installer) Bootstrap(ctx context.Context) error {
+// BootstrapResult reports which path Bootstrap took, so the CLI can print the
+// matching message. AlreadyTrusted is true when the live verification passed
+// before any install — i.e. the keychain authorization dialog was skipped.
+type BootstrapResult struct {
+	AlreadyTrusted bool
+}
+
+// Bootstrap is the end-to-end CA flow the `setup` command (AC-0028) drives,
+// idempotent on real trust: it generates the CA if needed, then verifies trust
+// BEFORE touching the keychain. If the CA already validates it returns
+// {AlreadyTrusted:true} without calling security add-trusted-cert, so the macOS
+// authorization dialog never appears on a machine that is already set up.
+//
+// Otherwise it calls beforeInstall (if non-nil) — so the caller can warn about
+// the upcoming dialog — installs the CA, and re-verifies. A failed post-install
+// verification is returned as an error carrying the actionable Message, so the
+// caller exits non-zero with a clear pointer.
+//
+// Trust is gated on the live verification, not mere keychain presence: a cert
+// that is present but not trusted fails the first Verify and is re-installed.
+func (i *Installer) Bootstrap(ctx context.Context, beforeInstall func()) (BootstrapResult, error) {
 	certPath, err := i.EnsureCA(ctx)
 	if err != nil {
-		return err
+		return BootstrapResult{}, err
+	}
+	// Verify-first: prove trust functionally before any keychain write, so an
+	// already-trusted CA skips add-trusted-cert and its authorization dialog.
+	switch res, err := i.Verify(ctx); {
+	case err != nil:
+		return BootstrapResult{}, err
+	case res.OK():
+		return BootstrapResult{AlreadyTrusted: true}, nil
+	}
+	if beforeInstall != nil {
+		beforeInstall()
 	}
 	if err := i.InstallCA(certPath); err != nil {
-		return err
+		return BootstrapResult{}, err
 	}
 	res, err := i.Verify(ctx)
 	if err != nil {
-		return err
+		return BootstrapResult{}, err
 	}
 	if !res.OK() {
-		return errors.New(res.Message())
+		return BootstrapResult{}, errors.New(res.Message())
 	}
-	return nil
+	return BootstrapResult{AlreadyTrusted: false}, nil
 }

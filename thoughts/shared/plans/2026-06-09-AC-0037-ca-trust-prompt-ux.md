@@ -235,8 +235,8 @@ shape readable; an `if/else` is equally fine — match surrounding style.)
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` passes (all `Bootstrap` callers updated).
-- [ ] `make test` passes; new `TestBootstrapAlreadyTrusted` / `TestBootstrapFreshInstall`
+- [x] `go build ./...` passes (all `Bootstrap` callers updated).
+- [x] `make test` passes; new `TestBootstrapAlreadyTrusted` / `TestBootstrapFreshInstall`
       assert the skip vs install paths and the hook.
 
 #### Manual
@@ -321,16 +321,16 @@ open Keychain Access (login keychain → Certificates) and search for %q, or run
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` passes.
-- [ ] `make test` passes; CLI tests assert the skip path (no `AddTrustedCert`,
+- [x] `go build ./...` passes.
+- [x] `make test` passes; CLI tests assert the skip path (no `AddTrustedCert`,
       already-trusted message), the install path (pre-prompt before install,
       installed message), the keychain note on both, and its absence under
       `--no-ca-install`.
-- [ ] `make lint` passes.
-- [ ] `make golden` produces no unexpected diff (no new setup golden expected).
+- [x] `make lint` passes.
+- [x] `make golden` produces no unexpected diff (no new setup golden expected).
 
 #### Manual
-- [ ] Re-read the final `msgPrePrompt` / `keychainNote` wording for tone against
+- [x] Re-read the final `msgPrePrompt` / `keychainNote` wording for tone against
       `caCaveat` and `msgUntrusted`.
 
 ---

@@ -79,6 +79,12 @@ func TestBootstrapLive(t *testing.T) {
 	}
 	inst := liveInstaller(t)
 
-	err := inst.Bootstrap(context.Background())
+	// Verify-first: on an already-trusted host this skips add-trusted-cert and
+	// returns {AlreadyTrusted:true}; otherwise it installs and re-verifies. Either
+	// way the CA must end trusted (no error).
+	res, err := inst.Bootstrap(context.Background(), func() {
+		t.Log("installing the mitmproxy CA (authorization dialog will appear)…")
+	})
 	require.NoError(t, err, "full generate+install+verify should report the CA trusted end to end")
+	t.Logf("bootstrap result: already trusted = %v", res.AlreadyTrusted)
 }

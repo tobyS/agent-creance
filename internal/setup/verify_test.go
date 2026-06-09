@@ -124,30 +124,82 @@ func TestVerifySpawnError(t *testing.T) {
 	}
 }
 
-func TestBootstrapHappyPath(t *testing.T) {
+func TestBootstrapAlreadyTrusted(t *testing.T) {
 	f := newFakes()
 	f.fs.Files[caPath] = []byte("-----BEGIN CERTIFICATE-----") // CA already generated
-	// Default prober outcome is trusted.
+	// Default prober outcome is trusted, so the verify-first check passes.
+	called := false
 
-	if err := f.installer().Bootstrap(context.Background()); err != nil {
+	res, err := f.installer().Bootstrap(context.Background(), func() { called = true })
+	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
-	// CA installed into the keychain.
+	if !res.AlreadyTrusted {
+		t.Error("AlreadyTrusted = false, want true when verify passes before install")
+	}
+	// The keychain dialog must be skipped entirely.
+	if len(f.kc.AddedCerts) != 0 {
+		t.Errorf("AddedCerts = %+v, want none when already trusted", f.kc.AddedCerts)
+	}
+	if called {
+		t.Error("beforeInstall was called, want it skipped on the already-trusted path")
+	}
+	// Exactly one (pre-install) verification probe ran.
+	if len(f.prober.Calls) != 1 {
+		t.Errorf("prober Calls = %d, want 1 (verify-first only)", len(f.prober.Calls))
+	}
+}
+
+func TestBootstrapFreshInstall(t *testing.T) {
+	f := newFakes()
+	f.fs.Files[caPath] = []byte("-----BEGIN CERTIFICATE-----")
+	// First verify untrusted (CA not installed yet), second trusted (post-install).
+	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
+	called := 0
+
+	res, err := f.installer().Bootstrap(context.Background(), func() { called++ })
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if res.AlreadyTrusted {
+		t.Error("AlreadyTrusted = true, want false on the install path")
+	}
+	// CA installed into the keychain exactly once.
 	if len(f.kc.AddedCerts) != 1 || f.kc.AddedCerts[0] != caPath {
 		t.Errorf("AddedCerts = %+v, want [%s]", f.kc.AddedCerts, caPath)
+	}
+	// beforeInstall fires once, immediately before the dialog.
+	if called != 1 {
+		t.Errorf("beforeInstall called %d times, want 1", called)
+	}
+	// Two probes: verify-first (untrusted) then post-install (trusted).
+	if len(f.prober.Calls) != 2 {
+		t.Errorf("prober Calls = %d, want 2 (pre- and post-install verify)", len(f.prober.Calls))
 	}
 }
 
 func TestBootstrapUntrustedReturnsActionableError(t *testing.T) {
 	f := newFakes()
 	f.fs.Files[caPath] = []byte("-----BEGIN CERTIFICATE-----")
+	// Untrusted on every probe: install runs but post-install verify still fails.
 	f.prober.Outcome = sysdep.ProbeUntrusted
+	called := 0
 
-	err := f.installer().Bootstrap(context.Background())
+	res, err := f.installer().Bootstrap(context.Background(), func() { called++ })
 	if err == nil {
 		t.Fatal("Bootstrap = nil, want an error on failed verification")
 	}
 	if err.Error() != msgUntrusted {
 		t.Errorf("Bootstrap error = %q, want the actionable message %q", err.Error(), msgUntrusted)
+	}
+	if res.AlreadyTrusted {
+		t.Error("AlreadyTrusted = true, want false when install was attempted")
+	}
+	// The cert was (re-)installed before the failing verify, and the prompt warned.
+	if len(f.kc.AddedCerts) != 1 {
+		t.Errorf("AddedCerts = %+v, want the cert added before the failing verify", f.kc.AddedCerts)
+	}
+	if called != 1 {
+		t.Errorf("beforeInstall called %d times, want 1", called)
 	}
 }
