@@ -268,10 +268,10 @@ Add to `init_test.go` (direct `runInit` / `ensureHostSetup` drives):
 ## Success criteria
 
 ### Automated
-- [ ] `make test` (race) green.
-- [ ] `make lint` green.
-- [ ] `go build ./...` clean.
-- [ ] `make golden` → no diff.
+- [x] `make test` (race) green.
+- [x] `make lint` green.
+- [x] `go build ./...` clean.
+- [x] `make golden` → no diff.
 
 ### Manual / behavioral (maps to ticket Acceptance Criteria)
 - [ ] `StatusOK` path: no setup work, no sudo/keychain dialog, config written as

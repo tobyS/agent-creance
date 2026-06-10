@@ -1,34 +1,43 @@
 # init scaffolds a .agent-creance.yaml, scanning for package.json / composer.json
 # manifests (root + up to two directory levels deep, skipping installed-dependency
 # dirs) and pre-populating generators: in object form. It refuses to clobber an
-# existing config without --force. Pure filesystem work — no host tools needed, so
-# PATH=$CREANCE_BIN is enough to keep it hermetic.
+# existing config without --force.
+#
+# These scenarios use --no-setup so they stay hermetic: plain `init` now gates on
+# the host-setup check, which reads the real login keychain (cli.Main wires
+# OSKeychain → the absolute /usr/bin/security, not stubbable via $PATH). The
+# keychain/terminal-dependent bootstrap paths (confirm, decline, already-set-up,
+# non-interactive abort) are covered by init_test.go's *App+fakes unit tests
+# instead. --no-setup skips the gate entirely, so the scaffold is pure filesystem
+# work — PATH=$CREANCE_BIN is enough.
 env PATH=$CREANCE_BIN
 
-# --help advertises --force and rejects extra args before any side effect.
+# --help advertises --force AND --no-setup, and rejects extra args before any side effect.
 agent-creance init --help
 stdout '--force'
+stdout '--no-setup'
 ! agent-creance init bogus
 stderr 'unknown command'
 
 # 1. Empty dir → commented generators placeholder; re-run refuses; --force wins.
+#    With --no-setup the success line still points at setup (host setup pending).
 mkdir empty
 cd empty
-agent-creance init
+agent-creance init --no-setup
 stdout 'no manifests detected'
-stdout 'Next: run'
+stdout 'Next: run `agent-creance setup`'
 exists .agent-creance.yaml
 grep '# generators:' .agent-creance.yaml
-! agent-creance init
+! agent-creance init --no-setup
 stderr 'already exists'
 stderr '--force'
-agent-creance init --force
+agent-creance init --no-setup --force
 stdout 'Wrote .agent-creance.yaml'
 cd ..
 
 # 2. package.json only → package_json listed (object form), composer_json absent.
 cd pkg
-agent-creance init
+agent-creance init --no-setup
 stdout 'package.json'
 grep '- type: package_json' .agent-creance.yaml
 grep 'path: package.json' .agent-creance.yaml
@@ -37,7 +46,7 @@ cd ..
 
 # 3. Both root manifests → both generators listed.
 cd both
-agent-creance init
+agent-creance init --no-setup
 stdout 'package.json, composer.json'
 grep 'type: package_json' .agent-creance.yaml
 grep 'type: composer_json' .agent-creance.yaml
@@ -45,7 +54,7 @@ cd ..
 
 # 4. Monorepo → sub-package manifest detected with its path; node_modules ignored.
 cd mono
-agent-creance init
+agent-creance init --no-setup
 stdout 'apps/web/package.json'
 grep 'path: package.json' .agent-creance.yaml
 grep 'path: apps/web/package.json' .agent-creance.yaml

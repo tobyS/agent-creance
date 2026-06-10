@@ -21,6 +21,15 @@ type App struct {
 	Commander sysdep.Commander
 	Stdout    io.Writer
 	Stderr    io.Writer
+	// Stdin is the CLI's standard input, used by the init command's confirm
+	// prompt (the CLI's only interactive input). Production wires os.Stdin; tests
+	// supply a reader. Paired with Terminal, which decides whether prompting is
+	// even appropriate.
+	Stdin io.Reader
+	// Terminal reports whether Stdin is an interactive terminal; init uses it to
+	// choose between prompting (interactive) and refusing with an instruction
+	// (non-interactive), so an unattended run never blocks on input.
+	Terminal sysdep.Terminal
 	// Tested is the tested-against version map; injected so tests can pin it.
 	Tested map[string]string
 	// The filesystem/path/clock/HTTP seams the policy commands need to compile and
@@ -97,6 +106,8 @@ func Main() int {
 		Commander:      sysdep.ExecCommander{},
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,
+		Stdin:          os.Stdin,
+		Terminal:       sysdep.OSTerminal{},
 		Tested:         buildinfo.TestedVersions,
 		FS:             sysdep.OSFileSystem{},
 		Paths:          sysdep.OSPathResolver{},
