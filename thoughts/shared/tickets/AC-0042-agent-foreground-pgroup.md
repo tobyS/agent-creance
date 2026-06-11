@@ -1,6 +1,6 @@
 # AC-0042: run hangs launching the agent — child process group never made foreground
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-11
 **Updated:** 2026-06-11
@@ -40,13 +40,17 @@ teardown (proxy detach, stderr warnings) without being stopped itself.
 ## Acceptance Criteria
 
 - [ ] `agent-creance run` from an interactive terminal launches the agent TUI
-  visibly and interactively (no `T`-state stop; manual verification).
-- [ ] When stdin is not a terminal (testscript pipes, CI), the child is still
-  started successfully — foreground handover is skipped, not failed.
+  visibly and interactively (no `T`-state stop; manual verification —
+  **awaiting user's live run**).
+- [x] When stdin is not a terminal (testscript pipes, CI), the child is still
+  started successfully — foreground handover is skipped, not failed
+  (verified: sysdep + cage integration tests through the skip branch).
 - [ ] After the agent exits, the wrapper completes proxy teardown and its own
-  stderr output without being stopped by `SIGTTOU`.
-- [ ] Ctrl-C during an agent session reaches the agent's process group.
-- [ ] Existing tests continue to pass (`make test`, `make lint`).
+  stderr output without being stopped by `SIGTTOU` (manual — awaiting user's
+  live run).
+- [ ] Ctrl-C during an agent session reaches the agent's process group
+  (manual — awaiting user's live run).
+- [x] Existing tests continue to pass (`make test`, `make lint`).
 
 ## Out of Scope
 
@@ -88,6 +92,18 @@ None — this is a well-understood quickfix.
 [Leave empty — will be filled when plan is created]
 
 ## Notes & Updates
+
+### 2026-06-11 (implementation)
+- Implemented in `internal/sysdep/processgroup.go`: `Foreground: true` +
+  `Ctty: stdin` when `isTerminal(os.Stdin)` (non-tty Ctty would fail fork/exec
+  with ENOTTY); `osProcess` remembers the handover and `Wait` restores the
+  wrapper as foreground (`signal.Ignore(SIGTTOU)` strictly after the child
+  exits — SIG_IGN survives execve and must not leak into the agent — then
+  `unix.IoctlSetPointerInt(TIOCSPGRP)`; `unix.Tcsetpgrp` does not exist on
+  darwin). design.md process-group paragraph updated.
+- All automated checks green; the three interactive acceptance criteria are
+  inherently manual and await the user's live run (no pty harness in repo —
+  consciously out of scope for the quickfix). If the live run fails, reopen.
 
 ### 2026-06-11
 - Quickfix ticket auto-created from `/quickfix` command

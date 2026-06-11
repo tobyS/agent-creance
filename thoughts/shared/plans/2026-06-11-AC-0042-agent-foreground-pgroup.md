@@ -126,12 +126,13 @@ end-of-ticket convention in CLAUDE.md).
 
 #### Automated Verification:
 
-- [ ] `make test` green (fakes observe no SysProcAttr; unit Start test takes
+- [x] `make test` green (fakes observe no SysProcAttr; unit Start test takes
   the non-tty skip branch unchanged)
-- [ ] `go build ./...` (typecheck)
-- [ ] `make lint` clean
-- [ ] `go test -race -tags=integration ./internal/sysdep/` green (real
-  `/bin/sh` group teardown through the skip branch)
+- [x] `go build ./...` (typecheck)
+- [x] `make lint` clean
+- [x] `go test -race -tags=integration ./internal/sysdep/ ./internal/cage/`
+  green (real `/bin/sh` and real safehouse group teardown through the skip
+  branch)
 
 #### Manual Verification:
 
