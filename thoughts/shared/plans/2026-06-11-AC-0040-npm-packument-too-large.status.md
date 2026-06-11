@@ -76,4 +76,4 @@
 - ✅ `make golden` re-run is a no-op (goldens stable)
 
 ### Commit
-- (recorded below after commit)
+- `e955620` test(AC-0040): close ticket — real-world-shaped generator fixtures
