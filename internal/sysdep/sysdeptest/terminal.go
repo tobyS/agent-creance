@@ -10,8 +10,13 @@ type FakeTerminal struct {
 	// Interactive is what IsInteractive returns. The zero value (false) models a
 	// piped/redirected stdin — the safe default for an unattended run.
 	Interactive bool
+	// StderrTerminal is what IsStderrTerminal returns. The zero value (false)
+	// models a piped/redirected stderr, driving the append-only progress path.
+	StderrTerminal bool
 }
 
 var _ sysdep.Terminal = (*FakeTerminal)(nil)
 
 func (f *FakeTerminal) IsInteractive() bool { return f.Interactive }
+
+func (f *FakeTerminal) IsStderrTerminal() bool { return f.StderrTerminal }

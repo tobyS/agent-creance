@@ -186,8 +186,8 @@ func (p *Printer) Close()                 // idempotent; terminates any open \r 
 
 ### Success criteria
 
-- [ ] Automated: `make test` green; `go build ./...`; `make lint` clean.
-- [ ] Manual: none (pure new package; behavior asserted byte-exact in tests).
+- [x] Automated: `make test` green; `go build ./...`; `make lint` clean.
+- [x] Manual: none (pure new package; behavior asserted byte-exact in tests).
 
 ---
 
