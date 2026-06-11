@@ -63,6 +63,21 @@ func TestBuildGolden(t *testing.T) {
 	require.Equal(t, string(want), string(got))
 }
 
+// TestBuildBinary covers Invocation.Path: the resolved name from Inputs.Binary
+// when set (run's prereq-verified name), the default Binary otherwise (the
+// golden fixture leaves it unset, pinning the default).
+func TestBuildBinary(t *testing.T) {
+	in := fixtureInputs()
+	inv, err := cage.Build(in)
+	require.NoError(t, err)
+	require.Equal(t, cage.Binary, inv.Path, "unset Inputs.Binary falls back to the default")
+
+	in.Binary = "agent-safehouse"
+	inv, err = cage.Build(in)
+	require.NoError(t, err)
+	require.Equal(t, "agent-safehouse", inv.Path, "resolved Inputs.Binary is honored")
+}
+
 func TestExpandPathViaArgs(t *testing.T) {
 	// expandPath is unexported; exercise it through the public Build by varying the
 	// RW mount dir and asserting the resulting --add-dirs value.

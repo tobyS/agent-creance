@@ -25,6 +25,7 @@ type runFixture struct {
 	fs    *sysdeptest.FakeFileSystem
 	paths *sysdeptest.FakePathResolver
 	kc    *sysdeptest.FakeKeychain
+	cmd   *sysdeptest.FakeCommander
 	flock *sysdeptest.FakeFlock
 	proc  *sysdeptest.FakeProcessManager
 	ports *sysdeptest.FakePortAllocator
@@ -72,10 +73,10 @@ func newRunFixture(t *testing.T) *runFixture {
 		WithItem(cred.KeychainService, runUser, `{"claudeAiOauth":{}}`)
 
 	cmd := sysdeptest.NewFakeCommander().
-		WithTool("agent-safehouse", "/usr/local/bin/agent-safehouse",
-			"agent-safehouse "+buildinfo.TestedVersions["agent-safehouse"]).
+		WithTool("safehouse", "/opt/homebrew/bin/safehouse",
+			"Agent Safehouse "+buildinfo.TestedVersions[buildinfo.ToolSafehouse]).
 		WithTool("mitmproxy", "/usr/local/bin/mitmproxy",
-			"Mitmproxy: "+buildinfo.TestedVersions["mitmproxy"])
+			"Mitmproxy: "+buildinfo.TestedVersions[buildinfo.ToolMitmproxy])
 
 	flock := sysdeptest.NewFakeFlock()
 	proc := sysdeptest.NewFakeProcessManager()
@@ -102,7 +103,7 @@ func newRunFixture(t *testing.T) *runFixture {
 		PortAllocator:  ports,
 	}
 	return &runFixture{
-		app: app, fs: fs, paths: paths, kc: kc, flock: flock,
+		app: app, fs: fs, paths: paths, kc: kc, cmd: cmd, flock: flock,
 		proc: proc, ports: ports, pg: pg, out: out, err: errb, lay: lay,
 	}
 }
@@ -150,6 +151,43 @@ func TestRunHappyPath(t *testing.T) {
 	}
 	if agents := lockAgents(t, f.flock, f.lay.ProxyLock()); len(agents) != 0 {
 		t.Errorf("final lock agents = %v, want empty (last out)", agents)
+	}
+}
+
+// TestRunLaunchesResolvedBinary asserts check/exec agreement (AC-0039): the
+// cage execs exactly the safehouse binary name the prereq check resolved, for
+// either install name, with the preferred name winning when both exist.
+func TestRunLaunchesResolvedBinary(t *testing.T) {
+	tests := []struct {
+		name      string
+		installed []string
+		want      string
+	}{
+		{"preferred name only", []string{"safehouse"}, "safehouse"},
+		{"fallback name only", []string{"agent-safehouse"}, "agent-safehouse"},
+		{"both installed, preferred wins", []string{"safehouse", "agent-safehouse"}, "safehouse"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRunFixture(t)
+			delete(f.cmd.Paths, "safehouse") // replace the fixture's default install
+			delete(f.cmd.Outputs, "safehouse")
+			for _, name := range tt.installed {
+				f.cmd.WithTool(name, "/opt/homebrew/bin/"+name,
+					"Agent Safehouse "+buildinfo.TestedVersions[buildinfo.ToolSafehouse])
+			}
+
+			if err := runRun(context.Background(), f.app, "."); err != nil {
+				t.Fatalf("runRun: %v\nstdout: %s\nstderr: %s", err, f.out, f.err)
+			}
+			started := f.pg.Started()
+			if len(started) != 1 {
+				t.Fatalf("cage starts = %d, want 1", len(started))
+			}
+			if started[0].Name != tt.want {
+				t.Errorf("cage exec %q, want %q", started[0].Name, tt.want)
+			}
+		})
 	}
 }
 

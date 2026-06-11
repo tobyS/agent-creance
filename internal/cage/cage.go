@@ -27,15 +27,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobyS/agent-creance/internal/buildinfo"
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/profile"
 	"github.com/tobyS/agent-creance/internal/state"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
-// Binary is the agent-safehouse executable name (resolved on PATH by the caller
-// that execs it; this package only constructs the invocation).
-const Binary = "safehouse"
+// Binary is the default agent-safehouse executable name — the preferred
+// candidate from buildinfo.SafehouseBinaries (resolved on PATH by the caller
+// that execs it; this package only constructs the invocation). Callers that
+// have already resolved the installed name (run's prereq check) pass it via
+// Inputs.Binary instead.
+var Binary = buildinfo.SafehouseBinaries[0]
 
 // Port bounds for defence in depth — the live port originates from the proxy lock
 // file, not config, but Build range-checks it anyway.
@@ -52,11 +56,15 @@ type Inputs struct {
 	ProxyPort  int
 	HomeDir    string // resolved value of ~ (from PathResolver.UserHomeDir)
 	CACertPath string // the mitmproxy CA PEM: ~/.mitmproxy/mitmproxy-ca-cert.pem
+	// Binary is the safehouse executable to invoke — the name the prereq check
+	// resolved on PATH, so the launch can never exec a name the check didn't
+	// verify. Empty falls back to the default Binary (tests, integration).
+	Binary string
 }
 
 // Invocation is the constructed safehouse command: a pure function of Inputs.
 type Invocation struct {
-	Path string   // == Binary
+	Path string   // Inputs.Binary, or the default Binary when unset
 	Args []string // safehouse flags, then "--", then the agent command
 	Env  []string // extra KEY=VALUE pairs (sorted) to set on the safehouse process
 }
@@ -116,7 +124,11 @@ func Build(in Inputs) (Invocation, error) {
 	args = append(args, "--")
 	args = append(args, in.Config.Agent.Command...)
 
-	return Invocation{Path: Binary, Args: args, Env: kvSlice(env, keys)}, nil
+	bin := in.Binary
+	if bin == "" {
+		bin = Binary
+	}
+	return Invocation{Path: bin, Args: args, Env: kvSlice(env, keys)}, nil
 }
 
 // Builder resolves seam-backed inputs and performs cage's two side effects. The

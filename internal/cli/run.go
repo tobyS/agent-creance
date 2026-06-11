@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobyS/agent-creance/internal/buildinfo"
 	"github.com/tobyS/agent-creance/internal/cage"
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/cred"
@@ -139,6 +140,9 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	if err != nil {
 		return fmt.Errorf("resolve cage inputs: %w", err)
 	}
+	// Launch exactly the binary the prereq check resolved (step 1 guarantees it
+	// is installed), so check and exec can never disagree on the name.
+	in.Binary, _ = prereq.ResolvedBinary(results, buildinfo.ToolSafehouse)
 	if err := builder.Prepare(in); err != nil {
 		return fmt.Errorf("prepare cage: %w", err)
 	}
