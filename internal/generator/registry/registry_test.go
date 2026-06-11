@@ -16,7 +16,7 @@ import (
 const (
 	testRoot = "/cache/agent-creance/registries"
 	npmPkg   = "left-pad"
-	npmURL   = "https://registry.npmjs.org/left-pad"
+	npmURL   = "https://registry.npmjs.org/left-pad/latest"
 	npmPath  = testRoot + "/npm/" + npmPkg + ".json"
 	npmDir   = testRoot + "/npm"
 )
@@ -24,7 +24,7 @@ const (
 // baseTime is the frozen "now" the fake clock starts at.
 var baseTime = time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 
-// npmBody is a minimal valid packument with hoisted homepage + repository.
+// npmBody is a minimal valid /latest version document with homepage + repository.
 var npmBody = []byte(`{"homepage":"https://h.example/","repository":{"type":"git","url":"https://r.example/x.git"}}`)
 
 func newNPMTest() (*Client, *sysdeptest.FakeFileSystem, *sysdeptest.FakeClock, *sysdeptest.FakeHTTPGetter) {

@@ -160,7 +160,7 @@ Default behavior for unmatched URLs is implicit: anything not in `allow:` and no
 
 Manually allowlisting every library a project depends on is tedious and bit-rotty. v0.1 ships two generators that read the project's dependency manifests and emit allow rules for the libraries' official homepages and source repositories:
 
-- **`package_json`** — reads `package.json`, walks the direct dependencies (`dependencies` + `devDependencies`, no transitives), and looks each one up on the npm registry (`registry.npmjs.org`).
+- **`package_json`** — reads `package.json`, walks the direct dependencies (`dependencies` + `devDependencies`, no transitives), and looks each one up on the npm registry (the per-version endpoint `registry.npmjs.org/<pkg>/latest` — full packuments can exceed the HTTP body cap; vite's is ~39 MB).
 - **`composer_json`** — reads `composer.json`, walks `require` + `require-dev` direct dependencies, and looks each one up on Packagist (`packagist.org`).
 
 A bare entry (`- package_json`) reads the manifest at the project root (`./package.json`). The default path is owned by the generator itself, which also declares the installed-dependency directory it manages (`node_modules/` for `package_json`, `vendor/` for `composer_json`) — used by the init scan below.

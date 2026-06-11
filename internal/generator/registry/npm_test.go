@@ -10,8 +10,8 @@ import (
 
 func TestNPMSourceURL(t *testing.T) {
 	cases := map[string]string{
-		"left-pad":    "https://registry.npmjs.org/left-pad",
-		"@types/node": "https://registry.npmjs.org/@types%2fnode",
+		"left-pad":    "https://registry.npmjs.org/left-pad/latest",
+		"@types/node": "https://registry.npmjs.org/@types%2fnode/latest",
 	}
 	for pkg, want := range cases {
 		require.Equal(t, want, npmSource{}.url(pkg), "url(%q)", pkg)
@@ -26,7 +26,7 @@ func TestNPMParse(t *testing.T) {
 		repo     string
 	}{
 		{
-			name:     "object repository hoisted to top level",
+			name:     "object repository with directory field",
 			fixture:  "npm-left-pad.json",
 			homepage: "https://github.com/stevemao/left-pad#readme",
 			repo:     "git+ssh://git@github.com/stevemao/left-pad.git",
@@ -38,10 +38,10 @@ func TestNPMParse(t *testing.T) {
 			repo:     "https://github.com/example/stringy.git",
 		},
 		{
-			name:     "falls back to latest version when top level missing",
-			fixture:  "npm-version-fallback.json",
-			homepage: "https://hoist-lagged.example/docs",
-			repo:     "git+https://github.com/example/hoist-lagged.git",
+			name:     "missing homepage tolerated",
+			fixture:  "npm-no-homepage.json",
+			homepage: "",
+			repo:     "git+https://github.com/example/no-homepage.git",
 		},
 	}
 	for _, tc := range cases {

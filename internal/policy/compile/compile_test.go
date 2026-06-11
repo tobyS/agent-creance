@@ -357,7 +357,7 @@ func TestRefresh_RealStackRefetchesRegistry(t *testing.T) {
 	paths.HomeDir = testHome
 	clk := sysdeptest.NewFakeClock(baseTime)
 	http := sysdeptest.NewFakeHTTPGetter()
-	http.WithResponse("https://registry.npmjs.org/react", 200, []byte(`{"homepage":"https://react.dev/"}`))
+	http.WithResponse("https://registry.npmjs.org/react/latest", 200, []byte(`{"homepage":"https://react.dev/"}`))
 
 	fsys.Files[projDir+"/.agent-creance.yaml"] = []byte("network:\n  egress:\n    generators:\n      - package_json\n")
 	fsys.Files[projDir+"/package.json"] = []byte(`{"dependencies":{"react":"^18"}}`)

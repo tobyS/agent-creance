@@ -6,16 +6,18 @@ import (
 	"strings"
 )
 
-// npmSource fetches from the npm registry. The package document ("packument") at
-// registry.npmjs.org/<pkg> hoists homepage + repository to its top level from the
-// latest published version, so we read them there, falling back to the latest
-// version object when a top-level field is absent.
+// npmSource fetches from the npm registry's per-version endpoint
+// registry.npmjs.org/<pkg>/latest, which returns just the latest version's
+// manifest (kilobytes). The full packument at registry.npmjs.org/<pkg> is
+// deliberately avoided: for popular packages it can be enormous (vite: ~39 MB),
+// blowing past the sysdep HTTP body cap. The abbreviated packument format is no
+// alternative — it omits homepage and repository entirely.
 type npmSource struct{}
 
 func (npmSource) name() string { return "npm" }
 
 func (npmSource) url(pkg string) string {
-	return "https://registry.npmjs.org/" + npmPackagePath(pkg)
+	return "https://registry.npmjs.org/" + npmPackagePath(pkg) + "/latest"
 }
 
 // npmPackagePath renders pkg for the registry URL path. A scoped name
@@ -28,23 +30,20 @@ func npmPackagePath(pkg string) string {
 	return pkg
 }
 
-// npmPackument is the slice of the packument we care about. It is decoded
-// leniently (no DisallowUnknownFields): this is a large third-party document,
-// not one of our own strict-schema fixtures.
-type npmPackument struct {
-	DistTags   map[string]string        `json:"dist-tags"`
-	Homepage   string                   `json:"homepage"`
-	Repository npmRepository            `json:"repository"`
-	Versions   map[string]npmVersionDoc `json:"versions"`
-}
-
+// npmVersionDoc is the slice of the /latest version document we care about.
+// Both fields are publisher-supplied and optional (e.g. old express releases
+// carry a repository but no homepage). It is decoded leniently (no
+// DisallowUnknownFields): this is a large third-party document, not one of our
+// own strict-schema fixtures.
 type npmVersionDoc struct {
 	Homepage   string        `json:"homepage"`
 	Repository npmRepository `json:"repository"`
 }
 
 // npmRepository normalizes npm's polymorphic "repository" field, which may be a
-// bare URL string or an object {type, url}, into a single URL string.
+// bare URL string or an object {type, url, directory?}, into a single URL
+// string. npm normalizes to the object form at publish time, but old or
+// hand-published documents can still carry the string form.
 type npmRepository struct {
 	URL string
 }
@@ -75,25 +74,9 @@ func (r *npmRepository) UnmarshalJSON(data []byte) error {
 }
 
 func (npmSource) parse(body []byte) (Metadata, error) {
-	var doc npmPackument
+	var doc npmVersionDoc
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return Metadata{}, err
 	}
-	md := Metadata{Homepage: doc.Homepage, Repository: doc.Repository.URL}
-
-	// Hoisting reflects the last publish; if a field is missing at the top level,
-	// fall back to the latest version's manifest.
-	if md.Homepage == "" || md.Repository == "" {
-		if latest, ok := doc.DistTags["latest"]; ok {
-			if v, ok := doc.Versions[latest]; ok {
-				if md.Homepage == "" {
-					md.Homepage = v.Homepage
-				}
-				if md.Repository == "" {
-					md.Repository = v.Repository.URL
-				}
-			}
-		}
-	}
-	return md, nil
+	return Metadata{Homepage: doc.Homepage, Repository: doc.Repository.URL}, nil
 }

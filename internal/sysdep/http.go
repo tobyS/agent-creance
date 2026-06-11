@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
-// maxBodyBytes caps how much of a response body OSHTTPGetter reads. Registry
+// maxBodyBytes caps how large a response body OSHTTPGetter accepts. Registry
 // metadata documents are small (kilobytes); the cap stops a misbehaving or
-// hostile endpoint from streaming an unbounded body into memory.
+// hostile endpoint from streaming an unbounded body into memory. A body over
+// the cap is a hard error, never a silent truncation — truncated bytes once
+// surfaced downstream as a baffling "unexpected end of JSON input" (AC-0040).
 const maxBodyBytes = 16 << 20 // 16 MiB
 
 // defaultHTTPTimeout bounds a single GET when OSHTTPGetter.Client is nil, so a
@@ -64,9 +66,14 @@ func (g OSHTTPGetter) Get(ctx context.Context, url string, headers map[string]st
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	// Read one byte past the cap so "exactly at the cap" and "over the cap"
+	// are distinguishable.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("sysdep: read body of %q: %w", url, err)
+	}
+	if len(body) > maxBodyBytes {
+		return resp.StatusCode, nil, fmt.Errorf("sysdep: response body of %q exceeds %d MiB", url, maxBodyBytes>>20)
 	}
 	return resp.StatusCode, body, nil
 }

@@ -1,9 +1,11 @@
 package sysdep_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +53,47 @@ func TestOSHTTPGetterReturnsErrorStatusWithoutError(t *testing.T) {
 	}
 	if status != 404 {
 		t.Errorf("status = %d, want 404", status)
+	}
+}
+
+func TestOSHTTPGetterRejectsOversizedBody(t *testing.T) {
+	const maxBodyBytes = 16 << 20 // mirrors the unexported cap in http.go
+
+	cases := map[string]struct {
+		size    int
+		wantErr bool
+	}{
+		"exactly at cap succeeds": {size: maxBodyBytes, wantErr: false},
+		"over cap errors":         {size: maxBodyBytes + 1, wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(bytes.Repeat([]byte("x"), tc.size))
+			}))
+			defer srv.Close()
+
+			g := sysdep.OSHTTPGetter{Client: srv.Client()}
+			_, body, err := g.Get(context.Background(), srv.URL, nil)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("want error for oversized body, got nil")
+				}
+				if !strings.Contains(err.Error(), "exceeds 16 MiB") {
+					t.Errorf("error = %q, want mention of the 16 MiB limit", err)
+				}
+				if body != nil {
+					t.Errorf("body = %d bytes, want nil on error", len(body))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if len(body) != tc.size {
+				t.Errorf("body = %d bytes, want %d", len(body), tc.size)
+			}
+		})
 	}
 }
 
