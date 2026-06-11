@@ -50,6 +50,55 @@
   },
   {
     "rule": {
+      "host": "laravel.com"
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/laravel/pint/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/laravel/pint/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/laravel/pint/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
+      "host": "laravel.github.io",
+      "paths": [
+        "/pint/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:composer_json:laravel/pint",
+    "lower_trust": true
+  },
+  {
+    "rule": {
       "host": "github.com",
       "paths": [
         "/Seldaek/monolog/"
@@ -138,6 +187,49 @@
       "host": "objects.githubusercontent.com"
     },
     "source": "generated:composer_json:phpunit/phpunit",
+    "lower_trust": true
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/Roave/SecurityAdvisories/"
+      ]
+    },
+    "source": "generated:composer_json:roave/security-advisories"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/Roave/SecurityAdvisories/"
+      ]
+    },
+    "source": "generated:composer_json:roave/security-advisories"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/Roave/SecurityAdvisories/"
+      ]
+    },
+    "source": "generated:composer_json:roave/security-advisories"
+  },
+  {
+    "rule": {
+      "host": "roave.github.io",
+      "paths": [
+        "/SecurityAdvisories/"
+      ]
+    },
+    "source": "generated:composer_json:roave/security-advisories"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:composer_json:roave/security-advisories",
     "lower_trust": true
   }
 ]

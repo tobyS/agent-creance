@@ -1,14 +1,27 @@
 {
   "name": "fixture-app",
   "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "vite dev",
+    "test": "vitest run"
+  },
   "dependencies": {
     "react": "^18.0.0",
     "barehome": "^1.0.0",
     "pageddocs": "^2.0.0",
     "norepo": "^1.0.0",
-    "@scope/tool": "^1.0.0"
+    "@scope/tool": "^1.0.0",
+    "@vueuse/core": "^14.2.1"
   },
   "devDependencies": {
-    "gitlablib": "^1.0.0"
+    "gitlablib": "^1.0.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
   }
 }

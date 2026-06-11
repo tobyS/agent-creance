@@ -50,6 +50,107 @@
   },
   {
     "rule": {
+      "host": "bun.com"
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/oven-sh/bun/"
+      ]
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/oven-sh/bun/"
+      ]
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/oven-sh/bun/"
+      ]
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "oven-sh.github.io",
+      "paths": [
+        "/bun/"
+      ]
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:package_json:@types/bun",
+    "lower_trust": true
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/vueuse/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "github.com",
+      "paths": [
+        "/vueuse/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "raw.githubusercontent.com",
+      "paths": [
+        "/vueuse/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "codeload.github.com",
+      "paths": [
+        "/vueuse/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "vueuse.github.io",
+      "paths": [
+        "/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "objects.githubusercontent.com"
+    },
+    "source": "generated:package_json:@vueuse/core",
+    "lower_trust": true
+  },
+  {
+    "rule": {
       "host": "barehome.example"
     },
     "source": "generated:package_json:barehome"

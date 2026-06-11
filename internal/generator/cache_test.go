@@ -17,12 +17,14 @@ import (
 // so a full run produces rules without an unscripted-package error.
 func fullPackageLookuper() *fakeLookuper {
 	return &fakeLookuper{meta: map[string]registry.Metadata{
-		"react":       {Homepage: "https://react.dev/", Repository: "git+https://github.com/facebook/react.git"},
-		"barehome":    {Homepage: "https://barehome.example/"},
-		"pageddocs":   {Homepage: "https://someuser.github.io/pageddocs/"},
-		"norepo":      {},
-		"@scope/tool": {Homepage: "https://scope.example", Repository: "https://github.com/scope/tool"},
-		"gitlablib":   {Repository: "https://gitlab.com/group/gitlablib"},
+		"react":        {Homepage: "https://react.dev/", Repository: "git+https://github.com/facebook/react.git"},
+		"barehome":     {Homepage: "https://barehome.example/"},
+		"pageddocs":    {Homepage: "https://someuser.github.io/pageddocs/"},
+		"norepo":       {},
+		"@scope/tool":  {Homepage: "https://scope.example", Repository: "https://github.com/scope/tool"},
+		"gitlablib":    {Repository: "https://gitlab.com/group/gitlablib"},
+		"@vueuse/core": {Homepage: "https://github.com/vueuse/vueuse#readme", Repository: "git+https://github.com/vueuse/vueuse.git"},
+		"@types/bun":   {Homepage: "https://bun.com", Repository: "git+https://github.com/oven-sh/bun.git"},
 	}}
 }
 

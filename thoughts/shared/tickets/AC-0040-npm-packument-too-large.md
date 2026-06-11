@@ -1,6 +1,6 @@
 # AC-0040: npm registry lookup fails on large packuments (vite)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-11
 **Updated:** 2026-06-11
@@ -49,21 +49,21 @@ Two distinct defects: (a) we fetch a far bigger document than we need, and
 
 ## Acceptance Criteria
 
-- [ ] `npmSource.url` targets `/<pkg>/latest` (scoped names keep the `%2f` escaping
+- [x] `npmSource.url` targets `/<pkg>/latest` (scoped names keep the `%2f` escaping
       before the `/latest` suffix).
-- [ ] `npmSource.parse` reads the version-doc shape directly; the
+- [x] `npmSource.parse` reads the version-doc shape directly; the
       dist-tags/versions fallback logic is removed (obsolete — the `/latest` doc *is*
       the latest version manifest the old code fell back to).
-- [ ] Polymorphic `repository` handling (string or `{type,url}` object) is retained.
-- [ ] 404 still maps to `ErrNotFound` (emit-no-rules semantics unchanged).
-- [ ] `OSHTTPGetter.Get` returns a descriptive error when the body reaches
+- [x] Polymorphic `repository` handling (string or `{type,url}` object) is retained.
+- [x] 404 still maps to `ErrNotFound` (emit-no-rules semantics unchanged).
+- [x] `OSHTTPGetter.Get` returns a descriptive error when the body reaches
       `maxBodyBytes`, with a regression test.
-- [ ] npm registry fixtures in `internal/generator/registry/testdata/` use the
+- [x] npm registry fixtures in `internal/generator/registry/testdata/` use the
       `/latest` response shape.
-- [ ] Generator fixtures (`internal/generator/testdata/package.json`, `composer.json`)
+- [x] Generator fixtures (`internal/generator/testdata/package.json`, `composer.json`)
       are enriched to reflect real-world manifests (scoped deps, peerDependencies,
       Laravel-style composer.json), with goldens regenerated and reviewed.
-- [ ] Existing tests continue to pass (`make test`, `make lint`).
+- [x] Existing tests continue to pass (`make test`, `make lint`).
 
 ## Out of Scope
 
@@ -81,14 +81,14 @@ None — this is a well-understood quickfix.
 
 ## Questions for Research/Planning
 
-- [ ] Which tests/goldens consume the npm packument fixtures
+- [x] Which tests/goldens consume the npm packument fixtures
       (`npm-left-pad.json`, `npm-string-repo.json`, `npm-version-fallback.json`) and
       what asserts on the fallback logic that becomes obsolete?
-- [ ] Does anything else consume `sysdep.HTTPGetter` whose behavior changes when the
+- [x] Does anything else consume `sysdep.HTTPGetter` whose behavior changes when the
       cap becomes an error?
-- [ ] Do the integration tests (`live_integration_test.go`) hit the full-packument
+- [x] Do the integration tests (`live_integration_test.go`) hit the full-packument
       URL and need updating?
-- [ ] What do the current generator fixtures cover, and which real-world manifest
+- [x] What do the current generator fixtures cover, and which real-world manifest
       features (scoped packages, peerDependencies, `latest` version specs,
       Laravel-style composer require/require-dev) are missing?
 
@@ -103,6 +103,9 @@ None — this is a well-understood quickfix.
 
 ## Implementation Plan
 
+- `thoughts/shared/plans/2026-06-11-AC-0040-npm-packument-too-large.md`
+  (status: `.status.md` alongside)
+
 ## Notes & Updates
 
 ### 2026-06-11
@@ -110,3 +113,8 @@ None — this is a well-understood quickfix.
 - Diagnosis pre-confirmed by curl measurements: vite packument 38.9 MB (> 16 MiB cap),
   `/latest` docs 5.2 KB (vite) / 2.3 KB (@vueuse/core), both containing
   homepage + repository.
+- Implemented both phases; ticket Done. Manual check pending user-side:
+  re-run `agent-creance run` in organAIze.eu. Future-ticket material noted in
+  research: peerDependencies/optionalDependencies are ignored by design, and
+  non-registry specs (`workspace:*`, `file:`, `npm:` aliases) are not filtered
+  before lookup.

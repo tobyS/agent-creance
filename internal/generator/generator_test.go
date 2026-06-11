@@ -85,12 +85,20 @@ func TestGenerate_PackageJSONGolden(t *testing.T) {
 			"pageddocs":   {Homepage: "https://someuser.github.io/pageddocs/", Repository: ""},
 			"norepo":      {Homepage: "", Repository: ""},
 			"@scope/tool": {Homepage: "https://scope.example", Repository: "https://github.com/scope/tool"},
+			// Real-world-shaped scoped packages (metadata mirrors the registry):
+			// a monorepo member whose homepage is its GitHub readme, and a
+			// "latest"-spec dev dependency.
+			"@vueuse/core": {Homepage: "https://github.com/vueuse/vueuse#readme", Repository: "git+https://github.com/vueuse/vueuse.git"},
+			"@types/bun":   {Homepage: "https://bun.com", Repository: "git+https://github.com/oven-sh/bun.git"},
 		},
 		notFound: map[string]bool{"gitlablib": false},
 	}
 	// gitlablib: a GitLab repo with no homepage.
 	lookup.meta["gitlablib"] = registry.Metadata{Repository: "https://gitlab.com/group/gitlablib"}
 
+	// The fixture's peerDependencies entry ("typescript") is deliberately
+	// unscripted: if the parser ever started reading that section, the lookup
+	// would fail the test.
 	goldenRun(t, packageJSON{}, "package.json", "package_json.golden", lookup)
 }
 
@@ -100,15 +108,25 @@ func TestGenerate_ComposerJSONGolden(t *testing.T) {
 			"monolog/monolog":   {Repository: "https://github.com/Seldaek/monolog.git"},
 			"laravel/framework": {Homepage: "https://laravel.com", Repository: "https://github.com/laravel/framework"},
 			"phpunit/phpunit":   {Homepage: "https://phpunit.de/", Repository: "https://github.com/sebastianbergmann/phpunit.git"},
+			"laravel/pint":      {Homepage: "https://laravel.com", Repository: "https://github.com/laravel/pint.git"},
+			// dev-master branch constraint — the constraint is irrelevant to the
+			// lookup; only the name reaches the registry.
+			"roave/security-advisories": {Repository: "https://github.com/Roave/SecurityAdvisories.git"},
 		},
+		// acme/core comes from the manifest's path repository and does not exist
+		// on Packagist — the 404 must be skipped, not fatal.
+		notFound: map[string]bool{"acme/core": true},
 	}
 	goldenRun(t, composerJSON{}, "composer.json", "composer_json.golden", lookup)
 }
 
 func TestGenerate_NotFoundEmitsNothingAndContinues(t *testing.T) {
 	lookup := &fakeLookuper{
-		meta:     map[string]registry.Metadata{"react": {Homepage: "https://react.dev/"}},
-		notFound: map[string]bool{"barehome": true, "pageddocs": true, "norepo": true, "gitlablib": true, "@scope/tool": true},
+		meta: map[string]registry.Metadata{"react": {Homepage: "https://react.dev/"}},
+		notFound: map[string]bool{
+			"barehome": true, "pageddocs": true, "norepo": true, "gitlablib": true,
+			"@scope/tool": true, "@vueuse/core": true, "@types/bun": true,
+		},
 	}
 	manifest, err := os.ReadFile(filepath.Join("testdata", "package.json"))
 	require.NoError(t, err)
@@ -121,7 +139,8 @@ func TestGenerate_NotFoundEmitsNothingAndContinues(t *testing.T) {
 
 func TestGenerate_EmptyFieldsEmitNothing(t *testing.T) {
 	lookup := &fakeLookuper{meta: map[string]registry.Metadata{
-		"react": {}, "barehome": {}, "pageddocs": {}, "norepo": {}, "gitlablib": {}, "@scope/tool": {},
+		"react": {}, "barehome": {}, "pageddocs": {}, "norepo": {}, "gitlablib": {},
+		"@scope/tool": {}, "@vueuse/core": {}, "@types/bun": {},
 	}}
 	manifest, err := os.ReadFile(filepath.Join("testdata", "package.json"))
 	require.NoError(t, err)
@@ -201,7 +220,8 @@ func TestKnownAndNew(t *testing.T) {
 }
 
 func TestDeps_ManifestParsing(t *testing.T) {
-	pkg, err := packageJSON{}.deps([]byte(`{"dependencies":{"b":"1","a":"1"},"devDependencies":{"a":"1","c":"1"}}`))
+	// peerDependencies are deliberately not read (only dependencies + devDependencies).
+	pkg, err := packageJSON{}.deps([]byte(`{"dependencies":{"b":"1","a":"1"},"devDependencies":{"a":"1","c":"1"},"peerDependencies":{"p":"1"}}`))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a", "b", "c"}, pkg)
 
