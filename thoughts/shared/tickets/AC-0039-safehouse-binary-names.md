@@ -1,6 +1,6 @@
 # AC-0039: Accept both safehouse binary names (`safehouse` / `agent-safehouse`)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-11
 **Updated:** 2026-06-11
@@ -43,20 +43,22 @@ binary** — the check passing guarantees the launch uses an existing executable
 
 ## Acceptance Criteria
 
-- [ ] With only `safehouse` on PATH, `agent-creance run` passes the prerequisite
+- [x] With only `safehouse` on PATH, `agent-creance run` passes the prerequisite
       check and launches the cage via that binary.
-- [ ] With only `agent-safehouse` on PATH, `agent-creance run` passes the
+- [x] With only `agent-safehouse` on PATH, `agent-creance run` passes the
       prerequisite check and launches the cage via that binary.
-- [ ] With **both** names on PATH, `safehouse` wins (the name the current brew
+- [x] With **both** names on PATH, `safehouse` wins (the name the current brew
       formula installs), consistently across check, reports, and launch.
-- [ ] With **neither** name on PATH, the refusal message still lists the brew
+- [x] With **neither** name on PATH, the refusal message still lists the brew
       install hint (`brew install eugene1g/safehouse/agent-safehouse`).
-- [ ] The binary name used to launch the cage is the same one the prerequisite
+- [x] The binary name used to launch the cage is the same one the prerequisite
       check resolved — no code path where the check passes but the launch execs a
       name that does not exist.
-- [ ] `agent-creance doctor` and `agent-creance version` report the resolved binary
-      name, so a user can see which of the two names satisfied the check.
-- [ ] Version detection and skew classification work against whichever binary was
+- [x] `agent-creance doctor` reports the resolved binary name ("installed X via
+      safehouse"), so a user can see which of the two names satisfied the check.
+      (`version` descoped at the planning checkpoint: it never probes PATH — it
+      is a static tested-against listing and stays that way.)
+- [x] Version detection and skew classification work against whichever binary was
       resolved (the installed 0.10.1 banner `Agent Safehouse 0.10.1` parses as
       today).
 
@@ -102,6 +104,17 @@ Notes).
 [Leave empty - will be filled when plan is created]
 
 ## Notes & Updates
+
+### 2026-06-11 (implementation)
+
+Implemented via plan `thoughts/shared/plans/2026-06-11-AC-0039-safehouse-binary-names.md`
+(research: `thoughts/shared/research/2026-06-11-AC-0039-safehouse-binary-names.md`).
+Single source of truth landed in `internal/buildinfo` (`ToolSafehouse`,
+`ToolMitmproxy`, `SafehouseBinaries`); `prereq.Tool.Binaries` +
+`Result.ResolvedName` + `ResolvedBinary` helper; `cage.Inputs.Binary` threads
+the resolved name from run's prereq gate into the exec. Checkpoint decisions:
+`version` stays a static tested-against listing (it never probed PATH);
+missing-tool label stays `agent-safehouse` to match the brew hint.
 
 ### 2026-06-11
 

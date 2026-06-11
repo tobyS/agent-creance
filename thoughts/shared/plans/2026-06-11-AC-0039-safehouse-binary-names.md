@@ -140,9 +140,10 @@ the cage inputs.
 
 ### Success criteria
 
-- [ ] Automated: `make test` green; `make lint` green; `go build ./...` clean.
-- [ ] Automated: new table cases above pass; golden diff reviewed and only
-      shows the intended new/changed rows.
+- [x] Automated: `make test` green; `make lint` green; `go build ./...` clean.
+- [x] Automated: new table cases above pass; golden diff reviewed and only
+      shows the intended new/changed rows (the `via safehouse` annotation +
+      realignment in `doctor_report.golden`).
 
 ## Phase 2: thread the resolved binary into the cage launch
 
@@ -170,8 +171,8 @@ the cage inputs.
 
 ### Success criteria
 
-- [ ] Automated: `make test`, `make lint`, `go build ./...` green.
-- [ ] Automated: `internal/cage/testdata/invocation.golden.json` unchanged
+- [x] Automated: `make test`, `make lint`, `go build ./...` green.
+- [x] Automated: `internal/cage/testdata/invocation.golden.json` unchanged
       (default path) — confirms no-regression for integration callers.
 
 ## Phase 3: CLI surface — version constants, testscripts, doctor goldens
@@ -199,12 +200,13 @@ the cage inputs.
 
 ### Success criteria
 
-- [ ] Automated: `make test`, `make lint`, `go build ./...` green; `make golden`
-      produces no unexpected diff.
+- [x] Automated: `make test`, `make lint`, `go build ./...` green; `make golden`
+      produces no unexpected diff (verified: zero golden churn).
 - [ ] Manual: on the user's machine (organAIze.eu project,
       `/opt/homebrew/bin/safehouse` 0.10.1): `agent-creance run` passes the
       prereq gate and launches; `agent-creance doctor` shows
-      `installed 0.10.1 via safehouse`.
+      `installed 0.10.1 via safehouse`. (bin/agent-creance rebuilt and ready —
+      pending user verification.)
 
 ## Testing strategy
 

@@ -1,0 +1,21 @@
+# `agent-creance doctor` when agent-safehouse is installed under the name the
+# brew formula actually uses: plain `safehouse` (AC-0039). The check must
+# resolve it and the report must say which binary satisfied the check.
+
+chmod 0755 bin/safehouse
+chmod 0755 bin/mitmproxy
+env PATH=$WORK/bin${:}$PATH
+
+agent-creance doctor
+stdout 'Version compatibility:'
+# Canonical label, annotated with the resolved executable name.
+stdout 'agent-safehouse:.*via safehouse'
+stdout '✓'
+! stdout 'not installed'
+
+-- bin/safehouse --
+#!/bin/sh
+echo 'Agent Safehouse 0.10.1'
+-- bin/mitmproxy --
+#!/bin/sh
+echo 'Mitmproxy: 12.2.3'

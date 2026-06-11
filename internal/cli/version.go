@@ -20,7 +20,7 @@ func newVersionCmd(app *App) *cobra.Command {
 				buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 			fmt.Fprintln(app.Stdout, "tested against:")
 			// Print in a stable order so the output is deterministic.
-			for _, name := range []string{"agent-safehouse", "mitmproxy"} {
+			for _, name := range []string{buildinfo.ToolSafehouse, buildinfo.ToolMitmproxy} {
 				fmt.Fprintf(app.Stdout, "  %-16s %s\n", name, app.Tested[name])
 			}
 			return nil
