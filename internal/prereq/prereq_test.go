@@ -20,7 +20,7 @@ import (
 
 func testTools() []prereq.Tool {
 	return []prereq.Tool{
-		{Name: "agent-safehouse", VersionArgs: []string{"--version"}, Tested: "1.4.2", InstallHint: "brew install eugene1g/safehouse/agent-safehouse"},
+		{Name: "agent-safehouse", Binaries: []string{"safehouse", "agent-safehouse"}, VersionArgs: []string{"--version"}, Tested: "1.4.2", InstallHint: "brew install eugene1g/safehouse/agent-safehouse"},
 		{Name: "mitmproxy", VersionArgs: []string{"--version"}, Tested: "12.0.1", InstallHint: "brew install mitmproxy"},
 	}
 }
@@ -37,14 +37,61 @@ func TestCheck_AllInstalled(t *testing.T) {
 	// testify's require.* stops the test on failure; assert.* records and
 	// continues. Use require for preconditions, assert for the actual checks.
 	assert.True(t, results[0].Installed)
+	assert.Equal(t, "agent-safehouse", results[0].ResolvedName, "fallback name resolves when the preferred one is absent")
 	assert.Equal(t, "1.4.5", results[0].Version)
 	assert.Equal(t, prereq.SkewPatch, results[0].Skew, "1.4.5 vs tested 1.4.2 is a patch skew")
 
 	assert.True(t, results[1].Installed)
+	assert.Equal(t, "mitmproxy", results[1].ResolvedName)
 	assert.Equal(t, prereq.SkewExact, results[1].Skew)
 
 	assert.Empty(t, prereq.Missing(results))
 	assert.Empty(t, prereq.MissingInstructions(results))
+}
+
+// TestCheck_BinaryNameResolution covers the dual-name lookup: either executable
+// name satisfies the safehouse prerequisite, the preferred name wins when both
+// are installed, and the version query runs against the resolved name.
+func TestCheck_BinaryNameResolution(t *testing.T) {
+	safehouseOnly := testTools()[:1]
+	tests := []struct {
+		name         string
+		installed    []string // names registered on the fake's PATH
+		wantResolved string
+	}{
+		{"preferred name only", []string{"safehouse"}, "safehouse"},
+		{"fallback name only", []string{"agent-safehouse"}, "agent-safehouse"},
+		{"both installed, preferred wins", []string{"safehouse", "agent-safehouse"}, "safehouse"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := sysdeptest.NewFakeCommander()
+			for _, name := range tt.installed {
+				cmd.WithTool(name, "/opt/homebrew/bin/"+name, "Agent Safehouse 1.4.2")
+			}
+
+			results := prereq.Check(context.Background(), cmd, safehouseOnly)
+			require.Len(t, results, 1)
+			assert.True(t, results[0].Installed)
+			assert.Equal(t, tt.wantResolved, results[0].ResolvedName)
+			assert.Equal(t, "1.4.2", results[0].Version, "version banner queried via the resolved name")
+			assert.Equal(t, prereq.SkewExact, results[0].Skew)
+
+			bin, ok := prereq.ResolvedBinary(results, "agent-safehouse")
+			assert.True(t, ok)
+			assert.Equal(t, tt.wantResolved, bin)
+		})
+	}
+}
+
+func TestResolvedBinary_MissingOrUnknown(t *testing.T) {
+	// Nothing installed: the tool result exists but is not installed.
+	results := prereq.Check(context.Background(), sysdeptest.NewFakeCommander(), testTools())
+
+	_, ok := prereq.ResolvedBinary(results, "agent-safehouse")
+	assert.False(t, ok, "uninstalled tool must not resolve")
+	_, ok = prereq.ResolvedBinary(results, "no-such-tool")
+	assert.False(t, ok, "unknown tool name must not resolve")
 }
 
 func TestCheck_OneMissing(t *testing.T) {

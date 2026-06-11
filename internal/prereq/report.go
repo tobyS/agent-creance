@@ -48,6 +48,9 @@ func Report(results []Result) string {
 }
 
 // installedField renders the "installed X, tested against Y" middle column.
+// When the tool was found under a different executable name than its canonical
+// label (e.g. agent-safehouse installed as "safehouse"), the resolved name is
+// annotated so the user can see which binary satisfied the check.
 func installedField(r Result) string {
 	if !r.Installed {
 		return "not installed"
@@ -55,6 +58,9 @@ func installedField(r Result) string {
 	installed := r.Version
 	if installed == "" {
 		installed = "unknown"
+	}
+	if r.ResolvedName != "" && r.ResolvedName != r.Tool.Name {
+		installed += " via " + r.ResolvedName
 	}
 	return fmt.Sprintf("installed %s, tested against %s", installed, r.Tool.Tested)
 }

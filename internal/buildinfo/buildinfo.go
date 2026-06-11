@@ -27,11 +27,27 @@ var (
 	Date = "unknown"
 )
 
+// Canonical tool names: the display labels for our external prerequisites and
+// the keys of TestedVersions. Every place that names a tool (prereq registry,
+// version command, report rows) goes through these so the labels can't drift.
+const (
+	ToolSafehouse = "agent-safehouse"
+	ToolMitmproxy = "mitmproxy"
+)
+
+// SafehouseBinaries lists the executable names agent-safehouse may be
+// installed under, in preference order — the first name found on PATH wins.
+// The brew formula (eugene1g/safehouse/agent-safehouse) installs the binary as
+// plain "safehouse"; other installs may use the project name. The prereq check
+// resolves against this list and the cage launches the resolved name, so the
+// two can never disagree.
+var SafehouseBinaries = []string{"safehouse", "agent-safehouse"}
+
 // TestedVersions records the external-tool versions this release of
 // agent-creance was validated against. The doctor command compares the
 // installed versions against these and classifies any skew. Bump these
 // whenever you re-test against newer upstreams.
 var TestedVersions = map[string]string{
-	"agent-safehouse": "0.10.1",
-	"mitmproxy":       "12.2.3",
+	ToolSafehouse: "0.10.1",
+	ToolMitmproxy: "12.2.3",
 }

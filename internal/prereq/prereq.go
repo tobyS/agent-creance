@@ -14,14 +14,20 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tobyS/agent-creance/internal/buildinfo"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
 // Tool describes one external prerequisite: how to find it, how to ask its
 // version, and which version we tested against.
 type Tool struct {
-	// Name is the executable name as it appears on PATH.
+	// Name is the tool's canonical display label (and its TestedVersions key).
+	// It is also the executable name when Binaries is empty.
 	Name string
+	// Binaries are the executable names the tool may be installed under, in
+	// preference order — the first name found on PATH wins. Empty means the
+	// tool is only ever installed as Name.
+	Binaries []string
 	// VersionArgs are passed to the tool to make it print its version.
 	VersionArgs []string
 	// Tested is the version agent-creance was validated against.
@@ -30,21 +36,31 @@ type Tool struct {
 	InstallHint string
 }
 
+// binaries returns the ordered lookup candidates (the Binaries list, or just
+// Name for single-name tools).
+func (t Tool) binaries() []string {
+	if len(t.Binaries) > 0 {
+		return t.Binaries
+	}
+	return []string{t.Name}
+}
+
 // DefaultTools is the v0.1 prerequisite set, with tested versions sourced from
 // buildinfo. It's a function (not a package var) so it reads buildinfo at call
 // time and stays easy to override in tests.
 func DefaultTools(tested map[string]string) []Tool {
 	return []Tool{
 		{
-			Name:        "agent-safehouse",
+			Name:        buildinfo.ToolSafehouse,
+			Binaries:    buildinfo.SafehouseBinaries,
 			VersionArgs: []string{"--version"},
-			Tested:      tested["agent-safehouse"],
+			Tested:      tested[buildinfo.ToolSafehouse],
 			InstallHint: "brew install eugene1g/safehouse/agent-safehouse",
 		},
 		{
-			Name:        "mitmproxy",
+			Name:        buildinfo.ToolMitmproxy,
 			VersionArgs: []string{"--version"},
-			Tested:      tested["mitmproxy"],
+			Tested:      tested[buildinfo.ToolMitmproxy],
 			InstallHint: "brew install mitmproxy",
 		},
 	}
@@ -54,6 +70,9 @@ func DefaultTools(tested map[string]string) []Tool {
 type Result struct {
 	Tool      Tool
 	Installed bool
+	// ResolvedName is the executable name (from Tool's candidates) that was
+	// found on PATH — the name callers must exec. Empty when not installed.
+	ResolvedName string
 	// Version is the raw extracted version string (empty if missing/unknown).
 	Version string
 	Skew    Skew
@@ -66,12 +85,18 @@ func Check(ctx context.Context, cmd sysdep.Commander, tools []Tool) []Result {
 	results := make([]Result, 0, len(tools))
 	for _, t := range tools {
 		r := Result{Tool: t}
-		if _, err := cmd.LookPath(t.Name); err != nil {
-			results = append(results, r) // Installed stays false.
+		for _, name := range t.binaries() {
+			if _, err := cmd.LookPath(name); err == nil {
+				r.Installed = true
+				r.ResolvedName = name
+				break
+			}
+		}
+		if !r.Installed {
+			results = append(results, r)
 			continue
 		}
-		r.Installed = true
-		out, err := cmd.Output(ctx, t.Name, t.VersionArgs...)
+		out, err := cmd.Output(ctx, r.ResolvedName, t.VersionArgs...)
 		if err != nil {
 			// Tool exists but wouldn't report a version: treat as unparseable
 			// (benefit of the doubt) rather than failing the whole check.
@@ -87,6 +112,19 @@ func Check(ctx context.Context, cmd sysdep.Commander, tools []Tool) []Result {
 		results = append(results, r)
 	}
 	return results
+}
+
+// ResolvedBinary returns the executable name the check resolved for the tool
+// labelled name (Tool.Name), and whether that tool was found installed. Callers
+// that exec the tool (run's cage launch) use this so the binary they start is
+// exactly the one the check verified.
+func ResolvedBinary(results []Result, name string) (string, bool) {
+	for _, r := range results {
+		if r.Tool.Name == name && r.Installed {
+			return r.ResolvedName, true
+		}
+	}
+	return "", false
 }
 
 // Missing returns the names of tools that are not installed, sorted for stable

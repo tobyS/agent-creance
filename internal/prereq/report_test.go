@@ -23,12 +23,13 @@ var update = flag.Bool("update", false, "regenerate golden files")
 // goldenResults builds a fixed, representative set of check results so the
 // rendered report is deterministic and worth pinning.
 func goldenResults() []prereq.Result {
-	safehouse := prereq.Tool{Name: "agent-safehouse", Tested: "1.4.2"}
+	safehouse := prereq.Tool{Name: "agent-safehouse", Binaries: []string{"safehouse", "agent-safehouse"}, Tested: "1.4.2"}
 	mitm := prereq.Tool{Name: "mitmproxy", Tested: "12.0.1"}
 	missing := prereq.Tool{Name: "some-future-tool", Tested: "3.0.0"}
 	return []prereq.Result{
-		{Tool: safehouse, Installed: true, Version: "1.4.5", Skew: prereq.SkewPatch},
-		{Tool: mitm, Installed: true, Version: "12.0.1", Skew: prereq.SkewExact},
+		// Resolved under the non-canonical executable name → "via" annotation.
+		{Tool: safehouse, Installed: true, ResolvedName: "safehouse", Version: "1.4.5", Skew: prereq.SkewPatch},
+		{Tool: mitm, Installed: true, ResolvedName: "mitmproxy", Version: "12.0.1", Skew: prereq.SkewExact},
 		{Tool: missing, Installed: false},
 	}
 }
