@@ -19,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make lint` — `go vet` + `golangci-lint` (install the linter with `make tools`).
 - `make build` / `make run ARGS="doctor"` — build/run with version metadata stamped via ldflags.
 - `make golden` — regenerate golden files; always review the resulting diff.
+- **At the end of every ticket, run `make build`** so `bin/agent-creance` reflects the final commit — the user tests with this binary.
 
 ## Testing conventions (follow these — the project is built around them)
 
