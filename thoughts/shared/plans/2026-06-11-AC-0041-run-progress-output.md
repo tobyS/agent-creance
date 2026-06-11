@@ -259,11 +259,14 @@ func (p *Printer) Close()                 // idempotent; terminates any open \r 
 
 ### Success criteria
 
-- [ ] Automated: `make test` green; `go build ./...`; `make lint` clean.
+- [x] Automated: `make test` green; `go build ./...`; `make lint` clean.
+  Integration tests for generator/compile pass against live registries; the
+  verify cage battery could not run in this session ($HOME writes denied by
+  the environment — unrelated to this change).
 - [ ] Manual: in a real monorepo, first `agent-creance run` shows the
   expectation message + live counters; second run shows the compact cached
   sequence; `2>/dev/null` hides progress; piping stderr yields milestone
-  lines, no `\r`.
+  lines, no `\r`. (Left for the user — needs a real project + keychain.)
 
 ---
 

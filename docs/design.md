@@ -411,6 +411,8 @@ agent-creance clean                 # tear down this project's proxy and lock
 
 `agent-creance run` blocks while the agent runs, traps signals to ensure cleanup, decrements the proxy's refcount on exit, and kills the proxy only when the last agent has exited.
 
+`run` reports its startup progress on **stderr** (its stdout belongs to the agent session): each major step — policy compile, sandbox profile, proxy start — is announced and completed with a `✓` line carrying its duration, and the agent launch is announced last. When the policy compile misses its input-hash cache, an expectation message explains the wait (first run or changed config/manifest; metadata is fetched from packagist/npm and cached for future runs) and each manifest shows a live per-dependency lookup counter — rewritten in place when stderr is a terminal, degraded to ~25/50/75% milestone lines when piped (CI). A fully cached run shows the same steps completing in milliseconds. All of this happens strictly before the agent takes the terminal, and a failing step's announcement gives the `error:` line its phase context. (AC-0041)
+
 ## Multi-agent lifecycle
 
 ![[agent-creance-lifecycle.svg]]

@@ -96,6 +96,7 @@ func newRunFixture(t *testing.T) *runFixture {
 		Paths:          paths,
 		Clock:          sysdeptest.NewFakeClock(time.Unix(0, 0)),
 		HTTP:           sysdeptest.NewFakeHTTPGetter(),
+		Terminal:       &sysdeptest.FakeTerminal{}, // non-tty stderr → append-only progress lines
 		Keychain:       kc,
 		ProcessGroup:   pg,
 		Flock:          flock,
@@ -151,6 +152,38 @@ func TestRunHappyPath(t *testing.T) {
 	}
 	if agents := lockAgents(t, f.flock, f.lay.ProxyLock()); len(agents) != 0 {
 		t.Errorf("final lock agents = %v, want empty (last out)", agents)
+	}
+}
+
+// TestRunProgressOutput asserts the step announcements on stderr (AC-0041):
+// every major step is announced with a duration, a first compile reports its
+// rule counts, and a cached re-run reports "up to date". The fixture's stderr
+// is a non-tty (FakeTerminal zero value), so the output is plain appended
+// lines; the in-place \r rendering is byte-tested in internal/progress.
+func TestRunProgressOutput(t *testing.T) {
+	f := newRunFixture(t)
+
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun: %v\nstdout: %s\nstderr: %s", err, f.out, f.err)
+	}
+	want := "Compiling egress policy…\n" +
+		"✓ Egress policy compiled: 1 allow, 0 deny (0s)\n" +
+		"Compiling sandbox profile…\n" +
+		"✓ Sandbox profile compiled (0s)\n" +
+		"Starting egress proxy…\n" +
+		"✓ Egress proxy ready on port 48080 (0s)\n" +
+		"Launching agent…\n"
+	if got := f.err.String(); got != want {
+		t.Errorf("first-run stderr:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+
+	// A second run hits the input-hash cache: same steps, compact cached line.
+	f.err.Reset()
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun #2: %v\nstderr: %s", err, f.err)
+	}
+	if !strings.Contains(f.err.String(), "✓ Egress policy up to date (cached) (0s)\n") {
+		t.Errorf("cached-run stderr = %q, want the up-to-date line", f.err)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	compile "github.com/tobyS/agent-creance/internal/policy/compile"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/profile"
+	"github.com/tobyS/agent-creance/internal/progress"
 	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/setupcheck"
 	"github.com/tobyS/agent-creance/internal/state"
@@ -84,15 +85,30 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		return fmt.Errorf("resolve project: %w", err)
 	}
 
+	// Progress goes to stderr (run's stdout belongs to the agent session; same
+	// convention as git/curl). All announced steps finish before the agent owns
+	// the terminal; the deferred Close terminates a half-drawn \r line on error
+	// paths so the `error:` line starts fresh.
+	prog := progress.NewPrinter(app.Stderr, app.Clock, app.Terminal.IsStderrTerminal())
+	defer prog.Close()
+
 	// 5. Cache-aware policy compile: skipped when inputs are unchanged. The input
 	//    hash is recorded in the proxy lock so a policy change triggers a hot-reload.
-	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
+	//    The printer doubles as the compiler's progress reporter (expectation
+	//    message, per-manifest lookup counters).
+	prog.StepStart("Compiling egress policy")
+	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, prog)
 	if err != nil {
 		return fmt.Errorf("init compiler: %w", err)
 	}
 	polRes, err := compiler.Compile(ctx, dir)
 	if err != nil {
 		return fmt.Errorf("compile policy: %w", err)
+	}
+	if polRes.Skipped {
+		prog.StepDone("Egress policy up to date (cached)")
+	} else {
+		prog.StepDone(fmt.Sprintf("Egress policy compiled: %d allow, %d deny", polRes.AllowCount, polRes.DenyCount))
 	}
 
 	// 6. Load the merged config (needed to build the Safehouse invocation).
@@ -103,9 +119,11 @@ func runRun(ctx context.Context, app *App, dir string) error {
 
 	// 7. (Re)generate network.sb — the deny-all baseline. Exempt from the policy
 	//    cache by design; cheap, always regenerated.
+	prog.StepStart("Compiling sandbox profile")
 	if _, err := profile.New(app.FS, app.Paths).Compile(dir); err != nil {
 		return fmt.Errorf("compile profile: %w", err)
 	}
+	prog.StepDone("Sandbox profile compiled")
 
 	// 8. Extract the mitmproxy enforcer addon (idempotent).
 	enforcerPy, err := proxy.NewExtractor(app.FS, app.Paths).Extract()
@@ -118,6 +136,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	//    the session overlay (proxy.Manager owns that logic).
 	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Stderr)
 	selfPID := os.Getpid()
+	prog.StepStart("Starting egress proxy")
 	att, err := mgr.Attach(ctx, proxy.StartConfig{
 		Layout:     layout,
 		EnforcerPy: enforcerPy,
@@ -127,6 +146,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	if err != nil {
 		return fmt.Errorf("start proxy: %w", err)
 	}
+	prog.StepDone(fmt.Sprintf("Egress proxy ready on port %d", att.Port))
 	defer func() {
 		if derr := mgr.Detach(layout, selfPID); derr != nil {
 			fmt.Fprintf(app.Stderr, "warning: proxy teardown: %v\n", derr)
@@ -153,6 +173,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 
 	// 11. Run the agent in its own process group, forwarding signals; blocks until
 	//     the whole group is reaped, so the deferred Detach runs strictly after.
+	prog.Line("Launching agent…")
 	if err := cage.NewRunner(app.ProcessGroup).Run(ctx, inv); err != nil {
 		return fmt.Errorf("run agent: %w", err)
 	}

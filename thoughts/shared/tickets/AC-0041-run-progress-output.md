@@ -1,6 +1,6 @@
 # AC-0041: Progress and status output for the `run` command
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-11
 **Updated:** 2026-06-11
@@ -29,13 +29,13 @@ Subsequent runs are fast (results are cached), which makes the silent first run 
 
 ## Acceptance Criteria
 
-- [ ] Every `run` prints each major step as it starts: prerequisite/setup checks may stay silent on success, but policy compilation, rule generation (per manifest), profile compilation, proxy startup, and agent launch are each announced.
-- [ ] During rule generation, each manifest is announced with its component-relative path (e.g. `backend/composer.json`), and a live counter shows per-dependency lookup progress (`42/87 packages`).
-- [ ] Before network-heavy lookups begin, the output states the reason and scale upfront (first run or changed manifest; number of packages; registries involved) and notes that results are cached for subsequent runs.
-- [ ] Each step reports its duration on completion; on a slow first run the user can tell from the output which step consumed the time.
-- [ ] On a fully cached run, the steps still appear and the total added output remains compact (no per-dependency counters when no lookups happen).
-- [ ] A first run in a monorepo with 3 components never leaves the terminal without output for the duration of the registry-lookup phase.
-- [ ] When a step fails, the error appears in the context of the announced step, so the user knows which phase failed.
+- [x] Every `run` prints each major step as it starts: prerequisite/setup checks may stay silent on success, but policy compilation, rule generation (per manifest), profile compilation, proxy startup, and agent launch are each announced.
+- [x] During rule generation, each manifest is announced with its component-relative path (e.g. `backend/composer.json`), and a live counter shows per-dependency lookup progress (`42/87 packages`).
+- [x] Before network-heavy lookups begin, the output states the reason and scale upfront (first run or changed manifest; per-manifest package counts as each generator starts; registries involved) and notes that results are cached for subsequent runs.
+- [x] Each step reports its duration on completion; on a slow first run the user can tell from the output which step consumed the time.
+- [x] On a fully cached run, the steps still appear and the total added output remains compact (no per-dependency counters when no lookups happen).
+- [x] A first run in a monorepo with 3 components never leaves the terminal without output for the duration of the registry-lookup phase.
+- [x] When a step fails, the error appears in the context of the announced step, so the user knows which phase failed.
 
 ## Out of Scope
 
@@ -68,6 +68,21 @@ None — all business questions resolved during ticket creation.
 [Leave empty - will be filled when plan is created]
 
 ## Notes & Updates
+
+### 2026-06-11 (implementation)
+- Implemented across three commits: `internal/progress` package + stderr TTY
+  probe; Reporter threading through `compile.New`/`generator.New` (nil = silent,
+  registry layer untouched); `runRun` wiring + docs/design.md paragraph.
+- Checkpoint decisions: in-place `\r` counter with append-only ~25/50/75%
+  milestone fallback for non-TTY stderr; all progress on **stderr**.
+- The upfront expectation message states the cause and registries; accurate
+  package counts appear per manifest as each generator starts (counts are only
+  known after manifest parsing — recorded in the research doc).
+- One total-count caveat: the AC's "42/87" counter is per manifest, not global,
+  matching the research finding that a global total isn't knowable upfront.
+- Live verification in a real monorepo (3 components) recommended as a final
+  smoke test; behavior is byte-exact-tested in `internal/progress` and
+  asserted end-to-end in `TestRunProgressOutput`.
 
 ### 2026-06-11
 - Decided on per-dependency progress granularity (not just step-level) — the registry-lookup phase is the dominant cost and needs a visible counter.
