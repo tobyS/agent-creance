@@ -31,4 +31,4 @@
   user live-run pending — `bin/agent-creance` rebuilt for it.
 
 ### Commit
-- (filled after commit)
+- `d9a5d9d` fix(AC-0042): hand the terminal to the agent's process group
