@@ -362,7 +362,7 @@ func TestRefresh_RealStackRefetchesRegistry(t *testing.T) {
 	fsys.Files[projDir+"/.agent-creance.yaml"] = []byte("network:\n  egress:\n    generators:\n      - package_json\n")
 	fsys.Files[projDir+"/package.json"] = []byte(`{"dependencies":{"react":"^18"}}`)
 
-	c, err := New(fsys, paths, clk, http)
+	c, err := New(fsys, paths, clk, http, nil /*silent*/)
 	require.NoError(t, err)
 
 	registriesRoot, err := state.New(paths).RegistriesRoot()

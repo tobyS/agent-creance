@@ -30,7 +30,7 @@ func hasHost(rules []generator.Rule, host string) bool {
 func TestLivePackageJSONGenerate(t *testing.T) {
 	g, err := generator.New("package_json",
 		sysdep.OSFileSystem{}, sysdep.OSClock{}, sysdep.OSHTTPGetter{},
-		t.TempDir(), t.TempDir())
+		t.TempDir(), t.TempDir(), nil /*silent*/)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -55,7 +55,7 @@ func TestLivePackageJSONGenerate(t *testing.T) {
 func TestLiveComposerJSONGenerate(t *testing.T) {
 	g, err := generator.New("composer_json",
 		sysdep.OSFileSystem{}, sysdep.OSClock{}, sysdep.OSHTTPGetter{},
-		t.TempDir(), t.TempDir())
+		t.TempDir(), t.TempDir(), nil /*silent*/)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

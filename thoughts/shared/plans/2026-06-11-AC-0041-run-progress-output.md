@@ -218,8 +218,8 @@ func (p *Printer) Close()                 // idempotent; terminates any open \r 
 
 ### Success criteria
 
-- [ ] Automated: `make test` green; `go build ./...`; `make lint` clean.
-- [ ] Manual: `agent-creance policy refresh` output unchanged (nil reporter).
+- [x] Automated: `make test` green; `go build ./...`; `make lint` clean.
+- [x] Manual: `agent-creance policy refresh` output unchanged (nil reporter; covered by the untouched policy_refresh.txtar and render tests).
 
 ---
 

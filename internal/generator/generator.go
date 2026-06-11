@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/tobyS/agent-creance/internal/generator/registry"
+	"github.com/tobyS/agent-creance/internal/progress"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
@@ -27,6 +28,7 @@ type Generator struct {
 	lookup         lookuper
 	fs             sysdep.FileSystem
 	generatorsRoot string
+	rep            progress.Reporter
 }
 
 // Metadata is the scanner-facing description of a generator type: the manifest file
@@ -75,20 +77,21 @@ func Known(name string) bool {
 // New constructs the generator for name, wiring the matching registry client. An
 // unknown name is an error (the caller is responsible for validating a configured
 // generators: list, e.g. with Known). registriesRoot is state.RegistriesRoot();
-// generatorsRoot is state.GeneratorsRoot().
-func New(name string, fs sysdep.FileSystem, clock sysdep.Clock, getter sysdep.HTTPGetter, registriesRoot, generatorsRoot string) (*Generator, error) {
+// generatorsRoot is state.GeneratorsRoot(). rep receives the lookup-progress
+// events (LookupsStart/LookupDone/ManifestCached); nil means silent.
+func New(name string, fs sysdep.FileSystem, clock sysdep.Clock, getter sysdep.HTTPGetter, registriesRoot, generatorsRoot string, rep progress.Reporter) (*Generator, error) {
 	switch name {
 	case GeneratorPackageJSON:
-		return newGenerator(packageJSON{}, registry.NewNPM(fs, clock, getter, registriesRoot), fs, generatorsRoot), nil
+		return newGenerator(packageJSON{}, registry.NewNPM(fs, clock, getter, registriesRoot), fs, generatorsRoot, rep), nil
 	case GeneratorComposerJSON:
-		return newGenerator(composerJSON{}, registry.NewPackagist(fs, clock, getter, registriesRoot), fs, generatorsRoot), nil
+		return newGenerator(composerJSON{}, registry.NewPackagist(fs, clock, getter, registriesRoot), fs, generatorsRoot, rep), nil
 	default:
 		return nil, fmt.Errorf("generator: unknown generator %q", name)
 	}
 }
 
-func newGenerator(eco ecosystem, lookup lookuper, fs sysdep.FileSystem, generatorsRoot string) *Generator {
-	return &Generator{eco: eco, lookup: lookup, fs: fs, generatorsRoot: generatorsRoot}
+func newGenerator(eco ecosystem, lookup lookuper, fs sysdep.FileSystem, generatorsRoot string, rep progress.Reporter) *Generator {
+	return &Generator{eco: eco, lookup: lookup, fs: fs, generatorsRoot: generatorsRoot, rep: progress.OrNop(rep)}
 }
 
 // Generate returns the annotated allow rules for the manifest's direct dependencies,
@@ -100,6 +103,7 @@ func (g *Generator) Generate(ctx context.Context, manifest []byte) ([]Rule, erro
 	if rules, ok, err := g.readCache(path); err != nil {
 		return nil, err
 	} else if ok {
+		g.rep.ManifestCached()
 		return rules, nil
 	}
 
@@ -166,14 +170,18 @@ func (g *Generator) generate(ctx context.Context, manifest []byte) ([]Rule, erro
 	if err != nil {
 		return nil, err
 	}
+	g.rep.LookupsStart(len(deps))
 	var rules []Rule
-	for _, pkg := range deps {
+	for i, pkg := range deps {
 		md, err := g.lookup.Lookup(ctx, pkg)
-		if err != nil {
-			if errors.Is(err, registry.ErrNotFound) {
-				continue
-			}
+		if err != nil && !errors.Is(err, registry.ErrNotFound) {
 			return nil, fmt.Errorf("generator: lookup %q: %w", pkg, err)
+		}
+		g.rep.LookupDone(i+1, len(deps))
+		if err != nil {
+			// Not found: the package contributes no rules (e.g. a path repository),
+			// but its lookup completed and counts toward the progress walk.
+			continue
 		}
 		src := source(g.eco.name(), pkg)
 		if md.Homepage != "" {

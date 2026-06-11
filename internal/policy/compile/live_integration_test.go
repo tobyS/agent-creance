@@ -35,7 +35,7 @@ func TestLiveCompileWithRealGenerators(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(projDir, "package.json"),
 		[]byte(`{"dependencies":{"react":"*"}}`), 0o644))
 
-	c, err := compile.New(sysdep.OSFileSystem{}, sysdep.OSPathResolver{}, sysdep.OSClock{}, sysdep.OSHTTPGetter{})
+	c, err := compile.New(sysdep.OSFileSystem{}, sysdep.OSPathResolver{}, sysdep.OSClock{}, sysdep.OSHTTPGetter{}, nil /*silent*/)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

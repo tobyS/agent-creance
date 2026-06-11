@@ -37,7 +37,7 @@ func readPackageManifest(t *testing.T) []byte {
 
 func TestGenerate_OutputCacheHitMakesZeroLookups(t *testing.T) {
 	lookup := fullPackageLookuper()
-	g := newGenerator(packageJSON{}, lookup, sysdeptest.NewFakeFileSystem(), "/gen")
+	g := newGenerator(packageJSON{}, lookup, sysdeptest.NewFakeFileSystem(), "/gen", nil)
 	manifest := readPackageManifest(t)
 
 	first, err := g.Generate(context.Background(), manifest)
@@ -58,7 +58,7 @@ func TestGenerate_OutputCacheHitMakesZeroLookups(t *testing.T) {
 
 func TestGenerate_ChangedManifestMissesCache(t *testing.T) {
 	lookup := fullPackageLookuper()
-	g := newGenerator(packageJSON{}, lookup, sysdeptest.NewFakeFileSystem(), "/gen")
+	g := newGenerator(packageJSON{}, lookup, sysdeptest.NewFakeFileSystem(), "/gen", nil)
 
 	_, err := g.Generate(context.Background(), readPackageManifest(t))
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestGenerate_ChangedManifestMissesCache(t *testing.T) {
 func TestGenerate_UnparseableCacheRegenerates(t *testing.T) {
 	lookup := fullPackageLookuper()
 	fs := sysdeptest.NewFakeFileSystem()
-	g := newGenerator(packageJSON{}, lookup, fs, "/gen")
+	g := newGenerator(packageJSON{}, lookup, fs, "/gen", nil)
 	manifest := readPackageManifest(t)
 
 	fs.Files[g.cachePath(manifest)] = []byte("{ this is not valid json")
@@ -87,7 +87,7 @@ func TestGenerate_UnparseableCacheRegenerates(t *testing.T) {
 func TestGenerate_AtomicWriteLeavesNoPartialFileOnRenameError(t *testing.T) {
 	lookup := fullPackageLookuper()
 	fs := sysdeptest.NewFakeFileSystem()
-	g := newGenerator(packageJSON{}, lookup, fs, "/gen")
+	g := newGenerator(packageJSON{}, lookup, fs, "/gen", nil)
 	manifest := readPackageManifest(t)
 
 	path := g.cachePath(manifest)
@@ -102,7 +102,7 @@ func TestGenerate_AtomicWriteLeavesNoPartialFileOnRenameError(t *testing.T) {
 func TestGenerate_ReadCacheErrorIsSurfaced(t *testing.T) {
 	lookup := fullPackageLookuper()
 	fs := sysdeptest.NewFakeFileSystem()
-	g := newGenerator(packageJSON{}, lookup, fs, "/gen")
+	g := newGenerator(packageJSON{}, lookup, fs, "/gen", nil)
 	manifest := readPackageManifest(t)
 
 	fs.Errs[g.cachePath(manifest)] = errors.New("read boom") // exists but unreadable

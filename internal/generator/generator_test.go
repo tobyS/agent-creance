@@ -52,7 +52,7 @@ func (f *fakeLookuper) Invalidate(pkg string) (bool, error) {
 }
 
 func newTestGenerator(eco ecosystem, lookup lookuper) *Generator {
-	return newGenerator(eco, lookup, sysdeptest.NewFakeFileSystem(), "/gen")
+	return newGenerator(eco, lookup, sysdeptest.NewFakeFileSystem(), "/gen", nil)
 }
 
 func goldenRun(t *testing.T, eco ecosystem, fixture, golden string, lookup *fakeLookuper) {
@@ -161,7 +161,7 @@ func TestGenerate_LookupErrorIsSurfaced(t *testing.T) {
 func TestInvalidate(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
 	lookup := &fakeLookuper{present: map[string]bool{"a": true, "c": true}} // "b" absent
-	g := newGenerator(packageJSON{}, lookup, fsys, "/gen")
+	g := newGenerator(packageJSON{}, lookup, fsys, "/gen", nil)
 
 	manifest := []byte(`{"dependencies":{"b":"1","a":"1"},"devDependencies":{"c":"1"}}`)
 
@@ -181,7 +181,7 @@ func TestInvalidate(t *testing.T) {
 func TestInvalidate_SkipsComposerPlatformKeys(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
 	lookup := &fakeLookuper{present: map[string]bool{"vendor/a": true}}
-	g := newGenerator(composerJSON{}, lookup, fsys, "/gen")
+	g := newGenerator(composerJSON{}, lookup, fsys, "/gen", nil)
 
 	stats, err := g.Invalidate([]byte(`{"require":{"php":">=8","ext-json":"*","vendor/a":"1"}}`))
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestInvalidate_SkipsComposerPlatformKeys(t *testing.T) {
 }
 
 func TestInvalidate_AbsentEverythingIsAllZero(t *testing.T) {
-	g := newGenerator(packageJSON{}, &fakeLookuper{}, sysdeptest.NewFakeFileSystem(), "/gen")
+	g := newGenerator(packageJSON{}, &fakeLookuper{}, sysdeptest.NewFakeFileSystem(), "/gen", nil)
 
 	stats, err := g.Invalidate([]byte(`{"dependencies":{"a":"1"}}`))
 	require.NoError(t, err)
@@ -211,11 +211,11 @@ func TestKnownAndNew(t *testing.T) {
 	http := sysdeptest.NewFakeHTTPGetter()
 
 	for _, name := range []string{"package_json", "composer_json"} {
-		g, err := New(name, fs, clock, http, "/registries", "/generators")
+		g, err := New(name, fs, clock, http, "/registries", "/generators", nil)
 		require.NoError(t, err)
 		require.NotNil(t, g)
 	}
-	_, err := New("unknown", fs, clock, http, "/registries", "/generators")
+	_, err := New("unknown", fs, clock, http, "/registries", "/generators", nil)
 	require.Error(t, err)
 }
 

@@ -36,7 +36,7 @@ func newPolicyRefreshCmd(app *App) *cobra.Command {
 		Short: "Force a re-fetch of generator metadata and recompile the policy",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+			compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
 			if err != nil {
 				return err
 			}
@@ -133,7 +133,7 @@ func newPolicyExplainCmd(app *App) *cobra.Command {
 // artifact back into memory. Re-reading the file covers the cache-hit and
 // freshly-written paths uniformly.
 func resolvePolicy(ctx context.Context, app *App, dir string) (policy.Compiled, error) {
-	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
 	if err != nil {
 		return policy.Compiled{}, err
 	}

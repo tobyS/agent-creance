@@ -30,6 +30,7 @@ import (
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
 	"github.com/tobyS/agent-creance/internal/policy"
+	"github.com/tobyS/agent-creance/internal/progress"
 	"github.com/tobyS/agent-creance/internal/state"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
@@ -80,17 +81,19 @@ type generatorRunner interface {
 }
 
 // realGenerators is the production generatorRunner: it constructs the named generator
-// over the shared registry/output cache roots and runs it.
+// over the shared registry/output cache roots and runs it, forwarding the compiler's
+// progress reporter so the per-dependency lookup events reach the run command's printer.
 type realGenerators struct {
 	fs             sysdep.FileSystem
 	clock          sysdep.Clock
 	getter         sysdep.HTTPGetter
 	registriesRoot string
 	generatorsRoot string
+	rep            progress.Reporter
 }
 
 func (r realGenerators) Run(ctx context.Context, name string, manifest []byte) ([]generator.Rule, error) {
-	g, err := generator.New(name, r.fs, r.clock, r.getter, r.registriesRoot, r.generatorsRoot)
+	g, err := generator.New(name, r.fs, r.clock, r.getter, r.registriesRoot, r.generatorsRoot, r.rep)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +101,7 @@ func (r realGenerators) Run(ctx context.Context, name string, manifest []byte) (
 }
 
 func (r realGenerators) Invalidate(name string, manifest []byte) (generator.InvalidationStats, error) {
-	g, err := generator.New(name, r.fs, r.clock, r.getter, r.registriesRoot, r.generatorsRoot)
+	g, err := generator.New(name, r.fs, r.clock, r.getter, r.registriesRoot, r.generatorsRoot, nil)
 	if err != nil {
 		return generator.InvalidationStats{}, err
 	}
@@ -111,11 +114,13 @@ type Compiler struct {
 	loader *config.Loader
 	state  *state.Resolver
 	runner generatorRunner
+	rep    progress.Reporter
 }
 
 // New wires a Compiler with the OS seams and the production generator runner. The
-// registry/generator cache roots are resolved up front (project-independent).
-func New(fsys sysdep.FileSystem, paths sysdep.PathResolver, clock sysdep.Clock, getter sysdep.HTTPGetter) (*Compiler, error) {
+// registry/generator cache roots are resolved up front (project-independent). rep
+// receives live compile-progress events (run wires its printer); nil means silent.
+func New(fsys sysdep.FileSystem, paths sysdep.PathResolver, clock sysdep.Clock, getter sysdep.HTTPGetter, rep progress.Reporter) (*Compiler, error) {
 	st := state.New(paths)
 	registriesRoot, err := st.RegistriesRoot()
 	if err != nil {
@@ -125,6 +130,7 @@ func New(fsys sysdep.FileSystem, paths sysdep.PathResolver, clock sysdep.Clock, 
 	if err != nil {
 		return nil, fmt.Errorf("compile: generators root: %w", err)
 	}
+	rep = progress.OrNop(rep)
 	return &Compiler{
 		fs:     fsys,
 		loader: config.NewLoader(fsys, paths),
@@ -135,8 +141,25 @@ func New(fsys sysdep.FileSystem, paths sysdep.PathResolver, clock sysdep.Clock, 
 			getter:         getter,
 			registriesRoot: registriesRoot,
 			generatorsRoot: generatorsRoot,
+			rep:            rep,
 		},
+		rep: rep,
 	}, nil
+}
+
+// reporter normalizes the progress sink at the emission sites, so a Compiler built by
+// struct literal (the tests do this, bypassing New) stays valid without setting rep.
+func (c *Compiler) reporter() progress.Reporter {
+	return progress.OrNop(c.rep)
+}
+
+// manifestRefs projects the manifest inputs into the progress events' shape.
+func manifestRefs(manifests []manifestInput) []progress.ManifestRef {
+	refs := make([]progress.ManifestRef, len(manifests))
+	for i, m := range manifests {
+		refs[i] = progress.ManifestRef{Type: m.gen.Type, Path: m.gen.Path}
+	}
+	return refs
 }
 
 // Result reports what Compile did. Skipped is true on a cache hit (no generators run, no
@@ -254,6 +277,11 @@ func (c *Compiler) Compile(ctx context.Context, projectDir string) (Result, erro
 		}, nil
 	}
 
+	// Only a gate miss with lookup work ahead warrants the expectation message;
+	// a build with no manifests has nothing slow to explain.
+	if len(in.manifests) > 0 {
+		c.reporter().BuildStart(manifestRefs(in.manifests))
+	}
 	return c.build(ctx, in)
 }
 
@@ -479,12 +507,15 @@ func (c *Compiler) buildRuleSet(ctx context.Context, global, project, overlay *c
 // `policy show` can disambiguate which package produced a rule; a root manifest keeps
 // the bare `generated:<type>:<pkg>` label, leaving single-repo output unchanged.
 func (c *Compiler) runGenerators(ctx context.Context, manifests []manifestInput) ([]policy.Rule, error) {
+	rep := c.reporter()
 	var out []policy.Rule
 	for _, m := range manifests {
+		rep.ManifestStart(progress.ManifestRef{Type: m.gen.Type, Path: m.gen.Path})
 		rules, err := c.runner.Run(ctx, m.gen.Type, m.data)
 		if err != nil {
 			return nil, fmt.Errorf("compile: run generator %q: %w", m.gen.Type, err)
 		}
+		rep.ManifestDone()
 		for _, gr := range rules {
 			r := gr.Rule
 			r.Source = sourceWithPath(gr.Source, m.gen)

@@ -119,7 +119,7 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 // mutation changed the input hash, so this rewrites the artifact (advancing its mtime)
 // and the enforcer's mtime poll reloads it within ~1s.
 func recompile(ctx context.Context, app *App, dir string) error {
-	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
 	if err != nil {
 		return err
 	}

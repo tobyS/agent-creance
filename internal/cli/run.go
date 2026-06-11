@@ -86,7 +86,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 
 	// 5. Cache-aware policy compile: skipped when inputs are unchanged. The input
 	//    hash is recorded in the proxy lock so a policy change triggers a hot-reload.
-	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP)
+	compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
 	if err != nil {
 		return fmt.Errorf("init compiler: %w", err)
 	}
