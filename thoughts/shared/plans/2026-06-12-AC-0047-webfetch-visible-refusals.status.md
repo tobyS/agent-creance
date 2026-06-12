@@ -74,4 +74,4 @@
 - ✅ `make build` after the final commit
 
 ### Commit
-- (filled after commit) feat(AC-0047): launch-time cage briefing for claude invocations
+- `07d8750` feat(AC-0047): launch-time cage briefing for claude invocations
