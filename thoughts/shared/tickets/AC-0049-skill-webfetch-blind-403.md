@@ -1,6 +1,6 @@
 # AC-0049: Skill recognizes body-blind WebFetch 403s as cage refusals
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-12
 **Updated:** 2026-06-12
@@ -38,18 +38,20 @@ refusal, then follow the existing soft-deny/hard-deny guidance.
 
 ## Acceptance Criteria
 
-- [ ] The skill frontmatter description includes a trigger for a WebFetch/fetch
+- [x] The skill frontmatter description includes a trigger for a WebFetch/fetch
       tool failing with a bare 403 (no response body or headers visible) while
       working inside an agent-creance cage.
-- [ ] The skill body has a section explaining that WebFetch hides the structured
+- [x] The skill body has a section explaining that WebFetch hides the structured
       refusal, with the reaction: don't conclude the site blocks fetches or
       requires auth; don't try mirrors; curl the URL inside the cage to see the
       JSON refusal, then apply the existing soft-deny/hard-deny guidance.
-- [ ] Status-code references are written so AC-0047 (470 soft / 471 hard) only
-      needs to swap the numbers later.
-- [ ] The integration test asserting frontmatter triggers (AC-0045) covers the
-      new trigger.
-- [ ] Existing tests continue to pass (`make test`, `make lint`), and
+- [x] Status-code references are written so AC-0047 (470 soft / 471 hard) only
+      needs to swap the numbers later (literal `403` appears exactly in the new
+      frontmatter clause and §4 — the two swap points).
+- [x] The integration test asserting frontmatter triggers (AC-0045) covers the
+      new trigger (`TestSkillWebFetchTriggerInFrontmatter`, plus three new
+      markers in `TestSkillContentMentionsTriggers`).
+- [x] Existing tests continue to pass (`make test`, `make lint`), and
       `make build` is run at the end so `bin/agent-creance` embeds the new skill.
 
 ## Out of Scope

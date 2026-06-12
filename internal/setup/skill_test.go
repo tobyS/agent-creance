@@ -91,8 +91,8 @@ func assertNotClaudeMD(t *testing.T, path string) {
 }
 
 // TestSkillContentMentionsTriggers asserts the embedded skill carries the markers
-// the agent activates on: the three egress response types plus the in-cage
-// authentication-failure case (AC-0045).
+// the agent activates on: the three egress response types, the in-cage
+// authentication-failure case (AC-0045), and the body-blind fetch case (AC-0049).
 func TestSkillContentMentionsTriggers(t *testing.T) {
 	for _, marker := range []string{
 		"X-Cage-Reason",
@@ -104,6 +104,9 @@ func TestSkillContentMentionsTriggers(t *testing.T) {
 		"log in",
 		"on the host",
 		"restart the caged session",
+		"WebFetch",
+		"response body was not retrieved",
+		"Do NOT try mirrors",
 	} {
 		if !strings.Contains(skillMD, marker) {
 			t.Errorf("embedded SKILL.md is missing required marker %q", marker)
@@ -126,6 +129,26 @@ func TestSkillAuthTriggersInFrontmatter(t *testing.T) {
 	} {
 		if !strings.Contains(frontmatter, marker) {
 			t.Errorf("frontmatter description is missing auth trigger %q", marker)
+		}
+	}
+}
+
+// TestSkillWebFetchTriggerInFrontmatter asserts the body-blind fetch activation
+// language lives in the frontmatter description (what the agent matches on), not
+// only in the body (AC-0049). WebFetch discards body and headers of non-2xx
+// responses, so the description must trigger on what the model actually sees.
+func TestSkillWebFetchTriggerInFrontmatter(t *testing.T) {
+	end := strings.Index(skillMD[3:], "---")
+	if !strings.HasPrefix(skillMD, "---") || end < 0 {
+		t.Fatal("embedded SKILL.md has no frontmatter block")
+	}
+	frontmatter := skillMD[:end+3]
+	for _, marker := range []string{
+		"WebFetch",
+		"response body was not retrieved",
+	} {
+		if !strings.Contains(frontmatter, marker) {
+			t.Errorf("frontmatter description is missing body-blind fetch trigger %q", marker)
 		}
 	}
 }

@@ -119,10 +119,10 @@ only the status line — a bare 403 from a fetch attempt inside the cage."
 
 #### Automated Verification:
 
-- [ ] `make test` passes (including the extended/new skill tests)
-- [ ] `make lint` passes
-- [ ] `go build ./...` passes
-- [ ] `make build` run at the end (CLAUDE.md: `bin/agent-creance` must embed
+- [x] `make test` passes (including the extended/new skill tests)
+- [x] `make lint` passes
+- [x] `go build ./...` passes
+- [x] `make build` run at the end (CLAUDE.md: `bin/agent-creance` must embed
       the final commit)
 
 #### Manual Verification:

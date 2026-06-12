@@ -1,6 +1,6 @@
 ---
 name: agent-creance
-description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns 403 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = soft-deny, agent_cage_hard_deny = hard-deny), OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the authentication-failure case, and the right action for each.
+description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns 403 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = soft-deny, agent_cage_hard_deny = hard-deny), OR when a fetch tool such as WebFetch fails with a bare 403 — "response body was not retrieved", no headers or body visible — while running inside the cage, OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the body-blind fetch case and the authentication-failure case, and the right action for each.
 ---
 
 # Reacting to agent-creance network refusals
@@ -36,7 +36,21 @@ HTTP `403` with header `X-Cage-Reason: hard-deny`. JSON body fields: `error`
 **What to do:** Treat it as final. Do NOT ask the user to allow it. Do NOT retry.
 Find an alternative source, or tell the user no authoritative source could be found.
 
-## 4. Authentication failure — log in on the host, never in the cage
+## 4. Body-blind clients — WebFetch hides the refusal
+
+Some fetch tools (notably Claude Code's WebFetch) discard the body and headers
+of non-2xx responses: you see only "The server returned HTTP 403 Forbidden.
+The response body was not retrieved." Inside the cage, such a bare 403 is
+almost always one of the two refusals above — NOT the website blocking you,
+and NOT an authentication problem.
+
+**What to do:** Do NOT conclude the site blocks direct fetches or requires
+auth. Do NOT try mirrors or alternative URLs for the same content. Fetch the
+same URL with curl in the shell instead — the cage already exports the proxy
+environment and CA, so a plain `curl '<url>'` shows the structured JSON
+refusal — then follow section 2 (soft-deny) or section 3 (hard-deny).
+
+## 5. Authentication failure — log in on the host, never in the cage
 
 Symptoms: a login/onboarding prompt appears inside the caged session, or an OAuth
 error like `Failed to start OAuth callback server` / `Is port 0 in use?`. The cage

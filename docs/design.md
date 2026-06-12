@@ -305,7 +305,7 @@ The agent's instructions (via the shipped skill, see below) say: ignore the reso
 
 The agent's instructions say: never escalate hard-denies, treat them as final, find an alternative source or tell the user no authoritative source could be found.
 
-The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — it's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
+The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 403 from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
 
 ## Config compilation
 
