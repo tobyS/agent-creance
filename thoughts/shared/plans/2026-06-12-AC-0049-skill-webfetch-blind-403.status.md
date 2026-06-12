@@ -28,4 +28,4 @@
 - ✅ `make build` run after the final commit (CLAUDE.md convention)
 
 ### Commit
-- (filled after commit) feat(AC-0049): skill triggers on body-blind WebFetch 403s
+- `bb8330b` feat(AC-0049): skill triggers on body-blind WebFetch 403s
