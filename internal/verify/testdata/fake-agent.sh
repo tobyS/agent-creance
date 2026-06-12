@@ -12,7 +12,7 @@
 # token or a "blocked:*" token; egress vectors emit "skip" when run offline.
 #
 # Inputs arrive as CREANCE_* env vars (passed via config.env) plus the cage's own
-# injected env (HTTPS_PROXY, CLAUDE_CONFIG_DIR). Most proxy probes deliberately drop
+# injected env (HTTPS_PROXY etc.). Most proxy probes deliberately drop
 # the injected CA env vars and trust mitmproxy's CA via an explicit, in-mount
 # --cacert copy (CREANCE_CA): that isolates "does the proxy enforce the policy" from
 # CA plumbing. The two env-ca-* probes are the exception (AC-0034) — they trust the
@@ -65,14 +65,15 @@ else
 	emit fs-outside blocked
 fi
 
-# Write into the real home dir (the real ~/.claude lives here and is never
-# mounted) → denied. On the expected blocked path nothing is created.
+# Write into the real home dir → denied. ~/.claude is deliberately mounted RW in
+# v0.1 (AC-0045), but that mount must not widen the rest of $HOME. On the
+# expected blocked path nothing is created.
 probe="$CREANCE_HOME/.creance-escape-$$"
 if (: >"$probe") 2>/dev/null; then
-	emit fs-real-claude LEAK
+	emit fs-home-write LEAK
 	rm -f "$probe"
 else
-	emit fs-real-claude blocked
+	emit fs-home-write blocked
 fi
 
 probe_tcp net-raw-tcp 1.1.1.1 443
@@ -127,6 +128,31 @@ if nc -z -G 2 -w 2 127.0.0.1 "$CREANCE_SVC_PORT" >/dev/null 2>&1; then
 	emit svc-allowed connect-ok
 else
 	emit svc-allowed blocked
+fi
+
+# AC-0045: the keychain.sb grants, probed against the THROWAWAY item the harness
+# planted (CREANCE_KC_SERVICE/CREANCE_KC_ACCOUNT) — never the real Claude
+# credential. Read = securityd mach-lookup; write (-U update) = the legacy
+# SecKeychain login.keychain-db file-write path token refresh uses.
+if security find-generic-password -a "$CREANCE_KC_ACCOUNT" -s "$CREANCE_KC_SERVICE" -w >/dev/null 2>&1; then
+	emit kc-read found
+else
+	emit kc-read blocked
+fi
+if security add-generic-password -U -a "$CREANCE_KC_ACCOUNT" -s "$CREANCE_KC_SERVICE" -w updated-by-cage >/dev/null 2>&1; then
+	emit kc-write updated
+else
+	emit kc-write blocked
+fi
+
+# AC-0045: the claude.sb file-level grant — a ~/.claude.json-prefixed sibling is
+# creatable, readable, and removable in-cage (the real ~/.claude.json is never
+# touched). The harness also removes leftovers defensively.
+cjprobe="$CREANCE_HOME/.claude.json.creance-probe-$$"
+if (echo probe >"$cjprobe") 2>/dev/null && [ "$(cat "$cjprobe" 2>/dev/null)" = "probe" ] && rm -f "$cjprobe" 2>/dev/null; then
+	emit claude-json-rw rw-ok
+else
+	emit claude-json-rw blocked
 fi
 
 if [ "$CREANCE_EGRESS" = "1" ]; then
@@ -218,12 +244,11 @@ else
 	emit doc-post skip
 fi
 
-# The ephemeral CLAUDE_CONFIG_DIR is writable, but it is NOT the real ~/.claude —
-# so a planted hook cannot survive into a later un-caged Claude run. The harness
-# asserts (structurally) that this dir is under the cache, not real ~/.claude.
-hookdir="$CLAUDE_CONFIG_DIR/hooks"
-if mkdir -p "$hookdir" 2>/dev/null && (echo '{"planted":true}' >"$hookdir/creance-escape.json") 2>/dev/null; then
-	emit doc-config-dir planted
+# The real ~/.claude is mounted RW (AC-0045): a planted file persists into the
+# host's config — the documented v0.1 config-persistence deferral (AC-0046). The
+# harness asserts the marker landed in the REAL ~/.claude and cleans it up.
+if (echo '{"planted":true}' >"$CREANCE_HOME/.claude/creance-escape-marker.json") 2>/dev/null; then
+	emit doc-claude-rw planted
 else
-	emit doc-config-dir blocked
+	emit doc-claude-rw blocked
 fi

@@ -58,3 +58,39 @@
 ### Verification
 - ✅ `make test`, `make golden` (diff reviewed), `make lint`
 - ✅ `go vet -tags=integration ./...` (integration files still compile)
+
+### Commit
+- `b02e61a` feat(AC-0045): mount real ~/.claude, drop the config redirect, wire the grants
+
+## Phase 3: Verification battery + threat-model re-pin
+- **Status**: ✅ Complete
+- **Started**: 2026-06-12
+- **Completed**: 2026-06-12
+
+### Steps Performed
+1. `docs/design.md:51`: stale bullet rewritten — exceptions (CA PEM,
+   `~/.claude`/`~/.claude.json` v0.1 mount, S2 keychain grant) named; the
+   "redirected config dir" language removed; keywords the matrix pins kept.
+2. `internal/verify/matrix.go`: `fs-real-claude` → `fs-home-write` (BLOCKED:
+   the mount must not widen `$HOME`); `doc-config-dir` → `doc-claude-rw`
+   (DOCUMENTED: planted file persists in the real `~/.claude`, AC-0046);
+   new ALLOWED `kc-read`/`kc-write` (throwaway item) and `claude-json-rw`
+   (prefix-named probe file).
+3. `fake-agent.sh`: probes renamed/replaced accordingly; new `security
+   find/add -U` probes against `CREANCE_KC_SERVICE`/`CREANCE_KC_ACCOUNT`; a
+   `~/.claude.json.creance-probe-$$` create/read/delete probe.
+4. Integration harness: plants + cleans the throwaway login-keychain item,
+   threads the `CREANCE_KC_*` env vars, asserts the `doc-claude-rw` marker in
+   the real `~/.claude` (with cleanup), requires `security` on PATH; stale
+   cache-placement comment fixed.
+5. `docs/cage-verification.md`: §4 re-pinned to the honest v0.1 deferral
+   (planted file persists; `$HOME` widening check added), limitation #2
+   rewritten to the AC-0045 mechanism, vector count un-hardcoded.
+
+### Issues Encountered
+- None. Drift guard green against the reworded design.md.
+
+### Verification
+- ✅ `make test` (incl. coverage/drift guards), `make lint`
+- ✅ `go vet -tags=integration ./...`; `sh -n fake-agent.sh`
+- ⏳ Live `make test-integration` runs in Phase 5.

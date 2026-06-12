@@ -88,6 +88,14 @@ func TestCageVerificationBattery(t *testing.T) {
 		"a vector did not behave as the threat model states:\n%s\n--- fake-agent output ---\n%s",
 		r.verdict.Summary(), r.out)
 
+	// doc-claude-rw (DOCUMENTED): the planted marker lives in the REAL ~/.claude —
+	// the honest v0.1 config-persistence deferral (AC-0045/AC-0046). The marker is
+	// cleaned up by the runBattery t.Cleanup.
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(home, ".claude", "creance-escape-marker.json"),
+		"the real ~/.claude must be writable in-cage (v0.1 posture)")
+
 	if r.egress {
 		assertAuditedPOST(t, r.layout)
 		assertPassthroughHostOnly(t, r.layout)
@@ -127,9 +135,9 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 
 	// Real-location guard (AC-0035): place the cache under $HOME — NOT $TMPDIR — so it
 	// falls outside safehouse's base RW grants (/tmp, $TMPDIR, toolchain dirs), matching
-	// the production ~/.cache/agent-creance. This exercises whether the cage actually
-	// mounts CLAUDE_CONFIG_DIR RW (the doc-config-dir vector). A t.TempDir() cache lives
-	// under $TMPDIR, which safehouse grants, and would mask the gap.
+	// the production ~/.cache/agent-creance where the security-critical artifacts
+	// (fragments, policy, audit log) live out-of-tree. A t.TempDir() cache lives under
+	// $TMPDIR, which safehouse grants, and would not match production.
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 	cacheDir, err := os.MkdirTemp(home, ".agent-creance-battery-")
@@ -154,6 +162,32 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 
 	svcPort := dualStackListener(t)
 	blockedPort := dualStackListener(t)
+
+	// AC-0045: a THROWAWAY generic-password item in the real login keychain for the
+	// kc-read/kc-write vectors — never the real Claude Code-credentials. The login
+	// keychain (the default add target) is required for kc-write to exercise the
+	// login.keychain-db file-write grant.
+	kcService := fmt.Sprintf("agent-creance-verify-%d-%d", os.Getpid(), time.Now().UnixNano())
+	kcAccount := os.Getenv("USER")
+	require.NotEmpty(t, kcAccount, "$USER must be set to plant the throwaway keychain item")
+	require.NoError(t,
+		exec.Command("security", "add-generic-password",
+			"-a", kcAccount, "-s", kcService, "-w", "verify-secret").Run(),
+		"plant the throwaway keychain item")
+	t.Cleanup(func() {
+		_ = exec.Command("security", "delete-generic-password",
+			"-a", kcAccount, "-s", kcService).Run()
+	})
+
+	// doc-claude-rw plants a marker in the REAL ~/.claude; clean it (and any
+	// leftover claude-json-rw probe files) up afterwards.
+	t.Cleanup(func() {
+		_ = os.Remove(filepath.Join(home, ".claude", "creance-escape-marker.json"))
+		leftovers, _ := filepath.Glob(filepath.Join(home, ".claude.json.creance-probe-*"))
+		for _, f := range leftovers {
+			_ = os.Remove(f)
+		}
+	})
 
 	// Copy the fake agent + the mitmproxy CA into the RW project mount: the repo
 	// path and ~/.mitmproxy are both unreadable inside the cage, so the agent runs
@@ -209,6 +243,8 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 			"CREANCE_HARD_HOST":    hardHost,
 			"CREANCE_OFFPATH_URL":  "https://" + offpathHost + "/denied",
 			"CREANCE_EGRESS":       boolFlag(egress),
+			"CREANCE_KC_SERVICE":   kcService,
+			"CREANCE_KC_ACCOUNT":   kcAccount,
 		},
 	}
 
@@ -246,7 +282,7 @@ func requireUncagedHost(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the cage is macOS-only")
 	}
-	for _, tool := range []string{cage.Binary, "mitmdump", "curl", "nc"} {
+	for _, tool := range []string{cage.Binary, "mitmdump", "curl", "nc", "security"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s not on PATH; skipping the cage-verification battery", tool)
 		}

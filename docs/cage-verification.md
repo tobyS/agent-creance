@@ -37,7 +37,7 @@ Record each item as **PASS** (behaved as the "Expected" column states) or **FAIL
 
 | Step | Command | Expected |
 |------|---------|----------|
-| 1.1 | `make test-integration` (or `go test -tags=integration ./internal/verify/ -v`) | `TestCageVerificationBattery` green: all 18 vectors PASS. |
+| 1.1 | `make test-integration` (or `go test -tags=integration ./internal/verify/ -v`) | `TestCageVerificationBattery` green: every vector in `internal/verify/matrix.go` PASSes. |
 | 1.2 | (same run) | `TestCageVerificationNegativeControl` green: the weakened cage is reported as an ESCAPE (proves the harness can fail a broken cage). |
 | 1.3 | `go test -tags=integration ./internal/verify/ -count=2` | Stable across two runs (no port-race flakes). |
 
@@ -102,10 +102,15 @@ audit log at least records the request.
 
 ## 4. Config-persistence (spot-check the automated DOCUMENTED vector by hand)
 
+> v0.1 mounts the real `~/.claude` (and `~/.claude.json`) **read-write** into the
+> cage (AC-0045) — the config cage is deliberately deferred (AC-0046). The
+> expected outcome below is therefore the **honest non-guarantee**, not isolation.
+
 | Step | Action | Expected |
 |------|--------|----------|
-| 4.1 | `agent-creance run` a payload that writes a hook/skill into `$CLAUDE_CONFIG_DIR`. | Write succeeds (ephemeral dir is writable). |
-| 4.2 | After the session, inspect the **real** `~/.claude`. | The planted hook/skill is **absent** — config-persistence is closed; it cannot fire on your next un-caged `claude` run. |
+| 4.1 | `agent-creance run` a payload that writes a hook/skill into `~/.claude`. | Write **succeeds** (the real dir is mounted RW — the `doc-claude-rw` vector). |
+| 4.2 | After the session, inspect the **real** `~/.claude`, then remove the planted file. | The planted hook/skill **persists** — the documented v0.1 config-persistence deferral. It *would* fire on your next un-caged `claude` run; record it as the expected non-guarantee (AC-0046 tracks closing it). |
+| 4.3 | From the caged payload, try writing anywhere else under `$HOME` (e.g. `~/.zshrc`). | **Denied** — the `~/.claude` mount must not widen the rest of `$HOME` (the `fs-home-write` vector). |
 
 ---
 
@@ -124,16 +129,17 @@ These were surfaced while building the automated battery and affect manual runs:
    a hard prerequisite for keychain-only clients. The CA *private key*
    (`~/.mitmproxy/mitmproxy-ca.pem`) remains unreadable in-cage. If a caged HTTPS
    client still fails with a CA error, check that `setup` trusted the CA.
-2. **The redirected `CLAUDE_CONFIG_DIR` is mounted read-write into the cage**
-   (since AC-0035). It lives under `~/.cache/agent-creance`, which safehouse's base
-   policy does *not* grant (the base grants RW only to `/tmp`, `$TMPDIR`, and
-   specific toolchain dirs), so `cage.Build` adds exactly that one dir
-   (`…/projects/<hash>/claude`) to safehouse's `--add-dirs`. The caged agent can
-   therefore persist its own config/session state at the real cache location while
-   the dir stays distinct from the real `~/.claude` (still unwritable — the
-   `fs-real-claude` vector). The `doc-config-dir` vector now exercises this with a
-   cache placed *outside* safehouse's base grants (a temp dir under `$HOME`, not a
-   `$TMPDIR`-backed one), so the gap can't silently reopen.
+2. **The real `~/.claude` is mounted read-write and the credential is reached via
+   scoped Seatbelt grants** (since AC-0045; the AC-0035 ephemeral config dir is
+   gone). `cage.Build` adds `~/.claude` to safehouse's `--add-dirs`, and two
+   generated fragments carry the rest: `keychain.sb` (exactly the S2 grant —
+   mach-lookup `com.apple.SecurityServer` + `file-write*` on
+   `login.keychain-db*`, guarded by the `kc-read`/`kc-write` vectors against a
+   throwaway item) and `claude.sb` (file-level RW on `~/.claude.json*`, guarded
+   by `claude-json-rw`). `CLAUDE_CONFIG_DIR` is **not** set — redirecting it
+   changes the Keychain service name Claude Code derives and breaks the shared
+   credential. The rest of `$HOME` stays unwritable (`fs-home-write`), and the
+   config-persistence consequence is the documented `doc-claude-rw` vector (§4).
 
 ---
 

@@ -56,9 +56,9 @@ var Vectors = []Vector{
 		Desc: "read a host file outside ./ (planted secret) → denied",
 	},
 	{
-		ID: "fs-real-claude", Label: LabelBlocked, Expected: "blocked",
-		Keyword: "~/.claude", DesignRef: "design.md:51",
-		Desc: "read/write the real ~/.claude → denied (never mounted)",
+		ID: "fs-home-write", Label: LabelBlocked, Expected: "blocked",
+		Keyword: "outside `./`", DesignRef: "design.md:51",
+		Desc: "write into $HOME outside ./ and ~/.claude → denied (the v0.1 ~/.claude mount must not widen to home)",
 	},
 	{
 		ID: "net-raw-tcp", Label: LabelBlocked, Expected: "blocked",
@@ -133,6 +133,30 @@ var Vectors = []Vector{
 		Keyword: "SSL_CERT_FILE", DesignRef: "AC-0034",
 		Desc: "python trusts the injected env-var CA file and gets 200 through the proxy in-cage",
 	},
+	{
+		// AC-0045: the keychain.sb mach-lookup grant — reading a generic-password
+		// item via securityd works in-cage. Probed against a THROWAWAY item the
+		// harness plants (never the real Claude Code-credentials). ALLOWED, so a
+		// profile regression that breaks credential reads fails the battery.
+		ID: "kc-read", Label: LabelAllowed, Expected: "found",
+		Keyword: "Keychain", DesignRef: "design.md:466 / AC-0045",
+		Desc: "security find-generic-password on the throwaway item succeeds in-cage (securityd mach-lookup)",
+	},
+	{
+		// AC-0045: the keychain.sb login.keychain-db file-write grant — the legacy
+		// SecKeychain update path token refresh uses. Same throwaway item.
+		ID: "kc-write", Label: LabelAllowed, Expected: "updated",
+		Keyword: "Keychain", DesignRef: "design.md:466 / AC-0045",
+		Desc: "security add-generic-password -U on the throwaway item succeeds in-cage (keychain-db write)",
+	},
+	{
+		// AC-0045: the claude.sb file-level grant — a ~/.claude.json-prefixed file
+		// is creatable/readable/removable in-cage. Probed with a sibling probe file
+		// (the prefix regex covers it), never the real ~/.claude.json.
+		ID: "claude-json-rw", Label: LabelAllowed, Expected: "rw-ok",
+		Keyword: "~/.claude.json", DesignRef: "design.md:51 / AC-0045",
+		Desc: "a ~/.claude.json.creance-probe file is writable+readable in-cage (claude.sb prefix grant)",
+	},
 	// DOCUMENTED — honesty assertions.
 	{
 		ID: "doc-rm", Label: LabelDocumented, Expected: "rm-ok",
@@ -145,8 +169,8 @@ var Vectors = []Vector{
 		Desc: "a POST body to an allowlisted host goes through and is audited",
 	},
 	{
-		ID: "doc-config-dir", Label: LabelDocumented, Expected: "planted",
+		ID: "doc-claude-rw", Label: LabelDocumented, Expected: "planted",
 		Keyword: "config-persistence", DesignRef: "design.md:68",
-		Desc: "ephemeral CLAUDE_CONFIG_DIR is writable but is not the real ~/.claude",
+		Desc: "the real ~/.claude is mounted RW: a planted file persists — the documented v0.1 config-persistence deferral (AC-0046)",
 	},
 }
