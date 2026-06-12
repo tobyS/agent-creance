@@ -13,10 +13,10 @@ import (
 // in order as one logical stream.
 const (
 	rotatedFixture = `{"ts":"t1","method":"GET","url":"https://a/","decision":"allow","rule":{"list":"allow_always","index":0},"status":200}
-{"ts":"t2","method":"GET","url":"https://b/","decision":"hard-deny","rule":{"list":"deny_always","index":1},"status":403}
+{"ts":"t2","method":"GET","url":"https://b/","decision":"hard-deny","rule":{"list":"deny_always","index":1},"status":471}
 {"ts":"t3","host":"api.anthropic.com","decision":"allow"}
 `
-	currentFixture = `{"ts":"t4","method":"POST","url":"https://c/","decision":"soft-deny","rule":null,"status":403}
+	currentFixture = `{"ts":"t4","method":"POST","url":"https://c/","decision":"soft-deny","rule":null,"status":470}
 {"ts":"t5","method":"GET","url":"https://d/","decision":"allow","rule":{"list":"allow_always","index":3},"status":200}
 
 not-json-at-all

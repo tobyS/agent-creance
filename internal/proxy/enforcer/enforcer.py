@@ -4,8 +4,8 @@ This is the runtime enforcer: a mitmproxy addon that reads the compiled policy.j
 and turns each egress attempt into one of the three outcomes the agent understands.
 
   - allow      -> forward upstream untouched.
-  - soft-deny  -> 403 + X-Cage-Reason: soft-deny + the agent_cage_not_allowlisted body.
-  - hard-deny  -> 403 + X-Cage-Reason: hard-deny + the agent_cage_hard_deny body.
+  - soft-deny  -> 470 + X-Cage-Reason: soft-deny + the agent_cage_not_allowlisted body.
+  - hard-deny  -> 471 + X-Cage-Reason: hard-deny + the agent_cage_hard_deny body.
 
 Per-host modes:
 
@@ -26,8 +26,8 @@ free of any mitmproxy import so the C1 corpus and the golden tests run without i
 This file is the thin mitmproxy glue.
 
 Every decision is recorded to the JSONL audit log (audit.py): intercepted requests
-get a full entry from the ``response`` hook (which fires for our synthesized 403s
-too), and passthrough hosts get a host-only entry at the connect/clienthello stage,
+get a full entry from the ``response`` hook (which fires for our synthesized
+refusals too), and passthrough hosts get a host-only entry at the connect/clienthello stage,
 since an ignored tunnel exposes no path/method/status to the addon. The audit log
 path arrives as a mitmproxy option (`--set creance_audit_log=<path>`; empty disables
 it), exactly like the policy path -- both are wired from the Go launcher by AC-0020.
@@ -159,7 +159,7 @@ class Enforcer:
         A passthrough host is never TLS-terminated, so a host-level deny on it can
         only be enforced here, by refusing the tunnel. Intercept hosts (incl.
         not-allowlisted and path/host-denied ones) are allowed to CONNECT so TLS
-        terminates and the ``request`` hook can return the structured 403 body.
+        terminates and the ``request`` hook can return the structured refusal body.
         """
         host = flow.request.host
         disp = policy.host_disposition(self._ruleset, host)
@@ -221,7 +221,7 @@ class Enforcer:
     def response(self, flow: http.HTTPFlow) -> None:
         """Audit an intercepted request once its response status is known.
 
-        Fires for real upstream responses AND the 403s we synthesize in ``request``
+        Fires for real upstream responses AND the refusals we synthesize in ``request``
         (mitmproxy emulates the response hook for addon-set responses), so this is
         the single logging point for allow / soft-deny / hard-deny alike. Flows
         without a stashed verdict (CONNECT / passthrough) are skipped -- they are

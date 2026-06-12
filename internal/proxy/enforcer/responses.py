@@ -1,10 +1,16 @@
-"""The cage's wire responses: the three 403 bodies + the X-Cage-Reason header.
+"""The cage's wire responses: the refusal bodies + the X-Cage-Reason header.
 
 These are what the *agent* receives over the wire when a request is refused. The
 shapes are fixed by docs/design.md ("Network refusal handling"): a soft-deny ("not
-allowlisted, could be added") and a hard-deny ("permanently blocked, find another
-way"), each an HTTP 403 with an ``X-Cage-Reason`` header and a structured JSON body
-whose ``error`` carries the ``agent_cage_`` prefix the shipped skill activates on.
+allowlisted, could be added", HTTP 470) and a hard-deny ("permanently blocked, find
+another way", HTTP 471), each with an ``X-Cage-Reason`` header and a structured JSON
+body whose ``error`` carries the ``agent_cage_`` prefix the shipped skill activates on.
+
+The status codes are deliberately custom (AC-0047): body-blind HTTP clients such as
+Claude Code's WebFetch surface only the status line of a non-2xx response to the
+model, so a distinct code is the one refusal marker every client shows. 470/471 are
+unregistered (clients treat them as generic 4xx per RFC 9110, no retry semantics)
+and clear of AWS ALB's 460/463/464 squatting.
 
 This is the ONLY implementation of these bodies — the Go ``policy/render`` package
 renders a different, operator-facing ``explain`` JSON and is not a template. The
@@ -39,7 +45,11 @@ HOW_TO_PROCEED_HARD = (
     "alternative source."
 )
 
-_STATUS_FORBIDDEN = 403
+# The custom refusal status codes (see module docstring). Exported: the tests and
+# the verify battery key on these numbers.
+STATUS_SOFT_DENY = 470
+STATUS_HARD_DENY = 471
+
 _CONTENT_TYPE = "application/json"
 
 
@@ -61,7 +71,7 @@ def _encode(obj: dict) -> bytes:
 
 
 def soft_deny(url: str, host: str, path: str, method: str) -> CageResponse:
-    """403 for a host/path not on the allowlist (recoverable via `allow`)."""
+    """470 for a host/path not on the allowlist (recoverable via `allow`)."""
     body = _encode(
         {
             "error": ERROR_SOFT_DENY,
@@ -74,14 +84,14 @@ def soft_deny(url: str, host: str, path: str, method: str) -> CageResponse:
         }
     )
     return CageResponse(
-        status=_STATUS_FORBIDDEN,
+        status=STATUS_SOFT_DENY,
         headers={"Content-Type": _CONTENT_TYPE, X_CAGE_REASON: REASON_SOFT_DENY},
         body=body,
     )
 
 
 def hard_deny(url: str, reason: str) -> CageResponse:
-    """403 for a permanently blocked host/path. ``reason`` is the deny rule's reason."""
+    """471 for a permanently blocked host/path. ``reason`` is the deny rule's reason."""
     body = _encode(
         {
             "error": ERROR_HARD_DENY,
@@ -91,7 +101,7 @@ def hard_deny(url: str, reason: str) -> CageResponse:
         }
     )
     return CageResponse(
-        status=_STATUS_FORBIDDEN,
+        status=STATUS_HARD_DENY,
         headers={"Content-Type": _CONTENT_TYPE, X_CAGE_REASON: REASON_HARD_DENY},
         body=body,
     )

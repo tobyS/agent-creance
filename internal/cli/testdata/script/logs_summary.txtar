@@ -13,7 +13,7 @@ seedaudit audit.1 audit.current
 agent-creance logs
 stdout 'allow      GET https://api\.github\.com/ -> 200'
 stdout 'hard-deny  old\.example \(passthrough\)'
-stdout 'soft-deny  POST https://evil\.example/ -> 403'
+stdout 'soft-deny  POST https://evil\.example/ -> 470'
 stdout 'allow      api\.anthropic\.com \(passthrough\)'
 ! stderr .
 
@@ -29,5 +29,5 @@ stdout 'hard-deny  1'
 {"ts":"2026-06-06T10:00:00Z","method":"GET","url":"https://api.github.com/","decision":"allow","rule":{"list":"allow_always","index":0},"status":200}
 {"ts":"2026-06-06T10:00:01Z","host":"old.example","decision":"hard-deny"}
 -- audit.current --
-{"ts":"2026-06-06T10:01:00Z","method":"POST","url":"https://evil.example/","decision":"soft-deny","rule":null,"status":403}
+{"ts":"2026-06-06T10:01:00Z","method":"POST","url":"https://evil.example/","decision":"soft-deny","rule":null,"status":470}
 {"ts":"2026-06-06T10:01:01Z","host":"api.anthropic.com","decision":"allow"}

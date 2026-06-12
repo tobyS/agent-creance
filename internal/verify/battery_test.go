@@ -12,7 +12,7 @@ func TestParseProbeOutput(t *testing.T) {
 	out := strings.Join([]string{
 		"noise before",
 		"CREANCE::net-raw-tcp::blocked",
-		"  CREANCE::proxy-soft-deny::403:soft-deny  ", // surrounding space trimmed
+		"  CREANCE::proxy-soft-deny::470:soft-deny  ", // surrounding space trimmed
 		"CREANCE::allow-200::skip",
 		"CREANCE::malformed-without-second-delim",     // ignored (no ::)
 		"CREANCE::::orphan",                           // empty id, ignored
@@ -24,7 +24,7 @@ func TestParseProbeOutput(t *testing.T) {
 	got := ParseProbeOutput(out)
 
 	assert.Equal(t, "LEAK", got["net-raw-tcp"], "last line for an id wins")
-	assert.Equal(t, "403:soft-deny", got["proxy-soft-deny"])
+	assert.Equal(t, "470:soft-deny", got["proxy-soft-deny"])
 	assert.Equal(t, "skip", got["allow-200"])
 	assert.Equal(t, "post-sent::extra::detail", got["doc-post"])
 	assert.NotContains(t, got, "malformed-without-second-delim")

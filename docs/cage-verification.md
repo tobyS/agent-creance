@@ -92,7 +92,7 @@ this manual step demonstrates the actual token-exfil path and the audit trail.
 | 3.2 | Caged payload reads the OAuth token (Keychain item `Claude Code-credentials`) and `POST`s it to the allowlisted host. | The POST **succeeds** — the allowlist *narrows* but does not *eliminate* the exfil surface. Record as the documented limitation. |
 | 3.3 | Inspect `agent-creance status` / the audit log (`egress.jsonl`). | The POST is recorded (`method:"POST"`, `decision:"allow"`), and the **body is not** captured — so the audit log shows *that* an allowlisted POST happened, not its contents. |
 | 3.4 | Repeat 3.2 against a `mode: passthrough` host. | The request tunnels and is **not** recorded beyond a host-only entry — the least-observable exfil channel, by design. Note this in your report. |
-| 3.5 | Attempt the same exfil to a **non-allowlisted** host. | 403 soft-deny — blocked (this is the automated `proxy-soft-deny` vector; confirm it interactively too). |
+| 3.5 | Attempt the same exfil to a **non-allowlisted** host. | 470 soft-deny — blocked (this is the automated `proxy-soft-deny` vector; confirm it interactively too). |
 
 **Mitigation to note:** keep the allowlist minimal; prefer `intercept` over
 `passthrough` for any host that could receive an agent-controlled body, so the

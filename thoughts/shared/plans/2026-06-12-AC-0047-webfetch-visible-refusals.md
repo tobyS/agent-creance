@@ -115,11 +115,14 @@ research's exhaustive change list.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test-enforcer` passes (pytest, renamed tests assert 470/471)
-- [ ] `make test` passes (audit fixtures, verify battery unit, cli testscripts, skill tests)
-- [ ] `make lint` passes
-- [ ] `make golden` produces only the expected `format_lines.golden` diff (reviewed)
-- [ ] `make test-integration` passes (real-proxy battery vectors observe 470/471)
+- [x] `make test-enforcer` passes (pytest, renamed tests assert 470/471)
+- [x] `make test` passes (audit fixtures, verify battery unit, cli testscripts, skill tests)
+- [x] `make lint` passes
+- [x] `make golden` produces only the expected `format_lines.golden` diff (reviewed)
+- [x] `make test-integration`: real-proxy battery vectors observe 470/471 (PASS);
+      enforcer integration suite green (10 passed, live mitmdump). The battery's
+      kc-read/kc-write vectors fail identically on unmodified HEAD (verified via
+      stash) — pre-existing environmental keychain issue, unrelated to this change.
 
 #### Manual Verification:
 - [ ] (Deferred to live session) `agent-creance logs` shows 470/471 entries

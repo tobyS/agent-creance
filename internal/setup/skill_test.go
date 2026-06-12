@@ -107,6 +107,8 @@ func TestSkillContentMentionsTriggers(t *testing.T) {
 		"WebFetch",
 		"response body was not retrieved",
 		"Do NOT try mirrors",
+		"470",
+		"471",
 	} {
 		if !strings.Contains(skillMD, marker) {
 			t.Errorf("embedded SKILL.md is missing required marker %q", marker)

@@ -1,4 +1,4 @@
-"""Golden tests for the three wire responses (the 403 bodies + X-Cage-Reason).
+"""Golden tests for the wire responses (the 470/471 refusal bodies + X-Cage-Reason).
 
 Mirrors the Go ``-update`` golden pattern: pass ``--update`` to regenerate the
 byte-for-byte body fixtures under testdata/. The inputs match the docs/design.md
@@ -46,14 +46,14 @@ def test_hard_deny_body_golden(update_golden):
 
 def test_soft_deny_envelope():
     r = responses.soft_deny(**_SOFT)
-    assert r.status == 403
+    assert r.status == 470
     assert r.headers[responses.X_CAGE_REASON] == "soft-deny"
     assert r.headers["Content-Type"] == "application/json"
 
 
 def test_hard_deny_envelope():
     r = responses.hard_deny(**_HARD)
-    assert r.status == 403
+    assert r.status == 471
     assert r.headers[responses.X_CAGE_REASON] == "hard-deny"
     assert r.headers["Content-Type"] == "application/json"
 

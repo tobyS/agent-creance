@@ -43,7 +43,7 @@ The CLI is the only thing the user invokes. It reads `.agent-creance.yaml`, comp
 
 Inside the cage, the agent runs as a normal `sandbox-exec`-confined process — Safehouse handles filesystem and process boundaries (its core competence), while the generated network profile narrows Safehouse's "network: open by default" stance to a strict deny-all-except-proxy-and-whitelisted-host-services.
 
-The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates TLS using its own CA (installed once in the user's login keychain), matches each request against the compiled policy, and either forwards it or returns a 403 with a structured JSON body explaining the decision. Every request lands in a JSONL audit log.
+The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates TLS using its own CA (installed once in the user's login keychain), matches each request against the compiled policy, and either forwards it or returns a refusal (HTTP 470 or 471) with a structured JSON body explaining the decision. Every request lands in a JSONL audit log.
 
 ## What the cage prevents — and what it doesn't
 
@@ -264,7 +264,7 @@ network:
 - `paths`/`methods` on a passthrough rule are meaningless and are **rejected at compile time** (a clear error, not a silent ignore).
 - The host **allow/deny decision still happens** at CONNECT time, so a `deny_always` on a passthrough host is still enforced (the tunnel is refused). But **path-based denies cannot apply** — e.g. `deny_always` with `paths: ["**/.env"]` will *not* be caught on a passthrough host. This is a real hole the user accepts per passthrough host, which is why passthrough is a deliberate, explicit choice rather than a default.
 - **Audit degrades** for passthrough hosts to host + timestamp + byte counts — no path, method, or response status.
-- **Soft-deny is unaffected.** Every non-passthrough host is intercepted, so the structured 403 path (below) is intact; a passthrough host is always an `allow` by definition and never produces a 403.
+- **Soft-deny is unaffected.** Every non-passthrough host is intercepted, so the structured 470 path (below) is intact; a passthrough host is always an `allow` by definition and never produces a refusal response.
 
 **Visibility.** Because each passthrough host is an audit blind spot, `agent-creance policy show` flags passthrough rules distinctly (the same way generated rules are annotated), so the blind spots are visible at a glance rather than buried.
 
@@ -276,7 +276,7 @@ The proxy distinguishes three response types so the agent can react appropriatel
 
 **Allowed.** Normal HTTP response from the upstream server. The URL matched an `allow` rule (or a rule emitted by a generator) and no `deny_always` rule shadowed it. Header: none. The agent proceeds as usual.
 
-**Soft-deny** — *"not in the allowlist, but could be added if it matters."* HTTP 403 with `X-Cage-Reason: soft-deny` and a JSON body:
+**Soft-deny** — *"not in the allowlist, but could be added if it matters."* HTTP 470 with `X-Cage-Reason: soft-deny` and a JSON body:
 
 ```json
 {
@@ -292,7 +292,7 @@ The proxy distinguishes three response types so the agent can react appropriatel
 
 The agent's instructions (via the shipped skill, see below) say: ignore the resource and proceed if the needed information is available elsewhere or the agent can work reliably without it; escalate to the user — asking them to allowlist it — only when the information is important and would contribute significantly to success.
 
-**Hard-deny** — *"on the permanent block list, do not ask, find another way."* HTTP 403 with `X-Cage-Reason: hard-deny` and a JSON body including the `reason:` field from the matching `deny_always` rule:
+**Hard-deny** — *"on the permanent block list, do not ask, find another way."* HTTP 471 with `X-Cage-Reason: hard-deny` and a JSON body including the `reason:` field from the matching `deny_always` rule:
 
 ```json
 {
@@ -305,7 +305,9 @@ The agent's instructions (via the shipped skill, see below) say: ignore the reso
 
 The agent's instructions say: never escalate hard-denies, treat them as final, find an alternative source or tell the user no authoritative source could be found.
 
-The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 403 from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
+The refusal status codes are deliberately custom (AC-0047). Body-blind HTTP clients — Claude Code's WebFetch foremost — surface only the status line of a non-2xx response to the model, discarding headers and body; a generic 403 is then indistinguishable from site-side blocking or an auth failure. A distinct code per refusal type is the one marker every client shows. 470/471 are unregistered (clients treat unknown 4xx as a generic client error per RFC 9110, with no retry semantics) and avoid AWS ALB's 460/463/464. Anything scripted against the old 403 contract must key on 470/471 instead.
+
+The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 470/471 status from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
 
 ## Config compilation
 

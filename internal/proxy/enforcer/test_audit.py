@@ -51,7 +51,7 @@ def test_passthrough_entry_golden(update_golden):
 
 
 def test_soft_deny_entry_has_null_rule():
-    entry = audit.request_entry(_TS, "GET", "https://x.test/", "soft-deny", None, 403)
+    entry = audit.request_entry(_TS, "GET", "https://x.test/", "soft-deny", None, 470)
     assert entry["rule"] is None
     assert json.loads(audit.encode(entry))["rule"] is None
 

@@ -86,11 +86,11 @@ def test_allow_forwards_untouched(addon):
     assert flow.response is None
 
 
-def test_soft_deny_returns_403(addon):
+def test_soft_deny_returns_470(addon):
     flow = _https_flow("not-allowlisted.example", "/v2/auth/")
     addon.request(flow)
     assert flow.response is not None
-    assert flow.response.status_code == 403
+    assert flow.response.status_code == 470
     assert flow.response.headers[responses.X_CAGE_REASON] == "soft-deny"
     body = json.loads(flow.response.content)
     assert body["error"] == "agent_cage_not_allowlisted"
@@ -100,11 +100,11 @@ def test_soft_deny_returns_403(addon):
     )
 
 
-def test_hard_deny_returns_403_with_reason(addon):
+def test_hard_deny_returns_471_with_reason(addon):
     flow = _https_flow("w3schools.com", "/html/default.asp")
     addon.request(flow)
     assert flow.response is not None
-    assert flow.response.status_code == 403
+    assert flow.response.status_code == 471
     assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
     body = json.loads(flow.response.content)
     assert body["error"] == "agent_cage_hard_deny"
@@ -125,7 +125,7 @@ def test_connect_refused_for_denied_passthrough_host(addon):
     flow = _https_flow("tunnel-blocked.example", "/")
     addon.http_connect(flow)
     assert flow.response is not None
-    assert flow.response.status_code == 403
+    assert flow.response.status_code == 471
     assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
     body = json.loads(flow.response.content)
     assert body["reason"] == "Blocked tunnel host."
@@ -223,14 +223,14 @@ def test_intercept_allow_logs_entry_and_scrubs_url(addon, audit_path):
 def test_intercept_soft_deny_logs_entry(addon, audit_path):
     flow = _https_flow("not-allowlisted.example", "/v2/auth/")
     addon.request(flow)
-    addon.response(flow)  # status comes from the synthesized 403
+    addon.response(flow)  # status comes from the synthesized refusal
 
     entries = _read_audit(audit_path)
     assert len(entries) == 1
     e = entries[0]
     assert e["decision"] == "soft-deny"
     assert e["rule"] is None
-    assert e["status"] == 403
+    assert e["status"] == 470
 
 
 def test_intercept_hard_deny_logs_entry_with_rule(addon, audit_path):
@@ -243,7 +243,7 @@ def test_intercept_hard_deny_logs_entry_with_rule(addon, audit_path):
     e = entries[0]
     assert e["decision"] == "hard-deny"
     assert e["rule"]["list"] == "deny_always"
-    assert e["status"] == 403
+    assert e["status"] == 471
 
 
 def test_passthrough_clean_logs_host_only(addon, audit_path):

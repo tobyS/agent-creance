@@ -29,14 +29,14 @@ func TestParseLine(t *testing.T) {
 		},
 		{
 			name: "soft-deny with null rule",
-			line: `{"ts":"2026-06-06T10:22:03Z","method":"GET","url":"https://evil.example/","decision":"soft-deny","rule":null,"status":403}`,
+			line: `{"ts":"2026-06-06T10:22:03Z","method":"GET","url":"https://evil.example/","decision":"soft-deny","rule":null,"status":470}`,
 			want: audit.Entry{
 				TS:       "2026-06-06T10:22:03Z",
 				Method:   "GET",
 				URL:      "https://evil.example/",
 				Decision: "soft-deny",
 				Rule:     nil,
-				Status:   403,
+				Status:   470,
 			},
 		},
 		{

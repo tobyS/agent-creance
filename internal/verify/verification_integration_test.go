@@ -46,7 +46,7 @@ import (
 )
 
 // Hosts used by the policy. The .test hosts never leave the proxy (mitmproxy
-// returns the 403 locally); example.com/.org are the real-egress upstreams.
+// returns the refusal locally); example.com/.org are the real-egress upstreams.
 const (
 	allowHost   = "example.com" // intercept → 200
 	passHost    = "example.org" // passthrough → real upstream cert

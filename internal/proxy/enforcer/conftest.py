@@ -1,7 +1,7 @@
 """Shared pytest fixtures + the --update golden flag for the enforcer suite.
 
 Mirrors the Go ``-update`` golden convention (internal/policy/render/render_test.go):
-pass ``--update`` to regenerate the golden 403 bodies under testdata/ instead of
+pass ``--update`` to regenerate the golden refusal bodies under testdata/ instead of
 comparing against them.
 """
 

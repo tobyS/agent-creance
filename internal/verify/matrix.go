@@ -87,17 +87,17 @@ var Vectors = []Vector{
 	},
 	// BLOCKED — proxy.
 	{
-		ID: "proxy-soft-deny", Label: LabelBlocked, Expected: "403:soft-deny",
+		ID: "proxy-soft-deny", Label: LabelBlocked, Expected: "470:soft-deny",
 		Keyword: "non-allowlisted", DesignRef: "design.md:57",
-		Desc: "egress to a non-allowlisted host → 403 X-Cage-Reason: soft-deny",
+		Desc: "egress to a non-allowlisted host → 470 X-Cage-Reason: soft-deny",
 	},
 	{
-		ID: "proxy-hard-deny", Label: LabelBlocked, Expected: "403:hard-deny",
+		ID: "proxy-hard-deny", Label: LabelBlocked, Expected: "471:hard-deny",
 		Keyword: "non-allowlisted", DesignRef: "design.md:57",
-		Desc: "egress to a deny_always host → 403 X-Cage-Reason: hard-deny",
+		Desc: "egress to a deny_always host → 471 X-Cage-Reason: hard-deny",
 	},
 	{
-		ID: "proxy-offpath", Label: LabelBlocked, Expected: "403:soft-deny",
+		ID: "proxy-offpath", Label: LabelBlocked, Expected: "470:soft-deny",
 		Keyword: "paths/methods", DesignRef: "design.md:57",
 		Desc: "disallowed path on an allowlisted host → soft-deny",
 	},

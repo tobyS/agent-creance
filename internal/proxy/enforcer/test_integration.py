@@ -5,8 +5,8 @@ Gated on spike S1 (CA trust) and marked ``integration`` so it runs only under
 suite. Verifies the four wire outcomes against a live proxy:
 
   - allow       -> upstream response, no X-Cage-Reason.
-  - soft-deny   -> 403 + X-Cage-Reason: soft-deny + agent_cage_not_allowlisted body.
-  - hard-deny   -> 403 + X-Cage-Reason: hard-deny + the deny reason.
+  - soft-deny   -> 470 + X-Cage-Reason: soft-deny + agent_cage_not_allowlisted body.
+  - hard-deny   -> 471 + X-Cage-Reason: hard-deny + the deny reason.
   - passthrough -> tunnelled; TLS validates against the REAL upstream cert (the
                    client trusting only the system CA, NOT mitmproxy's CA).
 
@@ -191,22 +191,22 @@ _DENY_POLICY = {
 }
 
 
-def test_soft_deny_403():
+def test_soft_deny_470():
     with running_proxy(_DENY_POLICY) as p:
         rc, code, headers, body = _curl(
             p, "https://not-allowlisted.test/v2/auth/", use_mitm_ca=True
         )
     assert rc == 0, f"curl failed: {headers}{body}"
-    assert code == "403"
+    assert code == "470"
     assert "x-cage-reason: soft-deny" in headers.lower()
     assert json.loads(body)["error"] == "agent_cage_not_allowlisted"
 
 
-def test_hard_deny_403():
+def test_hard_deny_471():
     with running_proxy(_DENY_POLICY) as p:
         rc, code, headers, body = _curl(p, "https://blocked.test/anything", use_mitm_ca=True)
     assert rc == 0, f"curl failed: {headers}{body}"
-    assert code == "403"
+    assert code == "471"
     assert "x-cage-reason: hard-deny" in headers.lower()
     assert json.loads(body)["reason"] == "Blocked for testing."
 
@@ -258,7 +258,7 @@ def test_hot_reload(egress):
     start_policy = {"version": 1, "allow": [{"host": "placeholder.test", "mode": "intercept"}]}
     with running_proxy(start_policy) as p:
         rc, code, headers, _ = _curl(p, f"https://{_ALLOW_HOST}/", use_mitm_ca=True)
-        assert code == "403", "expected soft-deny before reload"
+        assert code == "470", "expected soft-deny before reload"
         assert "x-cage-reason: soft-deny" in headers.lower()
 
         _write_policy(p.policy_path, {"version": 1, "allow": [{"host": _ALLOW_HOST, "mode": "intercept"}]})
@@ -285,7 +285,7 @@ def test_audit_logs_soft_deny():
             p.audit_path, lambda e: e.get("decision") == "soft-deny"
         )
     assert entry is not None, "no soft-deny audit entry appeared"
-    assert entry["status"] == 403
+    assert entry["status"] == 470
     assert entry["method"] == "GET"
     assert entry["rule"] is None
 
@@ -297,7 +297,7 @@ def test_audit_logs_hard_deny():
             p.audit_path, lambda e: e.get("decision") == "hard-deny"
         )
     assert entry is not None, "no hard-deny audit entry appeared"
-    assert entry["status"] == 403
+    assert entry["status"] == 471
     assert entry["rule"]["list"] == "deny_always"
 
 

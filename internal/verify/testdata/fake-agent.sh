@@ -92,8 +92,8 @@ fi
 
 set -- $(http_through_proxy "https://$CREANCE_SOFT_HOST/v2/auth/" --cacert "$CREANCE_CA")
 code="$1"; reason="$2"
-if [ "$code" = "403" ] && [ "$reason" = "soft-deny" ]; then
-	emit proxy-soft-deny 403:soft-deny
+if [ "$code" = "470" ] && [ "$reason" = "soft-deny" ]; then
+	emit proxy-soft-deny 470:soft-deny
 elif [ "$code" = "200" ]; then
 	emit proxy-soft-deny LEAK
 else
@@ -102,19 +102,19 @@ fi
 
 set -- $(http_through_proxy "https://$CREANCE_HARD_HOST/anything" --cacert "$CREANCE_CA")
 code="$1"; reason="$2"
-if [ "$code" = "403" ] && [ "$reason" = "hard-deny" ]; then
-	emit proxy-hard-deny 403:hard-deny
+if [ "$code" = "471" ] && [ "$reason" = "hard-deny" ]; then
+	emit proxy-hard-deny 471:hard-deny
 elif [ "$code" = "200" ]; then
 	emit proxy-hard-deny LEAK
 else
 	emit proxy-hard-deny "ERROR:$code"
 fi
 
-# Allowlisted host but a path outside its allowed prefix → soft-deny (local 403).
+# Allowlisted host but a path outside its allowed prefix → soft-deny (local 470).
 set -- $(http_through_proxy "$CREANCE_OFFPATH_URL" --cacert "$CREANCE_CA")
 code="$1"; reason="$2"
-if [ "$code" = "403" ] && [ "$reason" = "soft-deny" ]; then
-	emit proxy-offpath 403:soft-deny
+if [ "$code" = "470" ] && [ "$reason" = "soft-deny" ]; then
+	emit proxy-offpath 470:soft-deny
 elif [ "$code" = "200" ]; then
 	emit proxy-offpath LEAK
 else

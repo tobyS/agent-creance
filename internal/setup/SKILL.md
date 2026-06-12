@@ -1,6 +1,6 @@
 ---
 name: agent-creance
-description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns 403 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = soft-deny, agent_cage_hard_deny = hard-deny), OR when a fetch tool such as WebFetch fails with a bare 403 — "response body was not retrieved", no headers or body visible — while running inside the cage, OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the body-blind fetch case and the authentication-failure case, and the right action for each.
+description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns status 470 or 471 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = 470 = soft-deny, agent_cage_hard_deny = 471 = hard-deny), OR when a fetch tool such as WebFetch fails with a bare 470 or 471 — "response body was not retrieved", no headers or body visible — while running inside the cage, OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the body-blind fetch case and the authentication-failure case, and the right action for each.
 ---
 
 # Reacting to agent-creance network refusals
@@ -17,7 +17,7 @@ A normal upstream HTTP response. The URL matched the project allowlist. There is
 
 ## 2. Soft-deny — not allowlisted, could be added
 
-HTTP `403` with header `X-Cage-Reason: soft-deny`. JSON body fields: `error`
+HTTP `470` with header `X-Cage-Reason: soft-deny`. JSON body fields: `error`
 (`agent_cage_not_allowlisted`), `url`, `host`, `path`, `method`, `how_to_proceed`,
 `allow_command_suggestion`.
 
@@ -30,7 +30,7 @@ URL blindly.
 
 ## 3. Hard-deny — permanently blocked, find another way
 
-HTTP `403` with header `X-Cage-Reason: hard-deny`. JSON body fields: `error`
+HTTP `471` with header `X-Cage-Reason: hard-deny`. JSON body fields: `error`
 (`agent_cage_hard_deny`), `url`, `reason` (why it is blocked), `how_to_proceed`.
 
 **What to do:** Treat it as final. Do NOT ask the user to allow it. Do NOT retry.
@@ -39,10 +39,10 @@ Find an alternative source, or tell the user no authoritative source could be fo
 ## 4. Body-blind clients — WebFetch hides the refusal
 
 Some fetch tools (notably Claude Code's WebFetch) discard the body and headers
-of non-2xx responses: you see only "The server returned HTTP 403 Forbidden.
-The response body was not retrieved." Inside the cage, such a bare 403 is
-almost always one of the two refusals above — NOT the website blocking you,
-and NOT an authentication problem.
+of non-2xx responses: you see only something like "The server returned HTTP
+470 Unknown Status. The response body was not retrieved." Inside the cage, a
+bare 470 is always a soft-deny and a bare 471 a hard-deny (the two refusals
+above) — NOT the website blocking you, and NOT an authentication problem.
 
 **What to do:** Do NOT conclude the site blocks direct fetches or requires
 auth. Do NOT try mirrors or alternative URLs for the same content. Fetch the
