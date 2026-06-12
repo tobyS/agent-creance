@@ -94,3 +94,28 @@
 - ✅ `make test` (incl. coverage/drift guards), `make lint`
 - ✅ `go vet -tags=integration ./...`; `sh -n fake-agent.sh`
 - ⏳ Live `make test-integration` runs in Phase 5.
+
+### Commit
+- `37b68ef` feat(AC-0045): re-pin the verification battery to the v0.1 credential posture
+
+## Phase 4: Skill — in-cage auth-failure guidance
+- **Status**: ✅ Complete
+- **Started**: 2026-06-12
+- **Completed**: 2026-06-12
+
+### Steps Performed
+1. `internal/setup/SKILL.md`: frontmatter description gains the auth-failure
+   activation triggers (in-cage login/onboarding prompt, "Failed to start
+   OAuth callback server" / "Is port 0 in use?"); new body section "4.
+   Authentication failure — log in on the host, never in the cage" (inbound
+   binds blocked by design → host login + restart; locked-keychain note).
+   The install self-heal ships the update on the next `setup`/`run`.
+2. `internal/setup/skill_test.go`: trigger markers extended; new
+   `TestSkillAuthTriggersInFrontmatter` pins the activation language to the
+   frontmatter description specifically.
+
+### Issues Encountered
+- None.
+
+### Verification
+- ✅ `make test`, `make lint`

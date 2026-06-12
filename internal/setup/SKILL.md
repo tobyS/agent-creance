@@ -1,6 +1,6 @@
 ---
 name: agent-creance
-description: Explains how to react to agent-creance network egress refusals. Use when an HTTP request returns 403 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = soft-deny, agent_cage_hard_deny = hard-deny). Covers the three response types — allowed, soft-deny, hard-deny — and the right action for each.
+description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns 403 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = soft-deny, agent_cage_hard_deny = hard-deny), OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the authentication-failure case, and the right action for each.
 ---
 
 # Reacting to agent-creance network refusals
@@ -35,3 +35,18 @@ HTTP `403` with header `X-Cage-Reason: hard-deny`. JSON body fields: `error`
 
 **What to do:** Treat it as final. Do NOT ask the user to allow it. Do NOT retry.
 Find an alternative source, or tell the user no authoritative source could be found.
+
+## 4. Authentication failure — log in on the host, never in the cage
+
+Symptoms: a login/onboarding prompt appears inside the caged session, or an OAuth
+error like `Failed to start OAuth callback server` / `Is port 0 in use?`. The cage
+blocks all inbound binds by design, so the OAuth callback server can never start —
+an in-cage login is impossible by construction, not a transient error.
+
+**What to do:** Do NOT retry the login flow inside the cage. Tell the user to run
+`claude` and log in **on the host, outside the cage** (their normal terminal), then
+restart the caged session (`agent-creance run`). The cage shares the host's login
+via the Keychain, so a valid host login is all that is needed. If the failure
+persists after a host login, the login keychain may be locked — unlocking it (e.g.
+via Keychain Access or `security unlock-keychain`) and restarting also happens on
+the host.

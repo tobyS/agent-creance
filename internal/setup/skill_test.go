@@ -91,7 +91,8 @@ func assertNotClaudeMD(t *testing.T, path string) {
 }
 
 // TestSkillContentMentionsTriggers asserts the embedded skill carries the markers
-// the agent activates on and names all three response types.
+// the agent activates on: the three egress response types plus the in-cage
+// authentication-failure case (AC-0045).
 func TestSkillContentMentionsTriggers(t *testing.T) {
 	for _, marker := range []string{
 		"X-Cage-Reason",
@@ -99,9 +100,32 @@ func TestSkillContentMentionsTriggers(t *testing.T) {
 		"hard-deny",
 		"agent_cage_not_allowlisted",
 		"agent_cage_hard_deny",
+		"Failed to start OAuth callback server",
+		"log in",
+		"on the host",
+		"restart the caged session",
 	} {
 		if !strings.Contains(skillMD, marker) {
 			t.Errorf("embedded SKILL.md is missing required marker %q", marker)
+		}
+	}
+}
+
+// TestSkillAuthTriggersInFrontmatter asserts the auth-failure activation language
+// lives in the frontmatter description (what the agent matches on), not only in
+// the body (AC-0045).
+func TestSkillAuthTriggersInFrontmatter(t *testing.T) {
+	end := strings.Index(skillMD[3:], "---")
+	if !strings.HasPrefix(skillMD, "---") || end < 0 {
+		t.Fatal("embedded SKILL.md has no frontmatter block")
+	}
+	frontmatter := skillMD[:end+3]
+	for _, marker := range []string{
+		"Failed to start OAuth callback server",
+		"login/onboarding prompt",
+	} {
+		if !strings.Contains(frontmatter, marker) {
+			t.Errorf("frontmatter description is missing auth trigger %q", marker)
 		}
 	}
 }
