@@ -34,17 +34,16 @@ func TestResolveHomeDirError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestPrepareSeedsAndWritesFragment(t *testing.T) {
+func TestPrepareWritesFragments(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
 	b := cage.New(fsys, sysdeptest.NewFakePathResolver())
 	in := prepareInputs()
 
 	require.NoError(t, b.Prepare(in))
 
-	// Sanitized seed: empty object, nothing executable.
-	settings := filepath.Join(in.Layout.ClaudeConfigDir(), "settings.json")
-	require.Equal(t, "{}\n", string(fsys.Files[settings]))
-	require.True(t, fsys.Dirs[in.Layout.ClaudeConfigDir()], "config dir created")
+	// The real ~/.claude mount target exists (created when absent, never seeded).
+	claudeDir := filepath.Join(in.HomeDir, ".claude")
+	require.True(t, fsys.Dirs[claudeDir], "~/.claude created as the mount target")
 
 	// Proxy fragment matches the renderer for this port.
 	wantFrag, err := profile.RenderProxyFragment(in.ProxyPort)
@@ -55,21 +54,48 @@ func TestPrepareSeedsAndWritesFragment(t *testing.T) {
 	wantCA, err := profile.RenderCAReadFragment(in.CACertPath)
 	require.NoError(t, err)
 	require.Equal(t, wantCA, string(fsys.Files[in.Layout.CAProfileSB()]))
+
+	// Keychain + claude-state fragments match the renderers for the home dir (AC-0045).
+	wantKC, err := profile.RenderKeychainFragment(in.HomeDir)
+	require.NoError(t, err)
+	require.Equal(t, wantKC, string(fsys.Files[in.Layout.KeychainProfileSB()]))
+	wantCS, err := profile.RenderClaudeStateFragment(in.HomeDir)
+	require.NoError(t, err)
+	require.Equal(t, wantCS, string(fsys.Files[in.Layout.ClaudeProfileSB()]))
 }
 
-func TestPreparePreservesExistingSettings(t *testing.T) {
+func TestPrepareNeverWritesIntoRealClaude(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
 	in := prepareInputs()
-	settings := filepath.Join(in.Layout.ClaudeConfigDir(), "settings.json")
-	fsys.Files[settings] = []byte(`{"theme":"dark"}`) // agent-written session state
-
 	b := cage.New(fsys, sysdeptest.NewFakePathResolver())
 	require.NoError(t, b.Prepare(in))
 
-	require.Equal(t, `{"theme":"dark"}`, string(fsys.Files[settings]),
-		"existing settings must be preserved, not reset")
-	// The fragment is still (re)written.
-	require.NotEmpty(t, fsys.Files[in.Layout.ProxyProfileSB()])
+	// Prepare ensures the dir exists but must not seed/touch any file in it —
+	// the host's real config is used as-is (AC-0045).
+	claudeDir := filepath.Join(in.HomeDir, ".claude")
+	for path := range fsys.Files {
+		require.NotContains(t, path, claudeDir,
+			"Prepare must not write files into the real ~/.claude")
+	}
+}
+
+func TestPrepareResolvesHomeForFragments(t *testing.T) {
+	// Seatbelt matches kernel-resolved paths (macOS firmlinks), so the home dir
+	// embedded in the keychain/claude-state grants must be symlink-resolved.
+	fsys := sysdeptest.NewFakeFileSystem()
+	paths := sysdeptest.NewFakePathResolver()
+	paths.Symlinks["/home/test"] = "/sysvol/home/test"
+	b := cage.New(fsys, paths)
+	in := prepareInputs()
+
+	require.NoError(t, b.Prepare(in))
+
+	wantKC, err := profile.RenderKeychainFragment("/sysvol/home/test")
+	require.NoError(t, err)
+	require.Equal(t, wantKC, string(fsys.Files[in.Layout.KeychainProfileSB()]))
+	wantCS, err := profile.RenderClaudeStateFragment("/sysvol/home/test")
+	require.NoError(t, err)
+	require.Equal(t, wantCS, string(fsys.Files[in.Layout.ClaudeProfileSB()]))
 }
 
 func TestPrepareRewritesFragmentOnPortChange(t *testing.T) {

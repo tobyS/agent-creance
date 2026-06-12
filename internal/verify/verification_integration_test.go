@@ -88,16 +88,6 @@ func TestCageVerificationBattery(t *testing.T) {
 		"a vector did not behave as the threat model states:\n%s\n--- fake-agent output ---\n%s",
 		r.verdict.Summary(), r.out)
 
-	// CLAUDE_CONFIG_DIR redirect (DOCUMENTED): the planted hook lives in the
-	// ephemeral cache dir, never in the real ~/.claude — config-persistence closed.
-	ccd := r.layout.ClaudeConfigDir()
-	planted := filepath.Join(ccd, "hooks", "creance-escape.json")
-	assert.FileExists(t, planted, "the ephemeral config dir should be writable")
-	home, err := os.UserHomeDir()
-	require.NoError(t, err)
-	assert.NotContains(t, ccd, filepath.Join(home, ".claude"),
-		"the redirected config dir must NOT be the real ~/.claude")
-
 	if r.egress {
 		assertAuditedPOST(t, r.layout)
 		assertPassthroughHostOnly(t, r.layout)

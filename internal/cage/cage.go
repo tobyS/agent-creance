@@ -1,27 +1,27 @@
 // Package cage constructs the agent-safehouse invocation for a compiled config:
-// the argv (mount/capability flags, the two ordered --append-profile fragments,
+// the argv (mount/capability flags, the ordered --append-profile fragments,
 // --env-pass, and the wrapped agent command) plus the environment to set on the
-// safehouse child process (proxy routing, CA trust, the redirected
-// CLAUDE_CONFIG_DIR, and the user's config.env).
+// safehouse child process (proxy routing, CA trust, and the user's config.env).
 //
 // The argv+env construction (Build) is a pure function of (config, port, paths):
-// it performs no I/O, so it is golden-testable without launching anything. The two
-// unavoidable side effects — seeding the ephemeral CLAUDE_CONFIG_DIR and writing
-// the launch-time proxy-port Seatbelt fragment — live on Builder.Prepare, behind
+// it performs no I/O, so it is golden-testable without launching anything. The
+// unavoidable side effects — ensuring the ~/.claude mount target exists and
+// writing the launch-time Seatbelt fragments — live on Builder.Prepare, behind
 // the sysdep seams.
 //
 // This package composes Safehouse; it never execs, forwards signals, or manages
-// lifecycle (that is AC-0024 / AC-0025). It also deliberately never mounts the real
-// ~/.claude: the OAuth credential is read from the Keychain via the .sb ACL, and
-// the agent's executable config is redirected to an ephemeral, sanitized dir so a
-// prompt-injected agent cannot plant a hook/MCP/skill that survives into a later,
-// un-caged Claude run (see docs/design.md, "The proxy and the credential story").
+// lifecycle (that is AC-0024 / AC-0025). Per the v0.1 posture (AC-0045), it
+// mounts the real ~/.claude (and grants ~/.claude.json via claude.sb) read-write
+// and does NOT redirect CLAUDE_CONFIG_DIR, so the caged agent uses the host's
+// account state and the plain shared Keychain credential (reached via the
+// keychain.sb grant). The accepted cost — a prompt-injected agent can plant a
+// hook/MCP/skill that fires on a later un-caged Claude run — is documented in
+// docs/design.md ("The proxy and the credential story") and tracked as AC-0046.
 package cage
 
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -89,13 +89,14 @@ func Build(in Inputs) (Invocation, error) {
 	var args []string
 
 	// Mount dirs: colon-separated paths, ~ and relative ("."/sub) expanded here
-	// (config keeps them verbatim by design). The real ~/.claude is never added.
+	// (config keeps them verbatim by design).
 	//
-	// CLAUDE_CONFIG_DIR is always mounted read-write so the caged agent can persist its
-	// own ephemeral config/session state (AC-0035), even when the cache lives outside
-	// safehouse's base RW grants (the real ~/.cache/agent-creance). It is created and
-	// seeded by Prepare before Build runs; it is the redirected dir, never ~/.claude.
-	rw := append(append([]string{}, sh.AddDirsRW...), in.Layout.ClaudeConfigDir())
+	// The real ~/.claude is always mounted read-write (AC-0045, the v0.1 config-cage
+	// deferral): the caged agent uses the host's global Claude config — skills, hooks,
+	// settings — and its session state persists there, exactly as un-caged Claude
+	// does. ~/.claude.json (outside this dir) is granted by the claude.sb fragment.
+	// Prepare ensures the dir exists before Build's invocation is exec'd.
+	rw := append(append([]string{}, sh.AddDirsRW...), filepath.Join(in.HomeDir, ".claude"))
 	args = append(args, "--add-dirs", expandColonList(rw, in))
 	if len(sh.AddDirsRO) > 0 {
 		args = append(args, "--add-dirs-ro", expandColonList(sh.AddDirsRO, in))
@@ -110,12 +111,15 @@ func Build(in Inputs) (Invocation, error) {
 
 	// Append-profiles, in order: the cached deny-all network baseline, then the
 	// launch-time proxy-port allow fragment (which relies on the baseline preceding
-	// it — the ordering contract in profile.RenderProxyFragment), then the CA
-	// read-grant fragment (AC-0034; filesystem rule, order-independent of the network
-	// ones — last-match-wins over safehouse's (deny default) base).
+	// it — the ordering contract in profile.RenderProxyFragment), then the
+	// filesystem/mach fragments (order-independent of the network pair;
+	// last-match-wins over safehouse's (deny default) base): the CA read grant
+	// (AC-0034), the S2 keychain grant, and the ~/.claude.json grant (AC-0045).
 	args = append(args, "--append-profile", in.Layout.NetworkSB())
 	args = append(args, "--append-profile", in.Layout.ProxyProfileSB())
 	args = append(args, "--append-profile", in.Layout.CAProfileSB())
+	args = append(args, "--append-profile", in.Layout.KeychainProfileSB())
+	args = append(args, "--append-profile", in.Layout.ClaudeProfileSB())
 
 	env := buildEnv(in)
 	keys := sortedKeys(env)
@@ -168,12 +172,10 @@ func caCertPath(home string) string {
 
 // Prepare performs cage's side effects before launch:
 //
-//   - Seeds the ephemeral CLAUDE_CONFIG_DIR with a minimal sanitized settings.json
-//     ("{}" — nothing executable by construction). It seeds only when absent: the
-//     redirected dir persists across launches under projects/<hash>/claude, so the
-//     in-cage agent's own session state (onboarding, theme) is preserved. The
-//     security property comes from never copying the real ~/.claude, not from
-//     wiping this dir.
+//   - Ensures the real ~/.claude exists (0700) — it is Build's always-on RW mount
+//     (AC-0045) and must be present before safehouse is exec'd. Normally `setup`'s
+//     skill install (or Claude itself) created it long ago; this is a first-run
+//     safety net, never a seed: the dir's contents are the host's, untouched.
 //   - (Re)writes the launch-time proxy-port Seatbelt fragment to ProxyProfileSB.
 //     Always overwritten because the port is ephemeral and changes per launch.
 //   - (Re)writes the CA read-grant Seatbelt fragment to CAProfileSB (AC-0034). The
@@ -181,21 +183,16 @@ func caCertPath(home string) string {
 //     resolved path (macOS firmlinks make /Users/... and /System/Volumes/Data/Users/...
 //     the same file); EvalSymlinks failing means the CA does not exist yet (setup not
 //     run), in which case the unresolved path is used as a best-effort literal.
+//   - (Re)writes the S2 keychain grant to KeychainProfileSB and the ~/.claude.json
+//     grant to ClaudeProfileSB (AC-0045), with the home dir symlink-resolved for
+//     the same firmlink reason (best-effort fallback to the unresolved path).
 //
 // network.sb is NOT written here — it is the compile step's output (internal/
 // profile), guaranteed present before cage runs.
 func (b *Builder) Prepare(in Inputs) error {
-	dir := in.Layout.ClaudeConfigDir()
-	if err := b.fs.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("cage: create config dir %q: %w", dir, err)
-	}
-	settings := filepath.Join(dir, "settings.json")
-	if _, err := b.fs.Stat(settings); errors.Is(err, fs.ErrNotExist) {
-		if err := b.fs.WriteFile(settings, []byte("{}\n"), 0o600); err != nil {
-			return fmt.Errorf("cage: seed %q: %w", settings, err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("cage: stat %q: %w", settings, err)
+	claudeDir := filepath.Join(in.HomeDir, ".claude")
+	if err := b.fs.MkdirAll(claudeDir, 0o700); err != nil {
+		return fmt.Errorf("cage: create %q: %w", claudeDir, err)
 	}
 
 	frag, err := profile.RenderProxyFragment(in.ProxyPort)
@@ -219,12 +216,33 @@ func (b *Builder) Prepare(in Inputs) error {
 	if err := b.fs.WriteFile(caDst, []byte(caFrag), 0o600); err != nil {
 		return fmt.Errorf("cage: write CA fragment %q: %w", caDst, err)
 	}
+
+	home := in.HomeDir
+	if resolved, err := b.paths.EvalSymlinks(home); err == nil {
+		home = resolved
+	}
+	kcFrag, err := profile.RenderKeychainFragment(home)
+	if err != nil {
+		return fmt.Errorf("cage: render keychain fragment: %w", err)
+	}
+	kcDst := in.Layout.KeychainProfileSB()
+	if err := b.fs.WriteFile(kcDst, []byte(kcFrag), 0o600); err != nil {
+		return fmt.Errorf("cage: write keychain fragment %q: %w", kcDst, err)
+	}
+	csFrag, err := profile.RenderClaudeStateFragment(home)
+	if err != nil {
+		return fmt.Errorf("cage: render claude-state fragment: %w", err)
+	}
+	csDst := in.Layout.ClaudeProfileSB()
+	if err := b.fs.WriteFile(csDst, []byte(csFrag), 0o600); err != nil {
+		return fmt.Errorf("cage: write claude-state fragment %q: %w", csDst, err)
+	}
 	return nil
 }
 
 // buildEnv computes the environment to inject into the cage. Precedence: the user's
 // config.env first, then the computed vars overwrite it — so a user cannot disable
-// egress filtering or the config redirect by setting, e.g., HTTPS_PROXY themselves.
+// egress filtering by setting, e.g., HTTPS_PROXY themselves.
 //
 // The proxy + CA set is the one confirmed by spike S4: all proxy vars (upper and
 // lower case) point at the loopback proxy; all four CA vars point at the single
@@ -252,8 +270,10 @@ func buildEnv(in Inputs) map[string]string {
 		env[k] = in.CACertPath
 	}
 
-	// Redirect executable config to the ephemeral, sanitized state-dir config.
-	env["CLAUDE_CONFIG_DIR"] = in.Layout.ClaudeConfigDir()
+	// CLAUDE_CONFIG_DIR is deliberately NOT set (AC-0045): the caged agent uses the
+	// real ~/.claude, and redirecting the var would change the Keychain service name
+	// Claude Code derives, breaking the shared-credential lookup. A host-set value
+	// cannot leak in either — safehouse only forwards the --env-pass keys.
 
 	return env
 }

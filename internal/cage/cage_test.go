@@ -98,50 +98,42 @@ func TestExpandPathViaArgs(t *testing.T) {
 			in.Config.Safehouse.AddDirsRW = []string{tc.in}
 			inv, err := cage.Build(in)
 			require.NoError(t, err)
-			// CLAUDE_CONFIG_DIR is always appended as a RW mount (AC-0035).
-			want := tc.want + ":" + in.Layout.ClaudeConfigDir()
+			// The real ~/.claude is always appended as a RW mount (AC-0045).
+			want := tc.want + ":" + filepath.Join(in.HomeDir, ".claude")
 			require.Equal(t, want, argValue(t, inv.Args, "--add-dirs"))
 		})
 	}
 }
 
-// TestBuildAlwaysMountsConfigDir guards AC-0035: the redirected CLAUDE_CONFIG_DIR is
-// mounted read-write even when the user configured no add_dirs_rw (the golden fixture
-// has a non-empty list, so it does not cover this path).
-func TestBuildAlwaysMountsConfigDir(t *testing.T) {
-	t.Run("empty AddDirsRW still mounts config dir", func(t *testing.T) {
+// TestBuildMountsRealClaudeRW guards the v0.1 posture (AC-0045): the real ~/.claude
+// is mounted read-write even when the user configured no add_dirs_rw, and
+// CLAUDE_CONFIG_DIR is NOT set — redirecting it would change the Keychain service
+// name Claude Code derives and break the shared-credential lookup.
+func TestBuildMountsRealClaudeRW(t *testing.T) {
+	realClaude := filepath.Join(fixtureInputs().HomeDir, ".claude")
+	t.Run("empty AddDirsRW still mounts ~/.claude", func(t *testing.T) {
 		in := fixtureInputs()
 		in.Config.Safehouse.AddDirsRW = nil
 		inv, err := cage.Build(in)
 		require.NoError(t, err)
-		require.Equal(t, in.Layout.ClaudeConfigDir(), argValue(t, inv.Args, "--add-dirs"))
+		require.Equal(t, realClaude, argValue(t, inv.Args, "--add-dirs"))
 	})
-	t.Run("config dir mounted alongside user dirs", func(t *testing.T) {
+	t.Run("~/.claude mounted alongside user dirs", func(t *testing.T) {
 		in := fixtureInputs()
 		inv, err := cage.Build(in)
 		require.NoError(t, err)
-		require.Contains(t, argValue(t, inv.Args, "--add-dirs"), in.Layout.ClaudeConfigDir())
+		require.Contains(t, argValue(t, inv.Args, "--add-dirs"), realClaude)
 	})
-}
-
-func TestBuildNeverMountsRealClaude(t *testing.T) {
-	in := fixtureInputs()
-	inv, err := cage.Build(in)
-	require.NoError(t, err)
-
-	realClaude := filepath.Join(in.HomeDir, ".claude")
-	// No --add-dirs* value may reference the real ~/.claude.
-	for i := 0; i+1 < len(inv.Args); i++ {
-		if inv.Args[i] == "--add-dirs" || inv.Args[i] == "--add-dirs-ro" {
-			require.NotContains(t, inv.Args[i+1], realClaude,
-				"mount flag %s must not reference the real ~/.claude", inv.Args[i])
+	t.Run("no CLAUDE_CONFIG_DIR redirect", func(t *testing.T) {
+		in := fixtureInputs()
+		inv, err := cage.Build(in)
+		require.NoError(t, err)
+		for _, kv := range inv.Env {
+			require.False(t, strings.HasPrefix(kv, "CLAUDE_CONFIG_DIR="),
+				"CLAUDE_CONFIG_DIR must not be set in the cage env: %s", kv)
 		}
-	}
-	// CLAUDE_CONFIG_DIR must point under the state root, not ~/.claude.
-	ccd := envValue(t, inv.Env, "CLAUDE_CONFIG_DIR")
-	require.Equal(t, in.Layout.ClaudeConfigDir(), ccd)
-	require.True(t, strings.HasPrefix(ccd, in.Layout.Root), "CLAUDE_CONFIG_DIR not under state root")
-	require.NotContains(t, ccd, realClaude)
+		require.NotContains(t, argValue(t, inv.Args, "--env-pass"), "CLAUDE_CONFIG_DIR")
+	})
 }
 
 func TestBuildEnvPrecedence(t *testing.T) {
@@ -167,11 +159,11 @@ func TestBuildEnvPassMatchesEnvKeys(t *testing.T) {
 	}
 	require.Equal(t, keys, names, "--env-pass names must equal the sorted Env keys")
 
-	// The full S4 set + CLAUDE_CONFIG_DIR + the user var are all present.
+	// The full S4 set + the user var are all present (no CLAUDE_CONFIG_DIR — AC-0045).
 	for _, want := range []string{
 		"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy",
 		"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO",
-		"CLAUDE_CONFIG_DIR", "MY_VAR",
+		"MY_VAR",
 	} {
 		require.Contains(t, names, want)
 	}

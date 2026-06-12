@@ -26,9 +26,8 @@ import (
 )
 
 // Artifact file names within a project's state directory. These names are the
-// contract downstream packages (policy compiler, proxy lifecycle, audit log, cage
-// config redirect, session-overlay mutation) build against, so they are defined
-// once here.
+// contract downstream packages (policy compiler, proxy lifecycle, audit log,
+// session-overlay mutation) build against, so they are defined once here.
 const (
 	appCacheSubdir     = "agent-creance"
 	projectsSubdir     = "projects"
@@ -48,7 +47,6 @@ const (
 	// as one logical stream, so the ".1" suffix is part of that contract and is
 	// named once here, mirroring the writer's ROTATED_SUFFIX.
 	egressJSONLRotatedName = egressJSONLName + ".1"
-	claudeDirName          = "claude"
 	sessionOverlayName     = "session-overlay.yaml"
 
 	// hashHexLen is the number of hex characters in a project hash: the first 8
@@ -251,9 +249,6 @@ func (l Layout) EgressJSONL() string { return filepath.Join(l.Root, egressJSONLN
 func (l Layout) EgressJSONLRotated() string {
 	return filepath.Join(l.Root, egressJSONLRotatedName)
 }
-
-// ClaudeConfigDir is the ephemeral CLAUDE_CONFIG_DIR the caged agent is pointed at.
-func (l Layout) ClaudeConfigDir() string { return filepath.Join(l.Root, claudeDirName) }
 
 // SessionOverlay is the session-scoped allow-overlay file written by `allow --once`
 // and purged on last-agent-exit teardown.

@@ -309,7 +309,6 @@ func TestAccessorsAreRootedAtProjectsHash(t *testing.T) {
 		"ProxyLock":          {l.ProxyLock(), "proxy.lock"},
 		"EgressJSONL":        {l.EgressJSONL(), "egress.jsonl"},
 		"EgressJSONLRotated": {l.EgressJSONLRotated(), "egress.jsonl.1"},
-		"ClaudeConfigDir":    {l.ClaudeConfigDir(), "claude"},
 		"SessionOverlay":     {l.SessionOverlay(), "session-overlay.yaml"},
 	}
 	for accessor, want := range accessors {
