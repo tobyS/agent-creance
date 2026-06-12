@@ -1,6 +1,6 @@
 # AC-0047: Make egress refusals visible to body-blind HTTP clients (WebFetch)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-12
 **Updated:** 2026-06-12
@@ -67,24 +67,27 @@ Two complementary mechanisms:
 
 ## Acceptance Criteria
 
-- [ ] `agent-creance run` launches the caged Claude Code with an appended system
-      prompt containing the cage briefing (presence verifiable in a testscript via
-      the stubbed agent binary's recorded argv).
-- [ ] The briefing names the refusal status codes (470/471), states that WebFetch
+- [x] `agent-creance run` launches the caged Claude Code with an appended system
+      prompt containing the cage briefing (asserted on the recorded safehouse argv
+      in `TestRunHappyPath` + the `invocation.golden.json` golden — unit-level
+      instead of a testscript, since no testscript launches the cage).
+- [x] The briefing names the refusal status codes (470/471), states that WebFetch
       hides refusal bodies, and instructs the agent to curl for the structured
-      reason or consult the `agent-creance` skill instead of trying mirrors.
-- [ ] Intercepted soft-denied requests return HTTP 470; hard-denied requests
+      reason or consult the `agent-creance` skill instead of trying mirrors
+      (plus, per planning checkpoint: relay the notice into subagent prompts).
+- [x] Intercepted soft-denied requests return HTTP 470; hard-denied requests
       (including passthrough hosts refused at CONNECT) return HTTP 471; the
       `X-Cage-Reason` header and JSON body are byte-identical to today's contract
-      apart from the status line.
-- [ ] No refusal path returns 403 anymore (golden files, enforcer tests, and the
-      audit log's `status` field reflect 470/471).
-- [ ] docs/design.md's "Network refusal handling" section documents the new codes
+      apart from the status line (body goldens unchanged).
+- [x] No refusal path returns 403 anymore (golden files, enforcer tests, and the
+      audit log's `status` field reflect 470/471; verified against a live
+      mitmdump by the enforcer integration suite and the battery's proxy vectors).
+- [x] docs/design.md's "Network refusal handling" section documents the new codes
       and the rationale (WebFetch surfaces only the status code; 470/471 chosen to
       avoid AWS ALB's 460/463/464).
 - [ ] Manual verification in a live cage: a WebFetch of a non-allowlisted URL makes
       the agent report the cage denial (not "site blocks fetches" / auth theories)
-      without mirror-hunting.
+      without mirror-hunting. *(Deferred to the user's next caged session.)*
 
 ## Out of Scope
 
@@ -136,6 +139,21 @@ acceptance criteria above)
 [Leave empty - will be filled when plan is created]
 
 ## Notes & Updates
+
+### 2026-06-12 (implementation)
+
+- Implemented in two phases (`e62eb15` status codes, second commit the briefing);
+  plan + status in `thoughts/shared/plans/2026-06-12-AC-0047-webfetch-visible-refusals.*`.
+- Planning checkpoint decisions: briefing injected only when
+  `agent.command[0]`'s basename is `claude`; subagent non-inheritance accepted
+  and mitigated by a briefing sentence instructing the main agent to relay the
+  cage notice into subagent task prompts.
+- Wire change verified against a live mitmdump (enforcer integration suite, 10
+  passed) and the real-cage battery (proxy vectors green with 470/471; the
+  battery's kc-read/kc-write vectors fail identically on unmodified HEAD —
+  pre-existing environmental keychain issue on this host).
+- Remaining: live-cage WebFetch behavior check on the user's next session, and
+  `agent-creance setup` re-run to refresh the installed skill copy.
 
 ### 2026-06-12
 

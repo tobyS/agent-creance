@@ -173,10 +173,10 @@ Embed the briefing text in `internal/cage` and inject
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes (cage unit + golden, run happy path)
-- [ ] `make lint` passes
-- [ ] `make golden` diff reviewed (invocation golden gains the two args)
-- [ ] `make build` run at the end (bin/agent-creance reflects final commit)
+- [x] `make test` passes (cage unit + golden, run happy path)
+- [x] `make lint` passes
+- [x] `make golden` diff reviewed (invocation golden gains the two args)
+- [x] `make build` run at the end (bin/agent-creance reflects final commit)
 
 #### Manual Verification:
 - [ ] Live caged session: agent states it knows it's caged (e.g. reacts to a

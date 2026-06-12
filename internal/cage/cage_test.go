@@ -169,6 +169,36 @@ func TestBuildEnvPassMatchesEnvKeys(t *testing.T) {
 	}
 }
 
+// TestBuildCageBriefing covers the AC-0047 injection rule: claude invocations
+// (basename match on the command's first element) get --append-system-prompt
+// with the briefing; any other agent command is left untouched.
+func TestBuildCageBriefing(t *testing.T) {
+	t.Run("claude gets the briefing", func(t *testing.T) {
+		inv, err := cage.Build(fixtureInputs())
+		require.NoError(t, err)
+		text := argValue(t, inv.Args, "--append-system-prompt")
+		for _, marker := range []string{"470", "471", "WebFetch", "curl", "subagent"} {
+			require.Contains(t, text, marker)
+		}
+	})
+	t.Run("path-qualified claude gets the briefing", func(t *testing.T) {
+		in := fixtureInputs()
+		in.Config.Agent.Command = []string{"/usr/local/bin/claude"}
+		inv, err := cage.Build(in)
+		require.NoError(t, err)
+		require.Contains(t, inv.Args, "--append-system-prompt")
+	})
+	t.Run("non-claude command is untouched", func(t *testing.T) {
+		in := fixtureInputs()
+		in.Config.Agent.Command = []string{"my-agent", "--flag"}
+		inv, err := cage.Build(in)
+		require.NoError(t, err)
+		require.NotContains(t, inv.Args, "--append-system-prompt")
+		require.Equal(t, "--flag", inv.Args[len(inv.Args)-1],
+			"the agent command must stay the trailing argv")
+	})
+}
+
 func TestBuildValidation(t *testing.T) {
 	t.Run("empty command", func(t *testing.T) {
 		in := fixtureInputs()

@@ -144,6 +144,17 @@ func TestRunHappyPath(t *testing.T) {
 	if !envHasPrefix(started[0].Env, "HTTPS_PROXY=http://127.0.0.1:48080") {
 		t.Errorf("cage env missing HTTPS_PROXY to the proxy port: %v", started[0].Env)
 	}
+	// The claude command gets the launch-time cage briefing (AC-0047).
+	briefing := false
+	for i, a := range started[0].Args {
+		if a == "--append-system-prompt" && i+1 < len(started[0].Args) &&
+			strings.Contains(started[0].Args[i+1], "470") {
+			briefing = true
+		}
+	}
+	if !briefing {
+		t.Errorf("cage args missing the --append-system-prompt briefing: %v", started[0].Args)
+	}
 
 	// Lock file shows attach then last-out detach: the proxy was SIGTERM'd and the
 	// final lock has no attached agents.

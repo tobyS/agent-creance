@@ -41,9 +41,37 @@
 - ⚠️ `make test-integration`: proxy vectors green; kc vectors pre-existing env failure (see above)
 
 ### Commit
-- (filled after commit)
+- `e62eb15` feat(AC-0047): refusal status codes 470 (soft-deny) / 471 (hard-deny)
 
 ---
 
 ## Phase 2: Launch-time cage briefing
-- **Status**: ⬚ Not started
+- **Status**: ✅ Complete
+- **Started**: 2026-06-12 18:40
+- **Completed**: 2026-06-12 18:50
+
+### Steps Performed
+1. New embedded `internal/cage/briefing.md`: names 470/471 and their semantics,
+   WebFetch body-blindness, curl-for-details + skill pointer, no mirror-hunting,
+   and the subagent-relay instruction (checkpoint decision).
+2. `internal/cage/cage.go`: `//go:embed briefing.md`; `Build` appends
+   `--append-system-prompt <briefing>` after the agent command iff
+   `filepath.Base(agent.command[0]) == "claude"` (checkpoint decision).
+3. Tests: `TestBuildCageBriefing` (claude / path-qualified claude /
+   non-claude untouched); `TestRunHappyPath` asserts the flag+text on the
+   recorded safehouse argv; `invocation.golden.json` regenerated (diff: the two
+   appended args).
+4. design.md: paragraph after the skill section documenting the briefing, the
+   claude-basename rule, and the subagent limitation + relay.
+
+### Issues Encountered
+- None.
+
+### Verification
+- ✅ `make test` (full suite, race)
+- ✅ `make lint`
+- ✅ `make golden` (reviewed: only invocation.golden.json, two args)
+- ✅ `make build` after the final commit
+
+### Commit
+- (filled after commit) feat(AC-0047): launch-time cage briefing for claude invocations

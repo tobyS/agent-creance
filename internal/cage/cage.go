@@ -20,6 +20,7 @@
 package cage
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -33,6 +34,15 @@ import (
 	"github.com/tobyS/agent-creance/internal/state"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
+
+// briefingMD is the launch-time cage briefing appended to claude's system prompt
+// (AC-0047): the agent learns up front that 470/471 responses are cage policy —
+// body-blind clients like WebFetch hide the structured refusal, and an unbriefed
+// agent misreads the bare status as the site blocking it. A sibling file so the
+// prose is reviewable as markdown.
+//
+//go:embed briefing.md
+var briefingMD string
 
 // Binary is the default agent-safehouse executable name — the preferred
 // candidate from buildinfo.SafehouseBinaries (resolved on PATH by the caller
@@ -127,6 +137,16 @@ func Build(in Inputs) (Invocation, error) {
 
 	args = append(args, "--")
 	args = append(args, in.Config.Agent.Command...)
+
+	// Cage briefing (AC-0047), injected only when the agent is claude itself:
+	// agent.command is arbitrary user config (wrappers, other agents), and an
+	// unknown flag would break anything that isn't claude. Appended system-prompt
+	// text reaches the main thread only — subagents don't inherit it — which is
+	// why the briefing text tells the agent to relay the notice into subagent
+	// task prompts.
+	if filepath.Base(in.Config.Agent.Command[0]) == "claude" {
+		args = append(args, "--append-system-prompt", strings.TrimSpace(briefingMD))
+	}
 
 	bin := in.Binary
 	if bin == "" {

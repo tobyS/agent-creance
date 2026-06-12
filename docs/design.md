@@ -309,6 +309,8 @@ The refusal status codes are deliberately custom (AC-0047). Body-blind HTTP clie
 
 The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 470/471 status from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
 
+Complementing the skill, `run` injects a launch-time cage briefing into the agent invocation via `--append-system-prompt` (AC-0047, embedded in `internal/cage/briefing.md`): the agent knows up front that it is caged, that 470/471 are policy refusals whose bodies WebFetch-style clients hide, and that curl shows the structured refusal. The flag is appended only when `agent.command`'s first element has basename `claude` — the command is arbitrary user config, and an unknown flag would break wrappers or other agents. Appended system-prompt text is not inherited by subagents (Claude Code gives them their own system prompts), so the briefing instructs the main agent to relay the cage notice into subagent task prompts.
+
 ## Config compilation
 
 ![[agent-creance-policy-flow.svg]]
