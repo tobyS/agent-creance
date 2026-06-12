@@ -184,3 +184,132 @@ func TestRenderCAReadFragment_Errors(t *testing.T) {
 		t.Error("relative path: want error, got nil")
 	}
 }
+
+func TestRenderKeychainFragment_Golden(t *testing.T) {
+	// A fixed, host-independent home keeps the golden stable.
+	got, err := RenderKeychainFragment("/home/test")
+	if err != nil {
+		t.Fatalf("RenderKeychainFragment: %v", err)
+	}
+
+	golden := filepath.Join("testdata", "keychain.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("keychain.sb mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// TestRenderKeychainFragment_ExactlyTheS2Grant pins least privilege: the fragment
+// is the S2 spike's two allowances and nothing broader — no read grants, no
+// subpath, no rules beyond the one mach-lookup and the one scoped file-write.
+func TestRenderKeychainFragment_ExactlyTheS2Grant(t *testing.T) {
+	got, err := RenderKeychainFragment("/home/test")
+	if err != nil {
+		t.Fatalf("RenderKeychainFragment: %v", err)
+	}
+	if n := strings.Count(got, "(allow"); n != 2 {
+		t.Errorf("expected exactly two allow rules, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(got, `(allow mach-lookup (global-name "com.apple.SecurityServer"))`) {
+		t.Errorf("missing the securityd mach-lookup grant:\n%s", got)
+	}
+	if !strings.Contains(got, `(allow file-write* (regex #"^/home/test/Library/Keychains/login\.keychain-db"))`) {
+		t.Errorf("missing the scoped keychain-db write grant:\n%s", got)
+	}
+	for _, bad := range []string{"file-read", "subpath", "file*"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("keychain fragment must not contain %q:\n%s", bad, got)
+		}
+	}
+}
+
+func TestRenderClaudeStateFragment_Golden(t *testing.T) {
+	got, err := RenderClaudeStateFragment("/home/test")
+	if err != nil {
+		t.Fatalf("RenderClaudeStateFragment: %v", err)
+	}
+
+	golden := filepath.Join("testdata", "claude.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("claude.sb mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// TestRenderClaudeStateFragment_FileLevelOnly pins least privilege: RW is anchored
+// at the ~/.claude.json prefix (file-level, never a subpath/dir-wide grant), and
+// the home dir itself gets metadata only.
+func TestRenderClaudeStateFragment_FileLevelOnly(t *testing.T) {
+	got, err := RenderClaudeStateFragment("/home/test")
+	if err != nil {
+		t.Fatalf("RenderClaudeStateFragment: %v", err)
+	}
+	if !strings.Contains(got, `(allow file-read* file-write* (regex #"^/home/test/\.claude\.json"))`) {
+		t.Errorf("missing the anchored .claude.json RW grant:\n%s", got)
+	}
+	if !strings.Contains(got, `(allow file-read-metadata (literal "/home/test"))`) {
+		t.Errorf("missing the home-dir metadata grant:\n%s", got)
+	}
+	if strings.Contains(got, "subpath") {
+		t.Errorf("claude fragment must not grant a subpath:\n%s", got)
+	}
+	if n := strings.Count(got, "(allow"); n != 2 {
+		t.Errorf("expected exactly two allow rules, got %d:\n%s", n, got)
+	}
+	// The regex must be anchored so it cannot match e.g. /home/test2/.claude.json.
+	if !strings.Contains(got, `#"^/home/test/\.claude\.json"`) {
+		t.Errorf("the RW regex must be anchored at the home prefix:\n%s", got)
+	}
+}
+
+// TestHomeFragments_RegexEscaping: a home dir containing regex metacharacters must
+// be escaped so the dot matches literally, not as a wildcard.
+func TestHomeFragments_RegexEscaping(t *testing.T) {
+	kc, err := RenderKeychainFragment("/home/j.doe")
+	if err != nil {
+		t.Fatalf("RenderKeychainFragment: %v", err)
+	}
+	if !strings.Contains(kc, `#"^/home/j\.doe/Library/Keychains/login\.keychain-db"`) {
+		t.Errorf("keychain regex must escape the home-dir dot:\n%s", kc)
+	}
+	cs, err := RenderClaudeStateFragment("/home/j.doe")
+	if err != nil {
+		t.Fatalf("RenderClaudeStateFragment: %v", err)
+	}
+	if !strings.Contains(cs, `#"^/home/j\.doe/\.claude\.json"`) {
+		t.Errorf("claude-state regex must escape the home-dir dot:\n%s", cs)
+	}
+	// The literal (non-regex) home grant stays unescaped.
+	if !strings.Contains(cs, `(allow file-read-metadata (literal "/home/j.doe"))`) {
+		t.Errorf("metadata literal must use the raw path:\n%s", cs)
+	}
+}
+
+func TestHomeFragments_Errors(t *testing.T) {
+	for _, home := range []string{"", "relative/home"} {
+		if _, err := RenderKeychainFragment(home); err == nil {
+			t.Errorf("RenderKeychainFragment(%q): want error, got nil", home)
+		}
+		if _, err := RenderClaudeStateFragment(home); err == nil {
+			t.Errorf("RenderClaudeStateFragment(%q): want error, got nil", home)
+		}
+	}
+}

@@ -304,6 +304,8 @@ func TestAccessorsAreRootedAtProjectsHash(t *testing.T) {
 		"PolicyJSON":         {l.PolicyJSON(), "policy.json"},
 		"NetworkSB":          {l.NetworkSB(), "network.sb"},
 		"ProxyProfileSB":     {l.ProxyProfileSB(), "proxy.sb"},
+		"KeychainProfileSB":  {l.KeychainProfileSB(), "keychain.sb"},
+		"ClaudeProfileSB":    {l.ClaudeProfileSB(), "claude.sb"},
 		"ProxyLock":          {l.ProxyLock(), "proxy.lock"},
 		"EgressJSONL":        {l.EgressJSONL(), "egress.jsonl"},
 		"EgressJSONLRotated": {l.EgressJSONLRotated(), "egress.jsonl.1"},

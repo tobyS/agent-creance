@@ -51,6 +51,16 @@ const (
 		";; Re-open read of exactly the one mitmproxy CA PEM so env-var-CA clients (node,\n" +
 		";; python) trust the proxy in-cage; the sibling CA private key stays unreadable.\n" +
 		";; Generated; do not edit.\n"
+	keychainHeader = ";; agent-creance keychain.sb — appended after safehouse's base via --append-profile (AC-0045).\n" +
+		";; Exactly the S2-validated grant for the shared Claude Code-credentials login-Keychain\n" +
+		";; item: securityd reachability for reads, plus the legacy SecKeychain file-write for\n" +
+		";; token refresh (login.keychain-db and its -wal/-shm sidecars). Nothing broader.\n" +
+		";; Generated; do not edit.\n"
+	claudeStateHeader = ";; agent-creance claude.sb — appended after safehouse's base via --append-profile (AC-0045).\n" +
+		";; v0.1 config-cage deferral (AC-0046): the caged agent uses the host's real Claude\n" +
+		";; account state. ~/.claude is a --add-dirs RW mount; this fragment grants the\n" +
+		";; file-level RW on ~/.claude.json* (the prefix regex also covers Claude's sibling\n" +
+		";; writes such as .claude.json.backup). Generated; do not edit.\n"
 )
 
 // allowRule renders one outbound allow for the loopback at the given port. The host
@@ -110,6 +120,78 @@ func RenderCAReadFragment(caCertPath string) (string, error) {
 	fmt.Fprintf(&b, "(allow file-read-metadata (literal %q))\n", dir)
 	fmt.Fprintf(&b, "(allow file-read* (literal %q))\n", caCertPath)
 	return b.String(), nil
+}
+
+// RenderKeychainFragment renders the keychain.sb append fragment: exactly the
+// S2-scoped grant that lets the caged agent read and refresh the one shared
+// login-Keychain credential item (spike S2, 2026-06-04-s2-keychain.md):
+//
+//   - (allow mach-lookup (global-name "com.apple.SecurityServer")) — securityd
+//     reachability, necessary and sufficient for the read path;
+//   - (allow file-write* (regex #"^<home>/Library/Keychains/login\.keychain-db"))
+//     — the legacy SecKeychain/keytar refresh write path needs file-level write to
+//     the keychain db and its SQLite -wal/-shm sidecars (the regex prefix covers
+//     all three).
+//
+// home must be an absolute, symlink-resolved home directory (Seatbelt regexes
+// match the kernel-resolved path; see internal/cage Prepare). The path is
+// regex-escaped before interpolation. The result ends with a trailing newline.
+func RenderKeychainFragment(home string) (string, error) {
+	if err := validateHome(home); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(keychainHeader)
+	b.WriteString(`(allow mach-lookup (global-name "com.apple.SecurityServer"))` + "\n")
+	fmt.Fprintf(&b, "(allow file-write* (regex #\"^%s/Library/Keychains/login\\.keychain-db\"))\n",
+		sbplRegexEscape(home))
+	return b.String(), nil
+}
+
+// RenderClaudeStateFragment renders the claude.sb append fragment: file-level
+// read-write on ~/.claude.json and its prefix-named siblings (.claude.json.backup
+// etc.), so the caged agent uses the host's real account state (the v0.1
+// config-cage deferral, AC-0046). The metadata-only grant on the home dir literal
+// makes the file reachable for open() under safehouse's deny-default base — it
+// exposes the existence of home's entries, never the contents of any sibling
+// file (same trade as ca.sb's parent-dir grant). home must be an absolute,
+// symlink-resolved home directory. The result ends with a trailing newline.
+func RenderClaudeStateFragment(home string) (string, error) {
+	if err := validateHome(home); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(claudeStateHeader)
+	fmt.Fprintf(&b, "(allow file-read-metadata (literal %q))\n", home)
+	fmt.Fprintf(&b, "(allow file-read* file-write* (regex #\"^%s/\\.claude\\.json\"))\n",
+		sbplRegexEscape(home))
+	return b.String(), nil
+}
+
+// validateHome rejects the home-dir inputs the fragment renderers cannot safely
+// interpolate: empty or non-absolute paths.
+func validateHome(home string) error {
+	if home == "" {
+		return fmt.Errorf("profile: empty home dir")
+	}
+	if !filepath.IsAbs(home) {
+		return fmt.Errorf("profile: home dir %q is not absolute", home)
+	}
+	return nil
+}
+
+// sbplRegexEscape escapes a literal path for interpolation into an SBPL regex so
+// metacharacters in directory names (e.g. /Users/j.doe) match literally.
+func sbplRegexEscape(p string) string {
+	var b strings.Builder
+	for _, r := range p {
+		switch r {
+		case '\\', '.', '+', '*', '?', '(', ')', '[', ']', '{', '}', '|', '^', '$':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // dedupeByPort drops repeated ports, preserving first-seen order, so two host_services

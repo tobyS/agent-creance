@@ -1,0 +1,7 @@
+;; agent-creance claude.sb — appended after safehouse's base via --append-profile (AC-0045).
+;; v0.1 config-cage deferral (AC-0046): the caged agent uses the host's real Claude
+;; account state. ~/.claude is a --add-dirs RW mount; this fragment grants the
+;; file-level RW on ~/.claude.json* (the prefix regex also covers Claude's sibling
+;; writes such as .claude.json.backup). Generated; do not edit.
+(allow file-read-metadata (literal "/home/test"))
+(allow file-read* file-write* (regex #"^/home/test/\.claude\.json"))

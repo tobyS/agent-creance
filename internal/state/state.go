@@ -39,6 +39,8 @@ const (
 	networkSBName      = "network.sb"
 	proxyProfileSBName = "proxy.sb"
 	caProfileSBName    = "ca.sb"
+	keychainSBName     = "keychain.sb"
+	claudeSBName       = "claude.sb"
 	proxyLockName      = "proxy.lock"
 	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
@@ -224,6 +226,18 @@ func (l Layout) ProxyProfileSB() string { return filepath.Join(l.Root, proxyProf
 // single mitmproxy CA PEM (AC-0034), passed to Safehouse via a third --append-profile.
 // Rewritten every launch because the resolved CA path depends on the host.
 func (l Layout) CAProfileSB() string { return filepath.Join(l.Root, caProfileSBName) }
+
+// KeychainProfileSB is the launch-time Seatbelt fragment that grants the cage
+// exactly the S2-scoped access to the shared Claude credential item (AC-0045),
+// passed to Safehouse via a fourth --append-profile. Rewritten every launch
+// because the grant embeds the host's resolved home dir.
+func (l Layout) KeychainProfileSB() string { return filepath.Join(l.Root, keychainSBName) }
+
+// ClaudeProfileSB is the launch-time Seatbelt fragment that grants file-level RW
+// on the host's ~/.claude.json* account state (AC-0045; the v0.1 config-cage
+// deferral, AC-0046), passed to Safehouse via a fifth --append-profile.
+// Rewritten every launch because the grant embeds the host's resolved home dir.
+func (l Layout) ClaudeProfileSB() string { return filepath.Join(l.Root, claudeSBName) }
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }
