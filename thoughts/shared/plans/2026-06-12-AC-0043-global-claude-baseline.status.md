@@ -34,4 +34,4 @@
   `bin/agent-creance` rebuilt for it.
 
 ### Commit
-- (filled after commit)
+- `46f1b96` feat(AC-0043): setup scaffolds the global Claude egress baseline
