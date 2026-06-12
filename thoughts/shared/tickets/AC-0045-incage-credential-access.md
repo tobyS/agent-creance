@@ -157,3 +157,29 @@ None — posture and scope decided during ticket creation (see Notes).
 - Complexity Medium: the mechanism is fully specified by the S2 spike, but the
   work spans the profile fragment, cage seeding, the verification battery, the
   skill, and docs.
+
+### 2026-06-12 (research checkpoint — /work paused before planning)
+- Research committed
+  (`thoughts/shared/research/2026-06-12-AC-0045-incage-credential-access.md`).
+  New load-bearing finding, verified in the installed claude 2.1.175 binary:
+  with `CLAUDE_CONFIG_DIR` set, Claude Code derives a hash-suffixed keychain
+  service name (`Claude Code-credentials-<sha256(dir)[:8]>`), so the S2
+  Seatbelt grant alone cannot deliver the shared item. The undocumented
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR=""` (set-but-empty) forces the plain shared
+  name and is the only mechanism honoring the "same item, no copies" posture.
+- Checkpoint decisions already made with the user:
+  - `.claude.json` auth fields (`hasCompletedOnboarding`,
+    `lastOnboardingVersion`, `oauthAccount`): **merge every launch** (host wins
+    for those fields, agent-written keys preserved) — needed under every
+    posture (onboarding gate ignores credentials, claude-code#4714).
+  - Integration credential vector: **read + write probe** on a throwaway
+    keychain item (never the real credential).
+- **Open — posture decision deferred to a live discussion** (`/tce:discuss`)
+  before planning: A) shared item via the undocumented env var, hardened with
+  a tested-against claude version in `internal/buildinfo` (recommended in
+  research; benign visible failure mode), vs C) rewrite the ticket around
+  `CLAUDE_CODE_OAUTH_TOKEN` (documented, no keychain grant at all, but
+  long-lived un-rotated token in cage env + claude-code#37512 regression
+  history). Option B (copy into the derived item) ruled out: same
+  reverse-engineered dependency plus the refresh-divergence the ticket
+  rejects.
