@@ -160,10 +160,10 @@ Done, `make build` (end-of-ticket convention).
 
 #### Automated Verification:
 
-- [ ] `make test` green (incl. the four new setup tests and init bootstrap
+- [x] `make test` green (incl. the four new setup tests and init bootstrap
   tests with the changed signature)
-- [ ] `go build ./...`
-- [ ] `make lint` clean
+- [x] `go build ./...`
+- [x] `make lint` clean
 
 #### Manual Verification:
 

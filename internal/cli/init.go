@@ -129,9 +129,10 @@ func ensureHostSetup(ctx context.Context, app *App) error {
 		return fmt.Errorf("host setup declined; %s not written "+
 			"(re-run `agent-creance init` when ready)", configFile)
 	}
-	// Reuse the setup orchestration verbatim (full CA + skill); its actionable error
-	// surfaces on failure, and init aborts without writing the config.
-	if err := runSetup(ctx, app, false, false); err != nil {
+	// Reuse the setup orchestration verbatim (full CA + skill + global baseline);
+	// its actionable error surfaces on failure, and init aborts without writing
+	// the config.
+	if err := runSetup(ctx, app, false, false, false); err != nil {
 		return err
 	}
 	return nil

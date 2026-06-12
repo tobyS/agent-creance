@@ -2,33 +2,41 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/setup"
 	"github.com/tobyS/agent-creance/internal/setupcheck"
 )
 
 // newSetupCmd implements `agent-creance setup` — the one-time onboarding command
-// that trusts the mitmproxy CA (with a live verification) and installs the
-// agent-creance Claude Code skill. It is thin orchestration over the already-
-// tested internal/setup.Installer; --no-skill / --no-ca-install opt out of each
-// half. (docs/design.md "Commands".)
+// that trusts the mitmproxy CA (with a live verification), installs the
+// agent-creance Claude Code skill, and scaffolds the global config's Claude
+// egress baseline when no global config exists yet. It is thin orchestration
+// over the already-tested internal/setup.Installer plus a pure-filesystem
+// scaffold; --no-skill / --no-ca-install / --no-global-config opt out of each
+// part. (docs/design.md "Commands".)
 func newSetupCmd(app *App) *cobra.Command {
-	var noSkill, noCAInstall bool
+	var noSkill, noCAInstall, noGlobalConfig bool
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Trust the mitmproxy CA and install the agent-creance skill",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runSetup(cmd.Context(), app, noSkill, noCAInstall)
+			return runSetup(cmd.Context(), app, noSkill, noCAInstall, noGlobalConfig)
 		},
 	}
 	cmd.Flags().BoolVar(&noSkill, "no-skill", false,
 		"skip installing the agent-creance Claude Code skill")
 	cmd.Flags().BoolVar(&noCAInstall, "no-ca-install", false,
 		"don't trust the CA system-wide; rely on CA-bundle env vars only (reduced tool coverage)")
+	cmd.Flags().BoolVar(&noGlobalConfig, "no-global-config", false,
+		"skip writing the global config's Claude Code egress baseline")
 	return cmd
 }
 
@@ -36,7 +44,7 @@ func newSetupCmd(app *App) *cobra.Command {
 // from the App seams and drives the CA and skill steps per the opt-out flags.
 // Taking the flags as parameters (rather than reading globals) is what lets the
 // unit tests exercise every combination directly against the sysdep fakes.
-func runSetup(ctx context.Context, app *App, noSkill, noCAInstall bool) error {
+func runSetup(ctx context.Context, app *App, noSkill, noCAInstall, noGlobalConfig bool) error {
 	inst := setup.NewInstaller(
 		app.FS, app.Keychain, app.ProcessManager, app.PortAllocator,
 		app.TLSProber, app.Sleeper, app.Paths,
@@ -72,14 +80,85 @@ func runSetup(ctx context.Context, app *App, noSkill, noCAInstall bool) error {
 	// Skill step.
 	if noSkill {
 		fmt.Fprintln(app.Stdout, "Skipping skill install (--no-skill).")
+	} else {
+		if err := inst.InstallSkill(); err != nil {
+			return fmt.Errorf("install skill: %w", err)
+		}
+		fmt.Fprintln(app.Stdout, "✓ Skill installed.")
+	}
+
+	// Global config baseline: scaffold ~/.config/agent-creance.yaml so a fresh
+	// cage lets Claude Code reach its own API (AC-0043). Never touches an
+	// existing file — it is the user's to edit; `allow --global` appends to it.
+	if noGlobalConfig {
+		fmt.Fprintln(app.Stdout, "Skipping global config baseline (--no-global-config).")
 		return nil
 	}
-	if err := inst.InstallSkill(); err != nil {
-		return fmt.Errorf("install skill: %w", err)
+	return scaffoldGlobalConfig(app)
+}
+
+// scaffoldGlobalConfig writes the Claude Code egress baseline to the global
+// config path when no global config exists. The path comes from the same
+// config.Loader resolution the policy compiler reads, so writer and reader can
+// never disagree. An existing file — whatever its content — is left untouched.
+func scaffoldGlobalConfig(app *App) error {
+	path, err := config.NewLoader(app.FS, app.Paths).GlobalPath()
+	if err != nil {
+		return fmt.Errorf("resolve global config path: %w", err)
 	}
-	fmt.Fprintln(app.Stdout, "✓ Skill installed.")
+	switch _, err := app.FS.Stat(path); {
+	case err == nil:
+		fmt.Fprintf(app.Stdout, "Global config %s already exists — left untouched.\n", path)
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+		// fresh — fall through to write
+	default:
+		return fmt.Errorf("stat global config: %w", err)
+	}
+	if err := app.FS.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create global config dir: %w", err)
+	}
+	if err := writeFileAtomic(app.FS, path, []byte(globalConfigTemplate), configFilePerm); err != nil {
+		return fmt.Errorf("write global config: %w", err)
+	}
+	fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline).\n", path)
 	return nil
 }
+
+// globalConfigTemplate is the scaffolded global baseline: the hosts Claude Code
+// officially requires (https://code.claude.com/docs/en/network-config). Hosts
+// whose traffic carries OAuth tokens are passthrough per the design's
+// credential-privacy rationale (docs/design.md "passthrough"); optional
+// telemetry hosts ship commented out so blocking them stays a visible choice.
+// Must parse under config.Parse (strict keys; passthrough forbids paths/methods)
+// — pinned by TestGlobalConfigTemplateParses.
+const globalConfigTemplate = `# Global agent-creance configuration. Merged beneath every project's
+# .agent-creance.yaml; rules here apply to all cages on this machine.
+# Scaffolded by ` + "`agent-creance setup`" + ` — edit freely, setup never overwrites
+# an existing file.
+network:
+  egress:
+    allow:
+      # Claude Code essentials (https://code.claude.com/docs/en/network-config).
+      # API and OAuth traffic carries tokens, so it is tunneled raw
+      # (passthrough) — the proxy never sees those bytes.
+      - host: api.anthropic.com
+        mode: passthrough
+      - host: claude.ai
+        mode: passthrough
+      - host: platform.claude.com
+        mode: passthrough
+      # Plugin and native-updater downloads.
+      - host: downloads.claude.ai
+      # Release-notes feed and plugin marketplace metadata.
+      - host: raw.githubusercontent.com
+      # Optional telemetry — Claude Code works without it (requests are
+      # soft-denied and only metrics/error reporting degrade). Uncomment
+      # to allow:
+      # - host: statsig.anthropic.com
+      # - host: statsig.com
+      # - host: sentry.io
+`
 
 // caCaveat is the honest coverage notice printed under --no-ca-install. The cage
 // injects SSL_CERT_FILE/NODE_EXTRA_CA_CERTS/REQUESTS_CA_BUNDLE/GIT_SSL_CAINFO at

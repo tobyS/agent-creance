@@ -1,6 +1,6 @@
 # AC-0043: setup scaffolds the global Claude-defaults egress baseline
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-12
 **Updated:** 2026-06-12
@@ -41,19 +41,21 @@ of the box. An existing global config is never modified.
 
 ## Acceptance Criteria
 
-- [ ] `setup` on a machine without `~/.config/agent-creance.yaml` writes the
+- [x] `setup` on a machine without `~/.config/agent-creance.yaml` writes the
   file containing at least `api.anthropic.com` with `mode: passthrough`
   (per docs/design.md:254-270) plus the other hosts Claude Code requires
-  (exact list determined in research from official Anthropic docs).
-- [ ] `setup` with an existing global config leaves the file byte-identical
+  (claude.ai, platform.claude.com passthrough; downloads.claude.ai,
+  raw.githubusercontent.com intercept; telemetry hosts commented out —
+  per the official network-config docs).
+- [x] `setup` with an existing global config leaves the file byte-identical
   and says so (or stays appropriately quiet).
-- [ ] An opt-out flag (consistent with the existing `--no-skill` /
-  `--no-ca-install` style) skips the scaffolding.
-- [ ] The scaffolded file passes the project's own config validation (e.g.
-  passthrough rules carry no paths/methods, which validation rejects).
-- [ ] `setup` output announces what was written, following the existing
+- [x] An opt-out flag (`--no-global-config`, consistent with the existing
+  `--no-skill` / `--no-ca-install` style) skips the scaffolding.
+- [x] The scaffolded file passes the project's own config validation
+  (config.Parse runs validation; pinned by TestSetupScaffoldsGlobalConfig).
+- [x] `setup` output announces what was written, following the existing
   step-output style ("✓ …").
-- [ ] Existing tests continue to pass (`make test`, `make lint`).
+- [x] Existing tests continue to pass (`make test`, `make lint`).
 
 ## Out of Scope
 
@@ -98,6 +100,21 @@ None — this is a well-understood quickfix; the host list is a research task.
 [Leave empty — will be filled when plan is created]
 
 ## Notes & Updates
+
+### 2026-06-12 (implementation)
+- Implemented as a third `runSetup` step (`scaffoldGlobalConfig` in
+  `internal/cli/setup.go`) with the `--no-global-config` opt-out; the
+  `--no-skill` early return was restructured so the baseline step always
+  runs. `init`'s bootstrap (which reuses `runSetup`) scaffolds it too.
+- Baseline content from the official Claude Code network docs
+  (code.claude.com/docs/en/network-config, verified 2026-06-12):
+  passthrough for token-carrying hosts (api.anthropic.com, claude.ai,
+  platform.claude.com), intercept for downloads.claude.ai and
+  raw.githubusercontent.com, telemetry hosts commented out;
+  storage.googleapis.com (legacy, too broad) and
+  bridge.claudeusercontent.com (Chrome-only) excluded.
+- End-to-end connectivity (run → Claude Code connects) awaits the user's
+  live run; everything else is covered by unit tests.
 
 ### 2026-06-12
 - Quickfix ticket auto-created from `/quickfix` command

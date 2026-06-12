@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
 )
@@ -67,7 +68,7 @@ func newSetupFixture() *setupFixture {
 func TestSetupAlreadyTrusted(t *testing.T) {
 	f := newSetupFixture() // default prober is trusted → verify-first skips install
 
-	if err := runSetup(context.Background(), f.app, false, false); err != nil {
+	if err := runSetup(context.Background(), f.app, false, false, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
@@ -103,7 +104,7 @@ func TestSetupFreshInstall(t *testing.T) {
 	// Untrusted pre-install, trusted post-install → the install path.
 	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
 
-	if err := runSetup(context.Background(), f.app, false, false); err != nil {
+	if err := runSetup(context.Background(), f.app, false, false, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
@@ -135,7 +136,7 @@ func TestSetupNoSkill(t *testing.T) {
 	// Drive a real install so "CA still installed" stays meaningful.
 	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
 
-	if err := runSetup(context.Background(), f.app, true /*noSkill*/, false); err != nil {
+	if err := runSetup(context.Background(), f.app, true /*noSkill*/, false, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
@@ -155,7 +156,7 @@ func TestSetupNoSkill(t *testing.T) {
 func TestSetupNoCAInstall(t *testing.T) {
 	f := newSetupFixture()
 
-	if err := runSetup(context.Background(), f.app, false, true /*noCAInstall*/); err != nil {
+	if err := runSetup(context.Background(), f.app, false, true /*noCAInstall*/, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
@@ -186,7 +187,7 @@ func TestSetupVerifyFailure(t *testing.T) {
 	f := newSetupFixture()
 	f.prober.Outcome = sysdep.ProbeUntrusted // CA in keychain but not trusted
 
-	err := runSetup(context.Background(), f.app, false, false)
+	err := runSetup(context.Background(), f.app, false, false, false)
 	if err == nil {
 		t.Fatal("runSetup succeeded, want a verification failure")
 	}
@@ -207,7 +208,7 @@ func TestSetupVerifyFailure(t *testing.T) {
 func TestSetupBothOptOuts(t *testing.T) {
 	f := newSetupFixture()
 
-	if err := runSetup(context.Background(), f.app, true /*noSkill*/, true /*noCAInstall*/); err != nil {
+	if err := runSetup(context.Background(), f.app, true /*noSkill*/, true /*noCAInstall*/, false); err != nil {
 		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
 	}
 
@@ -227,6 +228,90 @@ func TestSetupBothOptOuts(t *testing.T) {
 	}
 	if strings.Contains(got, "login keychain") {
 		t.Errorf("stdout = %q, want no keychain note when nothing was installed", got)
+	}
+}
+
+// globalConfigPath is where scaffoldGlobalConfig resolves the global config,
+// given runHome — the same path config.Loader.GlobalPath returns.
+const globalConfigPath = runHome + "/.config/agent-creance.yaml"
+
+func TestSetupScaffoldsGlobalConfig(t *testing.T) {
+	f := newSetupFixture()
+
+	if err := runSetup(context.Background(), f.app, false, false, false); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	data, ok := f.fs.Files[globalConfigPath]
+	if !ok {
+		t.Fatalf("global config not written to %q; files: %v", globalConfigPath, keys(f.fs.Files))
+	}
+	// The template must survive the strict parser, which also runs validation
+	// (known keys only; passthrough rules without paths/methods).
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatalf("scaffolded global config does not parse: %v", err)
+	}
+	var anthropic *config.Rule
+	for i := range cfg.Network.Egress.Allow {
+		if cfg.Network.Egress.Allow[i].Host == "api.anthropic.com" {
+			anthropic = &cfg.Network.Egress.Allow[i]
+		}
+	}
+	if anthropic == nil {
+		t.Fatalf("no api.anthropic.com rule; allow = %+v", cfg.Network.Egress.Allow)
+	}
+	if anthropic.Mode != config.ModePassthrough {
+		t.Errorf("api.anthropic.com mode = %q, want passthrough", anthropic.Mode)
+	}
+	if got := f.out.String(); !strings.Contains(got, "✓ Wrote "+globalConfigPath) {
+		t.Errorf("stdout = %q, want the global-config success line", got)
+	}
+}
+
+func TestSetupGlobalConfigExistsUntouched(t *testing.T) {
+	f := newSetupFixture()
+	custom := []byte("# my own config\n")
+	f.fs.Files[globalConfigPath] = custom
+
+	if err := runSetup(context.Background(), f.app, false, false, false); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	if got := f.fs.Files[globalConfigPath]; !bytes.Equal(got, custom) {
+		t.Errorf("existing global config rewritten:\n%s", got)
+	}
+	if got := f.out.String(); !strings.Contains(got, "already exists — left untouched") {
+		t.Errorf("stdout = %q, want the left-untouched notice", got)
+	}
+}
+
+func TestSetupNoGlobalConfig(t *testing.T) {
+	f := newSetupFixture()
+
+	if err := runSetup(context.Background(), f.app, false, false, true /*noGlobalConfig*/); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	if _, ok := f.fs.Files[globalConfigPath]; ok {
+		t.Errorf("global config written despite --no-global-config")
+	}
+	if got := f.out.String(); !strings.Contains(got, "Skipping global config baseline") {
+		t.Errorf("stdout = %q, want the global-config skip notice", got)
+	}
+}
+
+// TestSetupNoSkillStillScaffoldsGlobalConfig pins that the --no-skill branch no
+// longer early-returns: the baseline step runs regardless of the skill opt-out.
+func TestSetupNoSkillStillScaffoldsGlobalConfig(t *testing.T) {
+	f := newSetupFixture()
+
+	if err := runSetup(context.Background(), f.app, true /*noSkill*/, false, false); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	if _, ok := f.fs.Files[globalConfigPath]; !ok {
+		t.Errorf("global config not written under --no-skill; files: %v", keys(f.fs.Files))
 	}
 }
 

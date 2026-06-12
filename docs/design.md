@@ -375,9 +375,13 @@ The patch-level info is silent on `run`/`setup` precisely because it's noise dur
 
 ```sh
 agent-creance setup                 # one-time: install mitmproxy CA into keychain (with post-install
-                                    #   verification curl-test), install skill into ~/.claude/skills/
+                                    #   verification curl-test), install skill into ~/.claude/skills/,
+                                    #   and scaffold ~/.config/agent-creance.yaml with the Claude Code
+                                    #   egress baseline if no global config exists (AC-0043; an
+                                    #   existing file is never touched)
 agent-creance setup --no-skill      # opt out of the skill install
 agent-creance setup --no-ca-install # use the CA via env vars only, don't trust system-wide
+agent-creance setup --no-global-config # don't scaffold the global config baseline
 
 agent-creance init                  # writes .agent-creance.yaml template in the project; scans for
                                     #   manifests (package.json, composer.json) at the root and up to
@@ -454,7 +458,7 @@ Mitmproxy is a normal host daemon — installed via Homebrew, runs as your user,
 
 **v0.1 is OAuth-only (Claude Pro/Max), and does no credential injection.** Proxy-side secret injection for non-Claude services (`op://` references resolved host-side, tokens added as `Authorization` at egress so the agent never sees them) is a v0.2 feature. In v0.1 the only credential in play is Claude Code's own OAuth token, handled as follows.
 
-**Login happens on the host, never in the cage.** The interactive OAuth browser flow (`claude` login) is run normally on the host, outside the sandbox, before the first caged run — a prerequisite, like being logged into `gh`. The cage never opens a browser or handles the callback; it only needs the *resulting* credential plus the ability to *refresh* it, and refresh is a plain HTTPS call to the Anthropic token endpoint, which is on the global allowlist baseline and so traverses the proxy like any other allowed request.
+**Login happens on the host, never in the cage.** The interactive OAuth browser flow (`claude` login) is run normally on the host, outside the sandbox, before the first caged run — a prerequisite, like being logged into `gh`. The cage never opens a browser or handles the callback; it only needs the *resulting* credential plus the ability to *refresh* it, and refresh is a plain HTTPS call to the Anthropic token endpoint, which is on the global allowlist baseline (materialized by `agent-creance setup` since AC-0043: `api.anthropic.com`, `claude.ai`, and `platform.claude.com` as passthrough rules in `~/.config/agent-creance.yaml`) and so traverses the proxy like any other allowed request.
 
 **Executable config and the credential need opposite handling.** Mounting `~/.claude` read-write would expose far more than the token — `settings.json`, hooks, MCP server definitions, and `skills/` are all *executable config* that fires on the user's next, un-caged Claude run. The token, by contrast, is shared state that every session must read *and* write. So agent-creance splits them:
 
