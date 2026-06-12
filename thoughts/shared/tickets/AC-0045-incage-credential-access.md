@@ -1,6 +1,6 @@
 # AC-0045: In-cage credential access via the shared Keychain item
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-12
 **Updated:** 2026-06-12
