@@ -197,12 +197,12 @@ func sbplRegexEscape(p string) string  // escape \ . + * ? ( ) [ ] { } | ^ $
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes (incl. new golden + invariant tests)
-- [ ] `go build ./...` passes
-- [ ] `make lint` passes
+- [x] `make test` passes (incl. new golden + invariant tests)
+- [x] `go build ./...` passes
+- [x] `make lint` passes
 
 #### Manual Verification:
-- [ ] Review `testdata/keychain.golden` against the S2 grant — exactly two
+- [x] Review `testdata/keychain.golden` against the S2 grant — exactly two
   rules, nothing broader.
 
 ---
@@ -263,14 +263,14 @@ func sbplRegexEscape(p string) string  // escape \ . + * ? ( ) [ ] { } | ^ $
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes
-- [ ] `make golden` diff reviewed and committed
-- [ ] `make lint` passes
+- [x] `make test` passes
+- [x] `make golden` diff reviewed and committed
+- [x] `make lint` passes
 
 #### Manual Verification:
 - [ ] `bin/agent-creance run` on this repo launches a caged `claude` that shows
   the normal authenticated prompt — no login/onboarding (ticket AC, verified
-  live). *(Deferred to Phase 5's live check if more convenient.)*
+  live). *(Deferred to Phase 5's live check.)*
 
 ---
 
@@ -359,12 +359,12 @@ fi
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes (drift guard green against the reworded design.md)
-- [ ] `make lint` passes
-- [ ] `go vet ./...` clean (part of lint)
+- [x] `make test` passes (drift guard green against the reworded design.md)
+- [x] `make lint` passes
+- [x] `go vet ./...` clean (part of lint)
 
 #### Manual Verification:
-- [ ] Reworded design.md threat-model bullet reads honestly (exceptions named,
+- [x] Reworded design.md threat-model bullet reads honestly (exceptions named,
   no stale "redirected config dir" language). *(integration battery itself
   runs in Phase 5)*
 
@@ -394,11 +394,11 @@ fi
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes
-- [ ] `make lint` passes
+- [x] `make test` passes
+- [x] `make lint` passes
 
 #### Manual Verification:
-- [ ] Skill text gives actionable, correct guidance (host login, restart; no
+- [x] Skill text gives actionable, correct guidance (host login, restart; no
   in-cage retry).
 
 ---
@@ -420,15 +420,21 @@ fi
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` passes
-- [ ] `make lint` passes
-- [ ] `make test-integration` passes (or skips only for documented host
-  reasons)
-- [ ] `make build` succeeds; `bin/agent-creance` reflects the final commit
+- [x] `make test` passes
+- [x] `make lint` passes
+- [x] `make test-integration` passes (the cage battery skips in this caged
+  implementation session — sandbox-exec does not nest; the enforcer pytest
+  integration suite ran and passed; battery run on the host is a manual item)
+- [x] `make build` succeeds; `bin/agent-creance` reflects the final commit
 
-#### Manual Verification:
-- [ ] Caged session authenticated out of the box (ticket AC 1) — verified live 2026-06-12: `claude doctor` in-cage reports logged-in state; keychain item READ + refresh-WRITE (`security add-generic-password -U`) both succeed in-cage; host login intact afterwards
-- [ ] Host login intact after caged refresh (ticket AC 2, best-effort) — verified via in-cage write to throwaway item + host read-back; real credential untouched and host `claude` still authenticated
+#### Manual Verification (user, on the unsandboxed host — this implementation session ran inside a cage):
+- [ ] `make test-integration` on the unsandboxed host — the battery incl. the
+  `kc-read`/`kc-write`/`claude-json-rw`/`doc-claude-rw` vectors (it correctly
+  skips inside a caged session)
+- [ ] Caged session authenticated out of the box (ticket AC 1): `bin/agent-creance
+  run` reaches an authenticated prompt with no login step
+- [ ] Host login intact after a caged session that refreshed the token (ticket
+  AC 2, best-effort)
 
 ## Testing Strategy
 

@@ -21,6 +21,7 @@ package verify_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -141,6 +142,12 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 	cacheDir, err := os.MkdirTemp(home, ".agent-creance-battery-")
+	if errors.Is(err, os.ErrPermission) {
+		// $HOME is unwritable: this process is itself sandboxed (e.g. a caged dev
+		// session). sandbox-exec does not nest, so the battery cannot run here —
+		// mirror runCaged's nested-sandbox skip rather than failing.
+		t.Skipf("cannot create the battery cache dir under $HOME (%v); run on an unsandboxed macOS host", err)
+	}
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(cacheDir) })
 	t.Setenv("XDG_CACHE_HOME", cacheDir)

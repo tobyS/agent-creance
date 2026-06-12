@@ -74,38 +74,41 @@ without breaking auth is tracked as **AC-0046**.
 
 - [ ] With a valid host login, `agent-creance run` produces a caged Claude
   Code that reaches a working prompt without any in-cage login or onboarding
-  login step (verified live).
+  login step (verified live). *(Pending: live check on the unsandboxed host —
+  the implementation session itself ran inside a cage.)*
 - [ ] In-cage token refresh succeeds against the shared Keychain item; after a
   caged session that refreshed the token, host Claude Code is still logged in
-  (no divergence).
-- [ ] The Seatbelt grant is exactly the S2-scoped one — mach-lookup to
+  (no divergence). *(Pending: live/battery check on the unsandboxed host.)*
+- [x] The Seatbelt grant is exactly the S2-scoped one — mach-lookup to
   `com.apple.SecurityServer` plus write access to the login keychain file
   (`~/Library/Keychains/login.keychain-db*`) — and nothing broader; the grant
-  is visible/reviewable in the generated profile artifacts.
-- [ ] The real `~/.claude` (and `~/.claude.json`) is mounted **read-write**
+  is visible/reviewable in the generated profile artifacts (`keychain.sb`,
+  golden-pinned with an exactly-two-rules invariant test).
+- [x] The real `~/.claude` (and `~/.claude.json`) is mounted **read-write**
   into the cage and `CLAUDE_CONFIG_DIR` is **not** redirected, so the caged
   agent uses the host's account state and the plain `Claude Code-credentials`
   Keychain item. The previously-seeded ephemeral config dir is removed from the
-  cage build (or its redirect/seed is no longer applied for v0.1).
-- [ ] A missing credential still refuses pre-launch with the existing
+  cage build (`~/.claude` via `--add-dirs`, `~/.claude.json*` via the
+  `claude.sb` file-level grant; `state.Layout.ClaudeConfigDir` deleted).
+- [x] A missing credential still refuses pre-launch with the existing
   actionable message; an unusable credential (expired beyond refresh, locked
   keychain) surfaces guidance to log in on the host — via the shipped skill
-  and/or docs — rather than only the raw OAuth/port error.
-- [ ] The cage-verification battery gains an automated in-cage credential
-  vector (integration-tagged) that probes both the read grant (mach-lookup)
-  and the refresh-write grant (file-write to the login keychain db) against a
-  **throwaway** keychain item — never the developer's real credential — so a
-  profile regression that breaks Keychain reachability or refresh fails
-  `make test-integration`.
-- [ ] The battery's config-isolation vectors are reconciled with the mounted
-  config: the vector that asserted the real `~/.claude` is unreachable, and the
-  one asserting planted config does not persist, are updated to reflect that
-  v0.1 mounts `~/.claude` read-write (they document the deferred config cage,
-  per AC-0046, rather than failing).
-- [ ] `docs/design.md`'s keychain/config passages are corrected to match the
-  implemented mechanism (done in the decision commit: the "item's ACL" wording
-  is fixed to the file-level grant, and the config-cage deferral is recorded).
-- [ ] Existing tests continue to pass (`make test`, `make lint`).
+  (new auth-failure section + frontmatter triggers) and docs — rather than
+  only the raw OAuth/port error.
+- [x] The cage-verification battery gains automated in-cage credential
+  vectors (integration-tagged): `kc-read` (mach-lookup) and `kc-write`
+  (login-keychain-db file-write) against a **throwaway** keychain item —
+  never the developer's real credential — so a profile regression that breaks
+  Keychain reachability or refresh fails `make test-integration`. (Plus
+  `claude-json-rw` for the `claude.sb` grant.)
+- [x] The battery's config-isolation vectors are reconciled with the mounted
+  config: `fs-real-claude` → `fs-home-write` (the mount must not widen
+  `$HOME`), `doc-config-dir` → `doc-claude-rw` (planted config persists —
+  documents the deferred config cage, per AC-0046).
+- [x] `docs/design.md`'s keychain/config passages are corrected to match the
+  implemented mechanism (decision commit + the stale threat-model bullet at
+  design.md:51 fixed in the implementation).
+- [x] Existing tests continue to pass (`make test`, `make lint`).
 
 ## Out of Scope
 
@@ -164,7 +167,8 @@ None — posture and scope decided during ticket creation (see Notes).
 
 ## Implementation Plan
 
-[Leave empty - will be filled when plan is created]
+`thoughts/shared/plans/2026-06-12-AC-0045-incage-credential-access.md`
+(status: `…-incage-credential-access.status.md`)
 
 ## Notes & Updates
 
@@ -232,3 +236,21 @@ None — posture and scope decided during ticket creation (see Notes).
   `thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`
   (deferred-scope list, WP-4.2, WP-4.5 vector). Ticket acceptance criteria
   rewritten to match. Ready to re-plan from here.
+
+### 2026-06-12 (implemented — live verification on the host pending)
+- Implemented in five phases (plan + status:
+  `thoughts/shared/plans/2026-06-12-AC-0045-incage-credential-access*`):
+  - `1373917` keychain.sb + claude.sb renderers (S2 grant, golden-pinned)
+  - `b02e61a` cage rewiring: mount real `~/.claude`, no `CLAUDE_CONFIG_DIR`,
+    fragments wired as 4th/5th `--append-profile`
+  - `37b68ef` battery re-pin: `fs-home-write`, `doc-claude-rw`,
+    `kc-read`/`kc-write`/`claude-json-rw`; design.md:51 fixed
+  - `2c6f2c0` skill auth-failure guidance (host-only login)
+- All automated checks green (`make test`, `make lint`,
+  `make test-integration` — the cage battery correctly **skips** inside this
+  caged implementation session; sandbox-exec does not nest; the harness gained
+  an early skip for the unwritable-$HOME case).
+- **Remaining to close:** on the unsandboxed host, run `make test-integration`
+  (battery incl. the credential vectors) and the live AC checks: caged
+  `agent-creance run` reaches an authenticated prompt; host login intact after
+  a caged session.
