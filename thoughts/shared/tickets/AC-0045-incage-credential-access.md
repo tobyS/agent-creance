@@ -35,15 +35,25 @@ Three layers, diagnosed in-session:
 
 ## Desired Outcome
 
-A caged session is authenticated **out of the box** from the host login: the
-caged agent reads and refreshes the **same login-Keychain item**
-(`Claude Code-credentials`) as host Claude Code — no token copies, no
-host/cage credential divergence when refresh rotates tokens. The minimal,
-non-executable auth/account state Claude Code needs to recognize the login is
-seeded into the ephemeral config dir. When the credential is missing or
+A caged session is authenticated **out of the box** from the host login. The
+approach was revised after research (see Notes, 2026-06-12): **v0.1 deliberately
+skips the config cage and mounts the real `~/.claude` (and `~/.claude.json`)
+read-write into the cage**, and does **not** redirect `CLAUDE_CONFIG_DIR`. The
+caged agent therefore reads its normal account state from the real
+`~/.claude.json` and reads/refreshes the **same plain login-Keychain item**
+(`Claude Code-credentials`) as host Claude Code — no token copies, no host/cage
+divergence on refresh, and no dependency on undocumented Claude internals. The
+Seatbelt profile is the only piece that must be built: it grants the cage the
+scoped Keychain access the read+refresh need. When the credential is missing or
 unusable, the user gets actionable "log in on the host" guidance instead of a
 broken in-cage OAuth attempt. An automated verification vector protects the
 mechanism from future profile regressions.
+
+The accepted cost of mounting `~/.claude` read-write is that the
+config-persistence vector is re-opened (a prompt-injected agent can plant a
+hook/MCP/skill that fires on a later un-caged host run). This is a deliberate
+v0.1 scope cut documented in `docs/design.md`; re-introducing config isolation
+without breaking auth is tracked as **AC-0046**.
 
 ## User Stories / Use Cases
 
@@ -69,28 +79,41 @@ mechanism from future profile regressions.
   caged session that refreshed the token, host Claude Code is still logged in
   (no divergence).
 - [ ] The Seatbelt grant is exactly the S2-scoped one — mach-lookup to
-  `com.apple.SecurityServer` plus write access to the login keychain file —
-  and nothing broader; the grant is visible/reviewable in the generated
-  profile artifacts.
-- [ ] Only minimal, non-executable auth/account state is seeded into the
-  ephemeral config dir; no settings, hooks, or other DX state (AC-0044's
-  scope) crosses the boundary.
+  `com.apple.SecurityServer` plus write access to the login keychain file
+  (`~/Library/Keychains/login.keychain-db*`) — and nothing broader; the grant
+  is visible/reviewable in the generated profile artifacts.
+- [ ] The real `~/.claude` (and `~/.claude.json`) is mounted **read-write**
+  into the cage and `CLAUDE_CONFIG_DIR` is **not** redirected, so the caged
+  agent uses the host's account state and the plain `Claude Code-credentials`
+  Keychain item. The previously-seeded ephemeral config dir is removed from the
+  cage build (or its redirect/seed is no longer applied for v0.1).
 - [ ] A missing credential still refuses pre-launch with the existing
   actionable message; an unusable credential (expired beyond refresh, locked
   keychain) surfaces guidance to log in on the host — via the shipped skill
   and/or docs — rather than only the raw OAuth/port error.
 - [ ] The cage-verification battery gains an automated in-cage credential
-  vector (integration-tagged), so a profile regression that breaks Keychain
-  reachability fails `make test-integration`.
-- [ ] `docs/design.md`'s keychain passages (:68, :466) are corrected to match
-  the implemented mechanism (S2 already flagged the "item's ACL" wording as
-  inaccurate).
+  vector (integration-tagged) that probes both the read grant (mach-lookup)
+  and the refresh-write grant (file-write to the login keychain db) against a
+  **throwaway** keychain item — never the developer's real credential — so a
+  profile regression that breaks Keychain reachability or refresh fails
+  `make test-integration`.
+- [ ] The battery's config-isolation vectors are reconciled with the mounted
+  config: the vector that asserted the real `~/.claude` is unreachable, and the
+  one asserting planted config does not persist, are updated to reflect that
+  v0.1 mounts `~/.claude` read-write (they document the deferred config cage,
+  per AC-0046, rather than failing).
+- [ ] `docs/design.md`'s keychain/config passages are corrected to match the
+  implemented mechanism (done in the decision commit: the "item's ACL" wording
+  is fixed to the file-level grant, and the config-cage deferral is recorded).
 - [ ] Existing tests continue to pass (`make test`, `make lint`).
 
 ## Out of Scope
 
-- Broader developer-experience state in the cage (global `CLAUDE.md`, hooks,
-  settings) — AC-0044 (skeleton, to be detailed).
+- Re-introducing executable-config isolation (an ephemeral/redirected
+  `CLAUDE_CONFIG_DIR` that still reaches the shared credential) — **AC-0046**.
+  Mounting the real `~/.claude` read-write in this ticket means global
+  `CLAUDE.md`, hooks, and settings reach the cage for free, which moots
+  AC-0044's in-cage DX-state scope for v0.1.
 - Non-Claude secret injection (1Password, env) — explicitly v0.2 roadmap
   (design.md:509).
 - Allowing inbound binds / making in-cage OAuth possible — login stays
@@ -133,8 +156,11 @@ None — posture and scope decided during ticket creation (see Notes).
 - `internal/cred/cred.go` — detection gate (`Claude Code-credentials`)
 - `internal/cage/cage.go:171-199,236-259` — ephemeral config seeding + env
 - `internal/profile/profile.go:47,58-60` — deny-all baseline, outbound-only
-- `docs/design.md:68,461-466` — credential story (to be corrected)
-- Sibling: `thoughts/shared/tickets/AC-0044-incage-dx-state.md`
+- `docs/design.md` — credential/config story (corrected 2026-06-12 to record
+  the v0.1 config-cage deferral and the file-level keychain grant)
+- Sibling: `thoughts/shared/tickets/AC-0044-incage-dx-state.md` (mooted for
+  v0.1 by mounting `~/.claude`)
+- Follow-up: `thoughts/shared/tickets/AC-0046-config-cage-revisit.md`
 
 ## Implementation Plan
 
@@ -183,3 +209,26 @@ None — posture and scope decided during ticket creation (see Notes).
   history). Option B (copy into the derived item) ruled out: same
   reverse-engineered dependency plus the refresh-divergence the ticket
   rejects.
+
+### 2026-06-12 (decision — supersedes the posture options above)
+- The user chose neither A nor C: **for v0.1, deliberately skip the config cage
+  and mount the real `~/.claude` (and `~/.claude.json`) read-write into the
+  cage; do not redirect `CLAUDE_CONFIG_DIR`.** Rationale: the headline value of
+  agent-creance is network egress filtering, not config isolation, and the
+  ephemeral config dir was actively in the way — it strips global DX state and
+  triggers the hash-suffixed Keychain name. Mounting the real config makes auth
+  "just work" via the plain `Claude Code-credentials` item and the host's
+  account state, with **no dependency on undocumented Claude internals** (no
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`).
+- This removes the auth-state *seeding* work from the ticket (the real
+  `~/.claude.json` already carries it) but **keeps** the Seatbelt keychain
+  grant, the failure-UX/skill work, and the verification vector.
+- Accepted trade-off: the config-persistence escape vector is re-opened
+  (agent can plant a host-executing hook/MCP/skill). Documented honestly in
+  `docs/design.md` and the tech-spec discussion; re-isolation tracked as
+  **AC-0046**. Mounting `~/.claude` also moots AC-0044 for v0.1.
+- Docs updated in the decision commit: `docs/design.md` (credential/config
+  story, threat-model bullet, config example) and
+  `thoughts/shared/discussions/2026-06-04-v0.1-technical-specification.md`
+  (deferred-scope list, WP-4.2, WP-4.5 vector). Ticket acceptance criteria
+  rewritten to match. Ready to re-plan from here.

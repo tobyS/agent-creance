@@ -9,6 +9,15 @@
 > **Skeleton ticket.** Captures what we observed on 2026-06-12; the desired
 > outcome, scope, and acceptance criteria need a dedicated discussion
 > (`/tce:discuss` or a full `/tce:create_ticket` pass) before research starts.
+>
+> **Superseded for v0.1 (2026-06-12).** The AC-0045 decision mounts the real
+> `~/.claude` (and `~/.claude.json`) read-write into the cage, so the
+> developer's global `CLAUDE.md`, settings, and hooks all reach the caged
+> session for free — this ticket's v0.1 pain is resolved as a side effect. It
+> does so by exactly the thing this ticket flagged as out of scope (a blunt RW
+> mount), trading away config isolation deliberately. The careful per-class
+> sharing model sketched below is no longer a v0.1 concern; it folds into the
+> config-cage revisit, **AC-0046**.
 
 ## Problem Statement
 
