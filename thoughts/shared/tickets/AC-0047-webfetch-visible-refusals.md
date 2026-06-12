@@ -1,6 +1,6 @@
 # AC-0047: Make egress refusals visible to body-blind HTTP clients (WebFetch)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-12
 **Updated:** 2026-06-12
