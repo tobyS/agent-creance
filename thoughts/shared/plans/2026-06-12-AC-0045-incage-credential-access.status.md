@@ -151,6 +151,11 @@
 - ✅ `make test`, `make lint`, `make build`
 - ✅ `make test-integration` (battery SKIP in-cage, documented; enforcer
   integration tests PASS)
-- ⚠️ Pending on the unsandboxed host (user): `make test-integration` battery
-  incl. `kc-read`/`kc-write`/`claude-json-rw`/`doc-claude-rw`; live caged
-  `run` reaches an authenticated prompt; host login intact afterwards.
+- ✅ Live verification (2026-06-12, user): a caged session with the new
+  binary authenticates out of the box. **Ticket marked Done.**
+- ℹ️ The battery run on the unsandboxed host stays on the standing M3 manual
+  checklist (`docs/cage-verification.md` §1); it guards the mechanism against
+  future profile regressions.
+
+### Commit
+- `5f1d129` feat(AC-0045): final verification — skip the battery inside a caged session

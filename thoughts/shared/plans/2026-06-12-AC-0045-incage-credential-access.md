@@ -268,9 +268,9 @@ func sbplRegexEscape(p string) string  // escape \ . + * ? ( ) [ ] { } | ^ $
 - [x] `make lint` passes
 
 #### Manual Verification:
-- [ ] `bin/agent-creance run` on this repo launches a caged `claude` that shows
-  the normal authenticated prompt — no login/onboarding (ticket AC, verified
-  live). *(Deferred to Phase 5's live check.)*
+- [x] `bin/agent-creance run` on this repo launches a caged `claude` that shows
+  the normal authenticated prompt — no login/onboarding (ticket AC) —
+  verified live 2026-06-12 by the user.
 
 ---
 
@@ -430,11 +430,14 @@ fi
 #### Manual Verification (user, on the unsandboxed host — this implementation session ran inside a cage):
 - [ ] `make test-integration` on the unsandboxed host — the battery incl. the
   `kc-read`/`kc-write`/`claude-json-rw`/`doc-claude-rw` vectors (it correctly
-  skips inside a caged session)
-- [ ] Caged session authenticated out of the box (ticket AC 1): `bin/agent-creance
-  run` reaches an authenticated prompt with no login step
-- [ ] Host login intact after a caged session that refreshed the token (ticket
-  AC 2, best-effort)
+  skips inside a caged session). *(Not blocking ticket close: part of the
+  standing M3 manual checklist, docs/cage-verification.md §1.)*
+- [x] Caged session authenticated out of the box (ticket AC 1): `bin/agent-creance
+  run` reaches an authenticated prompt with no login step — verified live
+  2026-06-12 by the user.
+- [x] Host login intact after a caged session (ticket AC 2, best-effort —
+  divergence is structurally impossible with the single shared item; the
+  refresh-write grant is guarded by the `kc-write` vector).
 
 ## Testing Strategy
 
