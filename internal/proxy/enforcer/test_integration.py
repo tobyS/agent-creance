@@ -133,8 +133,11 @@ def _wait_until_ready(proc, port, ca_cert, timeout=20.0):
     raise RuntimeError("mitmdump did not become ready in time")
 
 
-def _curl(proxy, url, *, use_mitm_ca, timeout=20):
-    """Drive curl through the proxy. Returns (returncode, http_code, headers, body)."""
+def _curl(proxy, url, *, use_mitm_ca, http1=False, timeout=20):
+    """Drive curl through the proxy. Returns (returncode, http_code, headers, body).
+
+    http1=True forces HTTP/1.1 to the origin so the status line carries the reason
+    phrase (HTTP/2 drops reason phrases entirely)."""
     with tempfile.TemporaryDirectory() as d:
         body_path = os.path.join(d, "body")
         hdr_path = os.path.join(d, "hdr")
@@ -146,6 +149,8 @@ def _curl(proxy, url, *, use_mitm_ca, timeout=20):
             "-w", "%{http_code}",
             url,
         ]
+        if http1:
+            cmd.append("--http1.1")
         if use_mitm_ca:
             cmd += ["--cacert", proxy.ca_cert]
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -209,6 +214,20 @@ def test_hard_deny_471():
     assert code == "471"
     assert "x-cage-reason: hard-deny" in headers.lower()
     assert json.loads(body)["reason"] == "Blocked for testing."
+
+
+def test_refusal_reason_phrase_on_the_wire_http1():
+    # Over HTTP/1.1 the status line carries the reason phrase (AC-0050); HTTP/2
+    # drops it, so force h1.1 to observe what an echoing client/log would see.
+    with running_proxy(_DENY_POLICY) as p:
+        _, _, soft_headers, _ = _curl(
+            p, "https://not-allowlisted.test/v2/auth/", use_mitm_ca=True, http1=True
+        )
+        _, _, hard_headers, _ = _curl(
+            p, "https://blocked.test/anything", use_mitm_ca=True, http1=True
+        )
+    assert "470 agent-creance soft-deny (not allowlisted)" in soft_headers
+    assert "471 agent-creance hard-deny (blocked)" in hard_headers
 
 
 # --- outcomes that need real egress -------------------------------------------

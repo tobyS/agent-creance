@@ -56,6 +56,17 @@ logger = logging.getLogger(__name__)
 _POLL_INTERVAL_SECONDS = 1.0
 
 
+def _make_response(r: responses.CageResponse) -> http.Response:
+    """Build the mitmproxy response from a CageResponse, including the reason phrase.
+
+    Response.make defaults the reason to "" for unregistered codes (470/471), so we
+    set it explicitly — see responses.REASON_PHRASE_* for why (AC-0050).
+    """
+    resp = http.Response.make(r.status, r.body, r.headers)
+    resp.reason = r.reason_phrase
+    return resp
+
+
 class Enforcer:
     """The mitmproxy addon. Holds the live RuleSet and the policy file's mtime."""
 
@@ -166,7 +177,7 @@ class Enforcer:
         if disp.passthrough and disp.deny_reason is not None:
             url = f"https://{host}/"
             r = responses.hard_deny(url, disp.deny_reason)
-            flow.response = http.Response.make(r.status, r.body, r.headers)
+            flow.response = _make_response(r)
             # Host-only: TLS never terminates here, so there is no path/method/status
             # to record. This is the one place a denied passthrough host is audited
             # (the request/response hooks never run for it).
@@ -216,7 +227,7 @@ class Enforcer:
                 reason = self._ruleset.deny_always[result.matched.index].reason
             r = responses.hard_deny(url, reason)
 
-        flow.response = http.Response.make(r.status, r.body, r.headers)
+        flow.response = _make_response(r)
 
     def response(self, flow: http.HTTPFlow) -> None:
         """Audit an intercepted request once its response status is known.

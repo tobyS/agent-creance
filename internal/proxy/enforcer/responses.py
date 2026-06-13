@@ -50,6 +50,15 @@ HOW_TO_PROCEED_HARD = (
 STATUS_SOFT_DENY = 470
 STATUS_HARD_DENY = 471
 
+# Self-describing HTTP reason phrases for the two refusal codes. mitmproxy defaults
+# the reason to "" for unregistered codes, so without these the 470/471 status line
+# is blank over HTTP/1.1. The phrase is NOT a channel to WebFetch (h2 carries no
+# reason phrase, and WebFetch synthesizes "Unknown Status" for unknown codes — see
+# AC-0050); it serves HTTP/1.1 clients that echo it, mitmproxy logs, and humans
+# debugging the cage with curl -v.
+REASON_PHRASE_SOFT_DENY = "agent-creance soft-deny (not allowlisted)"
+REASON_PHRASE_HARD_DENY = "agent-creance hard-deny (blocked)"
+
 _CONTENT_TYPE = "application/json"
 
 
@@ -60,6 +69,7 @@ class CageResponse:
     status: int
     headers: dict[str, str]
     body: bytes
+    reason_phrase: str
 
 
 def _encode(obj: dict) -> bytes:
@@ -87,6 +97,7 @@ def soft_deny(url: str, host: str, path: str, method: str) -> CageResponse:
         status=STATUS_SOFT_DENY,
         headers={"Content-Type": _CONTENT_TYPE, X_CAGE_REASON: REASON_SOFT_DENY},
         body=body,
+        reason_phrase=REASON_PHRASE_SOFT_DENY,
     )
 
 
@@ -104,4 +115,5 @@ def hard_deny(url: str, reason: str) -> CageResponse:
         status=STATUS_HARD_DENY,
         headers={"Content-Type": _CONTENT_TYPE, X_CAGE_REASON: REASON_HARD_DENY},
         body=body,
+        reason_phrase=REASON_PHRASE_HARD_DENY,
     )

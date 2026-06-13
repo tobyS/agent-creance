@@ -91,6 +91,7 @@ def test_soft_deny_returns_470(addon):
     addon.request(flow)
     assert flow.response is not None
     assert flow.response.status_code == 470
+    assert flow.response.reason == "agent-creance soft-deny (not allowlisted)"
     assert flow.response.headers[responses.X_CAGE_REASON] == "soft-deny"
     body = json.loads(flow.response.content)
     assert body["error"] == "agent_cage_not_allowlisted"
@@ -105,6 +106,7 @@ def test_hard_deny_returns_471_with_reason(addon):
     addon.request(flow)
     assert flow.response is not None
     assert flow.response.status_code == 471
+    assert flow.response.reason == "agent-creance hard-deny (blocked)"
     assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
     body = json.loads(flow.response.content)
     assert body["error"] == "agent_cage_hard_deny"
@@ -126,6 +128,7 @@ def test_connect_refused_for_denied_passthrough_host(addon):
     addon.http_connect(flow)
     assert flow.response is not None
     assert flow.response.status_code == 471
+    assert flow.response.reason == "agent-creance hard-deny (blocked)"
     assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
     body = json.loads(flow.response.content)
     assert body["reason"] == "Blocked tunnel host."

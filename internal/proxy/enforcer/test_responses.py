@@ -49,6 +49,7 @@ def test_soft_deny_envelope():
     assert r.status == 470
     assert r.headers[responses.X_CAGE_REASON] == "soft-deny"
     assert r.headers["Content-Type"] == "application/json"
+    assert r.reason_phrase == "agent-creance soft-deny (not allowlisted)"
 
 
 def test_hard_deny_envelope():
@@ -56,6 +57,7 @@ def test_hard_deny_envelope():
     assert r.status == 471
     assert r.headers[responses.X_CAGE_REASON] == "hard-deny"
     assert r.headers["Content-Type"] == "application/json"
+    assert r.reason_phrase == "agent-creance hard-deny (blocked)"
 
 
 def test_allow_command_suggestion_uses_host_and_path():
