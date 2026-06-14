@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -252,18 +253,49 @@ func TestSetupScaffoldsGlobalConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scaffolded global config does not parse: %v", err)
 	}
-	var anthropic *config.Rule
+	byHost := map[string]*config.Rule{}
 	for i := range cfg.Network.Egress.Allow {
-		if cfg.Network.Egress.Allow[i].Host == "api.anthropic.com" {
-			anthropic = &cfg.Network.Egress.Allow[i]
-		}
+		r := &cfg.Network.Egress.Allow[i]
+		byHost[r.Host] = r
 	}
+
+	anthropic := byHost["api.anthropic.com"]
 	if anthropic == nil {
 		t.Fatalf("no api.anthropic.com rule; allow = %+v", cfg.Network.Egress.Allow)
 	}
 	if anthropic.Mode != config.ModePassthrough {
 		t.Errorf("api.anthropic.com mode = %q, want passthrough", anthropic.Mode)
 	}
+
+	// AC-0048: Anthropic docs hosts. code.claude.com is GET-only and path-scoped
+	// to /docs; the legacy redirector hosts are host-wide GET. All intercept, so
+	// the path/method scoping is enforceable (passthrough would reject it).
+	docs := byHost["code.claude.com"]
+	if docs == nil {
+		t.Fatalf("no code.claude.com rule; allow = %+v", cfg.Network.Egress.Allow)
+	}
+	if docs.Mode != config.ModeIntercept {
+		t.Errorf("code.claude.com mode = %q, want intercept", docs.Mode)
+	}
+	if docs.Paths == nil || !slices.Contains(*docs.Paths, "/docs/") {
+		t.Errorf("code.claude.com paths = %v, want to contain %q", docs.Paths, "/docs/")
+	}
+	if docs.Methods == nil || !slices.Contains(*docs.Methods, "GET") {
+		t.Errorf("code.claude.com methods = %v, want to contain GET", docs.Methods)
+	}
+	for _, host := range []string{"docs.anthropic.com", "docs.claude.com"} {
+		r := byHost[host]
+		if r == nil {
+			t.Fatalf("no %s rule; allow = %+v", host, cfg.Network.Egress.Allow)
+		}
+		if r.Mode != config.ModeIntercept {
+			t.Errorf("%s mode = %q, want intercept", host, r.Mode)
+		}
+		if r.Methods == nil || !slices.Contains(*r.Methods, "GET") {
+			t.Errorf("%s methods = %v, want to contain GET", host, r.Methods)
+		}
+	}
+
 	if got := f.out.String(); !strings.Contains(got, "✓ Wrote "+globalConfigPath) {
 		t.Errorf("stdout = %q, want the global-config success line", got)
 	}

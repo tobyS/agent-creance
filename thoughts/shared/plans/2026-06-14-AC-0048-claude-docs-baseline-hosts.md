@@ -125,13 +125,13 @@ the assertions readable.
 ### Success criteria
 
 #### Automated
-- [ ] `make test` passes (`TestSetupScaffoldsGlobalConfig` proves the template
+- [x] `make test` passes (`TestSetupScaffoldsGlobalConfig` proves the template
       still parses+validates and the new rules are present and correctly scoped).
-- [ ] `make lint` passes (`go vet` + `golangci-lint`).
-- [ ] `go build ./...` succeeds.
+- [x] `make lint` passes (`go vet` + `golangci-lint`).
+- [x] `go build ./...` succeeds.
 
 #### Manual
-- [ ] Reading `globalConfigTemplate`, the three new entries are present, scoped
+- [x] Reading `globalConfigTemplate`, the three new entries are present, scoped
       as specified, and the comment explains the GET-only / redirector rationale.
 
 ---

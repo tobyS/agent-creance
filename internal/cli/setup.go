@@ -126,12 +126,14 @@ func scaffoldGlobalConfig(app *App) error {
 }
 
 // globalConfigTemplate is the scaffolded global baseline: the hosts Claude Code
-// officially requires (https://code.claude.com/docs/en/network-config). Hosts
-// whose traffic carries OAuth tokens are passthrough per the design's
-// credential-privacy rationale (docs/design.md "passthrough"); optional
-// telemetry hosts ship commented out so blocking them stays a visible choice.
-// Must parse under config.Parse (strict keys; passthrough forbids paths/methods)
-// — pinned by TestGlobalConfigTemplateParses.
+// officially requires (https://code.claude.com/docs/en/network-config) plus
+// Anthropic's public documentation hosts so a caged agent can read the docs out
+// of the box (AC-0048). Hosts whose traffic carries OAuth tokens are passthrough
+// per the design's credential-privacy rationale (docs/design.md "passthrough");
+// the docs hosts are GET-only intercept (public, read-only); optional telemetry
+// hosts ship commented out so blocking them stays a visible choice. Must parse
+// under config.Parse (strict keys; passthrough forbids paths/methods) — pinned by
+// TestSetupScaffoldsGlobalConfig.
 const globalConfigTemplate = `# Global agent-creance configuration. Merged beneath every project's
 # .agent-creance.yaml; rules here apply to all cages on this machine.
 # Scaffolded by ` + "`agent-creance setup`" + ` — edit freely, setup never overwrites
@@ -152,6 +154,21 @@ network:
       - host: downloads.claude.ai
       # Release-notes feed and plugin marketplace metadata.
       - host: raw.githubusercontent.com
+      # Anthropic's public documentation (credential-free, read-only). Scoped to
+      # GET so the cage opens these hosts for reading docs only, never writes.
+      # code.claude.com serves the Claude Code + Agent SDK docs under /docs;
+      # docs.anthropic.com and docs.claude.com are legacy hosts that redirect to
+      # platform.claude.com (allowed above), so they are host-wide GET.
+      - host: code.claude.com
+        mode: intercept
+        paths: ["/docs/"]
+        methods: [GET]
+      - host: docs.anthropic.com
+        mode: intercept
+        methods: [GET]
+      - host: docs.claude.com
+        mode: intercept
+        methods: [GET]
       # Optional telemetry — Claude Code works without it (requests are
       # soft-denied and only metrics/error reporting degrade). Uncomment
       # to allow:
