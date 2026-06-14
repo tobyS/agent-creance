@@ -18,6 +18,35 @@ configured by one `.agent-creance.yaml` file.
 - For actually running a cage (not yet wired up): `agent-safehouse` and
   `mitmproxy` on `PATH`.
 
+## Egress baseline
+
+`agent-creance setup` scaffolds a global config at `~/.config/agent-creance.yaml`
+with the "always-allowed" baseline a caged Claude agent needs — the Claude Code
+API/OAuth hosts plus Anthropic's public documentation hosts, so routine "how does
+Claude Code X work" lookups don't get soft-denied. `setup` never modifies an
+existing global config; it only writes the file when none is present.
+
+If your global config predates the documentation hosts (added in AC-0048), add
+them under `network.egress.allow` to read Anthropic's docs from inside the cage.
+They are credential-free and scoped to `GET` (`code.claude.com` to `/docs`; the
+two legacy hosts redirect to the already-allowed `platform.claude.com`):
+
+```yaml
+network:
+  egress:
+    allow:
+      - host: code.claude.com
+        mode: intercept
+        paths: ["/docs/"]
+        methods: [GET]
+      - host: docs.anthropic.com
+        mode: intercept
+        methods: [GET]
+      - host: docs.claude.com
+        mode: intercept
+        methods: [GET]
+```
+
 ## Development
 
 ```sh

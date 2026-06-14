@@ -155,10 +155,10 @@ Keep it concise and consistent with the README's terse, pre-v0.1 tone.
 ### Success criteria
 
 #### Automated
-- [ ] `make test` still passes (docs-only change; sanity only).
+- [x] `make test` still passes (docs-only change; sanity only).
 
 #### Manual
-- [ ] README has the new section; the snippet is copy-pasteable and matches the
+- [x] README has the new section; the snippet is copy-pasteable and matches the
       template's hosts/scoping exactly.
 
 ---

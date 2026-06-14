@@ -15,6 +15,9 @@ updated: 2026-06-14
   host→rule lookup asserting the new rules' mode/paths/methods (uses `slices`).
 - `make test` + `make lint` green.
 
-## Phase 2 — README adoption note — PENDING
+## Phase 2 — README adoption note — DONE
+- Added an `## Egress baseline` section to README: explains the scaffolded global
+  baseline now includes Anthropic docs hosts, and gives the copy-paste snippet
+  for existing-config users (matches the template's hosts/scoping).
 
 ## Phase 3 — build + ticket close — PENDING
