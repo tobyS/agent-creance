@@ -174,12 +174,12 @@ Keep it concise and consistent with the README's terse, pre-v0.1 tone.
 ### Success criteria
 
 #### Automated
-- [ ] `make test` green.
-- [ ] `make lint` green.
-- [ ] `make build` produces `bin/agent-creance`.
+- [x] `make test` green.
+- [x] `make lint` green.
+- [x] `make build` produces `bin/agent-creance`.
 
 #### Manual
-- [ ] Ticket `AC-0048` status is `Done` with an implementation note.
+- [x] Ticket `AC-0048` status is `Done` with an implementation note.
 - [ ] (Optional, user) live cage run: `code.claude.com/docs/...` returns an
       intercept allow (visible in the audit log / `policy explain`).
 

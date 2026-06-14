@@ -20,4 +20,9 @@ updated: 2026-06-14
   baseline now includes Anthropic docs hosts, and gives the copy-paste snippet
   for existing-config users (matches the template's hosts/scoping).
 
-## Phase 3 — build + ticket close — PENDING
+## Phase 3 — build + ticket close — DONE
+- `make test`, `make lint`, `make build` green; `bin/agent-creance` rebuilt.
+- Ticket `AC-0048` set to `**Status:** Done` with a 2026-06-14 implementation note
+  and the research/plan links in Implementation Plan.
+- Optional live cage run (audit-log allow for code.claude.com/docs) left to the
+  user.

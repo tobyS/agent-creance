@@ -1,9 +1,9 @@
 # AC-0048: Add Claude documentation hosts to the global egress baseline
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-12
-**Updated:** 2026-06-12
+**Updated:** 2026-06-14
 
 ## Problem Statement
 
@@ -98,7 +98,8 @@ None.
 
 ## Implementation Plan
 
-[Leave empty - will be filled when plan is created]
+- Research: `thoughts/shared/research/2026-06-14-AC-0048-claude-docs-baseline-hosts.md`
+- Plan: `thoughts/shared/plans/2026-06-14-AC-0048-claude-docs-baseline-hosts.md`
 
 ## Notes & Updates
 
@@ -108,3 +109,19 @@ None.
   GitHub project-filtering is a main purpose of the cage.
 - Sized Small: baseline template edit + tests + adoption note; host research is
   the only open work.
+
+### 2026-06-14 (implementation)
+
+- Added three Anthropic docs hosts to `globalConfigTemplate` (`internal/cli/setup.go`):
+  `code.claude.com` (intercept, GET, path-scoped to `/docs/`) plus legacy
+  redirectors `docs.anthropic.com` / `docs.claude.com` (intercept, host-wide GET).
+  All intercept so GET/path scoping is enforceable and audited.
+- Checkpoint decisions (Toby): include the two legacy redirector hosts (not just
+  code.claude.com) so older doc links resolve; put the adoption snippet in README.
+- Research-resolved (no checkpoint): `platform.claude.com` already covers the API
+  docs via its passthrough entry (unchanged); Mintlify CDN asset hosts excluded
+  (agent reads docs via GET, not browser rendering — keeps the baseline
+  Anthropic-only/minimal); no GitHub host added.
+- `TestSetupScaffoldsGlobalConfig` asserts the new rules' mode/paths/methods.
+  `make test`, `make lint`, `make build` green. End-to-end allow (live cage run)
+  is the optional manual confirmation.
