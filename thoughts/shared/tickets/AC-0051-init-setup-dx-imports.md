@@ -1,9 +1,9 @@
 # AC-0051: First-run DX — import allowlist & ports during init/setup
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-14
-**Updated:** 2026-06-14
+**Updated:** 2026-06-15
 
 ## Problem Statement
 
@@ -200,7 +200,8 @@ _None — business/product questions resolved during ticket creation._
 
 ## Implementation Plan
 
-_To be filled when the plan is created._
+- Research: `thoughts/shared/research/2026-06-14-AC-0051-init-setup-dx-imports.md`
+- Plan: `thoughts/shared/plans/2026-06-15-AC-0051-init-setup-dx-imports.md`
 
 ## Notes & Updates
 
@@ -228,3 +229,31 @@ Key decisions made during ticket creation:
 - Added scope beyond the original two ideas: MCP server detection (project +
   global) and static dev-port detection, plus a mandatory review/confirm step
   before writing — all confirmed in discussion.
+
+### 2026-06-15 — Implemented (Done)
+
+Shipped across six commits (b66258f → 4994f89):
+
+- `internal/claudeimport` — reads `.claude/settings*.json`, `.mcp.json`,
+  `~/.claude.json` (project + global scopes) → web rules (GET intercept), MCP
+  rules (passthrough), localhost MCP ports.
+- `internal/portscan` — docker-compose / package.json scripts / Procfile / .env
+  → `host_services` (deduped by port, source precedence).
+- `internal/config` — `AppendHostService` comment-preserving splice +
+  exported `RenderRule`/`RenderHostService`.
+- `agent-creance import FILE` — strict-validate, review, splice-merge, `--yes`.
+- `init` — three independent TTY-gated import steps + review-before-write +
+  end-of-run agent prompt; template assembled from pieces (no-import output
+  byte-identical to before).
+- `setup` — seeds a fresh global baseline from global Claude config; existing
+  file still left untouched. Docs updated (design.md, README).
+
+Planning-checkpoint decisions: remote MCP → `passthrough`; static port
+detection broadest (compose + scripts + Procfile + .env); also import
+`sandbox.network.allowedDomains` alongside `WebFetch(domain:…)`.
+
+Research-driven corrections to the original ACs: local *stdio* MCP servers have
+no port/egress (only a localhost MCP `url` is a port); WebFetch globs map 1:1 to
+`Rule.Host` (our `matchHost` already supports `*`/`*.suffix`), with a bare `*`
+skipped. No non-interactive escape-hatch flag was needed — the automatic TTY
+skip suffices; `import` uses `--yes` for non-interactive apply.
