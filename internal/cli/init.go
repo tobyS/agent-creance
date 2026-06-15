@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -73,7 +72,38 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) err
 	}
 
 	gens := scanGenerators(app.FS, dir)
-	content := renderConfigTemplate(gens)
+
+	// On an interactive terminal, offer to seed the config from the project's
+	// Claude Code settings and from static port detection. Non-interactive runs
+	// skip all of this and scaffold exactly as before.
+	var (
+		allow []config.Rule
+		ports []config.HostService
+	)
+	if app.Terminal.IsInteractive() {
+		a, p, err := gatherImports(app, dir)
+		if err != nil {
+			return err
+		}
+		allow, ports = a, p
+	}
+
+	content := renderConfigTemplate(gens, allow, ports)
+
+	// When an import step contributed entries, show the result and confirm before
+	// writing — the engineer reviews exactly what lands in the allowlist.
+	if len(allow) > 0 || len(ports) > 0 {
+		fmt.Fprintf(app.Stdout, "\nResulting %s:\n\n%s\n", configFile, content)
+		ok, err := confirm(app, "Write this configuration?")
+		if err != nil {
+			return fmt.Errorf("read confirmation: %w", err)
+		}
+		if !ok {
+			fmt.Fprintf(app.Stdout, "%s not written; re-run `agent-creance init` to try again.\n", configFile)
+			return nil
+		}
+	}
+
 	if err := writeFileAtomic(app.FS, dest, []byte(content), configFilePerm); err != nil {
 		return fmt.Errorf("init: write %q: %w", dest, err)
 	}
@@ -87,6 +117,10 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) err
 	} else {
 		fmt.Fprintln(app.Stdout, "Next: run `agent-creance run`.")
 	}
+
+	// Finally, offer the agent prompt for the config that can't be inferred
+	// statically (stack documentation hosts and any remaining ports).
+	maybeOfferAgentPrompt(app)
 	return nil
 }
 
@@ -142,9 +176,13 @@ func ensureHostSetup(ctx context.Context, app *App) error {
 // returning true only for an explicit yes (y / yes, case-insensitive). A closed or
 // empty input (io.EOF) reads as no, so a stray non-interactive call defaults to the
 // safe, non-destructive answer. Only a genuine read failure returns an error.
+//
+// It reads exactly up to the newline (not via a buffered reader) so several
+// sequential confirm calls can share one app.Stdin without an earlier call
+// swallowing later answers into a discarded buffer.
 func confirm(app *App, prompt string) (bool, error) {
 	fmt.Fprintf(app.Stdout, "%s [y/N]: ", prompt)
-	line, err := bufio.NewReader(app.Stdin).ReadString('\n')
+	line, err := readLine(app.Stdin)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
 	}
@@ -153,6 +191,27 @@ func confirm(app *App, prompt string) (bool, error) {
 		return true, nil
 	default:
 		return false, nil
+	}
+}
+
+// readLine reads one line (without the trailing newline) from r, consuming exactly
+// the bytes up to and including the newline and no more — so the remainder stays
+// available for the next read. It returns any accumulated bytes alongside a
+// terminal error (e.g. io.EOF on the last, newline-less line).
+func readLine(r io.Reader) (string, error) {
+	var b []byte
+	buf := make([]byte, 1)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if buf[0] == '\n' {
+				return string(b), nil
+			}
+			b = append(b, buf[0])
+		}
+		if err != nil {
+			return string(b), err
+		}
 	}
 }
 
@@ -275,12 +334,37 @@ func writeFileAtomic(fsys sysdep.FileSystem, name string, data []byte, perm fs.F
 	return nil
 }
 
-// renderConfigTemplate builds the .agent-creance.yaml template, splicing in the
-// generators block for the detected manifests. The result is a minimal but valid
-// config with commented allow/deny stubs as inline guidance; per docs/design.md it
-// never writes a .gitignore block (all runtime state lives out-of-tree).
-func renderConfigTemplate(generators []config.Generator) string {
-	return fmt.Sprintf(configTemplate, generatorsBlock(generators))
+// renderConfigTemplate builds the .agent-creance.yaml template: the generators
+// block for the detected manifests, plus any imported host_services (ports) and
+// allow rules. With no imports (nil allow/ports) the output is the original
+// minimal scaffold with commented allow/deny stubs — byte-for-byte unchanged, so
+// non-interactive init behaves exactly as before. Per docs/design.md it never
+// writes a .gitignore block (all runtime state lives out-of-tree).
+func renderConfigTemplate(generators []config.Generator, allow []config.Rule, ports []config.HostService) string {
+	var b strings.Builder
+	b.WriteString(configHeader)
+	if len(ports) > 0 {
+		b.WriteString("  host_services:\n")
+		for _, hs := range ports {
+			for _, line := range config.RenderHostService(hs, 4) {
+				b.WriteString(line + "\n")
+			}
+		}
+	}
+	b.WriteString("  egress:\n")
+	b.WriteString(generatorsBlock(generators))
+	if len(allow) > 0 {
+		b.WriteString("    allow:\n")
+		for _, r := range allow {
+			for _, line := range config.RenderRule(r, 6) {
+				b.WriteString(line + "\n")
+			}
+		}
+	} else {
+		b.WriteString(commentedAllowStub)
+	}
+	b.WriteString(commentedDenyStub)
+	return b.String()
 }
 
 // generatorsBlock renders the network.egress.generators: region: a real list of
@@ -304,10 +388,11 @@ func generatorsBlock(generators []config.Generator) string {
 	return b.String()
 }
 
-// configTemplate is the starter config. The single %s is the generators block
-// (rendered by generatorsBlock). Indentation is significant — keep it in sync with
-// the schema (internal/config) and the design's example (docs/design.md).
-const configTemplate = `# .agent-creance.yaml — agent-creance project config.
+// The starter config is assembled from these pieces by renderConfigTemplate.
+// Indentation is significant — keep it in sync with the schema (internal/config)
+// and the design's example (docs/design.md). configHeader ends at "network:\n" so
+// an optional host_services block, then "  egress:\n", follow it.
+const configHeader = `# .agent-creance.yaml — agent-creance project config.
 # Full schema and guidance: docs/design.md. Manage egress rules interactively
 # with ` + "`agent-creance allow`" + ` / ` + "`agent-creance deny`" + `.
 agent:
@@ -318,12 +403,18 @@ safehouse:
   add_dirs_rw: [.]
 
 network:
-  egress:
-%s    # allow:
+`
+
+// commentedAllowStub is the inline allow: guidance emitted when no rules were
+// imported (so a fresh scaffold shows the user how to add one).
+const commentedAllowStub = `    # allow:
     #   - host: api.github.com
     #     paths: ["/repos/you/your-project/"]
     #     methods: [GET, POST]
-    # deny_always:
+`
+
+// commentedDenyStub is the always-present deny_always: guidance.
+const commentedDenyStub = `    # deny_always:
     #   - host: w3schools.com
     #     reason: "Known low-quality source. Use MDN or official docs instead."
 `

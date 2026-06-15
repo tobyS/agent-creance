@@ -50,7 +50,7 @@ var renderCases = []struct {
 func TestRenderConfigTemplate(t *testing.T) {
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := renderConfigTemplate(tc.gens)
+			got := renderConfigTemplate(tc.gens, nil, nil)
 			golden := filepath.Join("testdata", "init", tc.golden)
 
 			if *update {
@@ -71,7 +71,7 @@ func TestRenderConfigTemplate(t *testing.T) {
 func TestRenderConfigTemplateParses(t *testing.T) {
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens)))
+			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens, nil, nil)))
 			require.NoError(t, err)
 			require.Equal(t, tc.gens, cfg.Network.Egress.Generators)
 		})
