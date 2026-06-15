@@ -227,7 +227,7 @@ First `agent-creance run` on a new project with 50 npm direct deps: ~10 second o
 **Future, post-v0.1.** Once the generator framework is in place, several refinements become natural extensions:
 
 - Generators for other ecosystems: `pyproject_toml`, `cargo_toml`, `go_mod`, `gemfile`. Each is a small additional Go file.
-- A documentation generator that, given a list of dependencies, prompts the agent (via the user's existing Claude session) to expand the allowlist with each library's commonly-used external documentation hosts beyond just the registry-stated homepage. Useful when a library's docs are spread across multiple hosts.
+- *(Shipped in AC-0051, not as a generator.)* The "prompt the agent to expand the allowlist with each library's documentation hosts" idea is realized as `agent-creance init`'s end-of-run agent prompt plus the `agent-creance import` command: init prints a prompt the engineer hands to their agent, which writes a config fragment (documentation hosts + local ports) the engineer reviews and merges with `import`. This stays out of the automated generator path on purpose — agent-suggested hosts are reviewed before they ever reach the allowlist.
 - Per-generator configuration: transitive-deps mode, narrower path scoping, custom manifest paths.
 
 None of these are in v0.1. The schema accommodates them when they land.
@@ -383,7 +383,11 @@ agent-creance setup                 # one-time: install mitmproxy CA into keycha
                                     #   verification curl-test), install skill into ~/.claude/skills/,
                                     #   and scaffold ~/.config/agent-creance.yaml with the Claude Code
                                     #   egress baseline if no global config exists (AC-0043; an
-                                    #   existing file is never touched)
+                                    #   existing file is never touched). When it creates the baseline
+                                    #   it also seeds it from your *global* Claude Code config
+                                    #   (~/.claude): WebFetch(domain:) + sandbox.network.allowedDomains
+                                    #   as GET-only intercept rules, and global MCP servers (remote →
+                                    #   passthrough, localhost → port) (AC-0051)
 agent-creance setup --no-skill      # opt out of the skill install
 agent-creance setup --no-ca-install # use the CA via env vars only, don't trust system-wide
 agent-creance setup --no-global-config # don't scaffold the global config baseline
@@ -391,7 +395,14 @@ agent-creance setup --no-global-config # don't scaffold the global config baseli
 agent-creance init                  # writes .agent-creance.yaml template in the project; scans for
                                     #   manifests (package.json, composer.json) at the root and up to
                                     #   two directory levels deep — skipping node_modules/ & vendor/ —
-                                    #   and pre-populates one generators: entry per detected manifest
+                                    #   and pre-populates one generators: entry per detected manifest.
+                                    #   On an interactive terminal it also offers (each its own y/N,
+                                    #   auto-skipped without a TTY) to import the project's Claude Code
+                                    #   allowed web domains and MCP servers (.claude/settings*.json,
+                                    #   .mcp.json, ~/.claude.json) and statically detected dev ports
+                                    #   (docker-compose, package.json scripts, Procfile, .env), shows
+                                    #   the resulting config and confirms before writing, then offers
+                                    #   an agent prompt to fill in the rest (AC-0051)
 agent-creance run                   # starts the cage and the agent; if setup hasn't been run
                                     #   yet (no trusted CA, no skill), prints a clear pointer
                                     #   to `agent-creance setup` and exits non-zero rather than
@@ -401,6 +412,10 @@ agent-creance allow URL             # append a soft-allow rule to .agent-creance
 agent-creance allow --once URL      # project-session-scoped allow (see "Session-scoped allows")
 agent-creance allow --global URL    # append to ~/.config/agent-creance.yaml instead
 agent-creance deny URL              # append a deny_always rule (optionally with --reason)
+agent-creance import FILE           # merge a YAML config fragment (egress allow/deny rules and
+                                    #   host_services) into .agent-creance.yaml after review; strict-
+                                    #   validates the fragment, shows the merged result, writes on
+                                    #   confirm (or --yes). Paste-back half of init's agent prompt
 
 agent-creance policy show           # dump the fully-resolved policy with rule sources
 agent-creance policy explain URL    # show which rule (if any) matches a given URL

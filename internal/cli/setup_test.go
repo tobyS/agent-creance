@@ -333,6 +333,43 @@ func TestSetupNoGlobalConfig(t *testing.T) {
 	}
 }
 
+// TestSetupSeedsGlobalConfigFromClaude pins that, on a fresh machine, setup seeds
+// the global baseline from the user's global Claude Code config: a WebFetch domain
+// (GET-only intercept) and a remote MCP server (passthrough).
+func TestSetupSeedsGlobalConfigFromClaude(t *testing.T) {
+	f := newSetupFixture()
+	f.fs.Files[runHome+"/.claude/settings.json"] =
+		[]byte(`{"permissions":{"allow":["WebFetch(domain:docs.mylib.dev)"]}}`)
+	f.fs.Files[runHome+"/.claude.json"] =
+		[]byte(`{"mcpServers":{"corp":{"type":"http","url":"https://mcp.corp.example"}}}`)
+
+	if err := runSetup(context.Background(), f.app, false, false, false); err != nil {
+		t.Fatalf("runSetup: %v\nstdout: %s", err, f.out)
+	}
+
+	data, ok := f.fs.Files[globalConfigPath]
+	if !ok {
+		t.Fatalf("global config not written; files: %v", keys(f.fs.Files))
+	}
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatalf("seeded global config does not parse: %v\n%s", err, data)
+	}
+	web := findHost(t, cfg.Network.Egress.Allow, "docs.mylib.dev")
+	if web.Mode != config.ModeIntercept || web.Methods == nil {
+		t.Errorf("docs.mylib.dev = %+v, want GET-only intercept", web)
+	}
+	mcp := findHost(t, cfg.Network.Egress.Allow, "mcp.corp.example")
+	if mcp.Mode != config.ModePassthrough {
+		t.Errorf("mcp.corp.example mode = %q, want passthrough", mcp.Mode)
+	}
+	// Baseline hosts still present (seeded, not replaced).
+	findHost(t, cfg.Network.Egress.Allow, "api.anthropic.com")
+	if got := f.out.String(); !strings.Contains(got, "seeded from your global Claude Code config") {
+		t.Errorf("stdout = %q, want the seeded notice", got)
+	}
+}
+
 // TestSetupNoSkillStillScaffoldsGlobalConfig pins that the --no-skill branch no
 // longer early-returns: the baseline step runs regardless of the skill opt-out.
 func TestSetupNoSkillStillScaffoldsGlobalConfig(t *testing.T) {

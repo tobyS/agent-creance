@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobyS/agent-creance/internal/claudeimport"
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/setup"
 	"github.com/tobyS/agent-creance/internal/setupcheck"
@@ -118,10 +119,30 @@ func scaffoldGlobalConfig(app *App) error {
 	if err := app.FS.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create global config dir: %w", err)
 	}
-	if err := writeFileAtomic(app.FS, path, []byte(globalConfigTemplate), configFilePerm); err != nil {
+
+	// Seed the fresh baseline from the user's global Claude Code config: allowed
+	// web domains (GET-only intercept) and MCP servers (remote → passthrough,
+	// localhost → port). Spliced into the static baseline so its comments survive.
+	content := []byte(globalConfigTemplate)
+	res, warns := claudeimport.Global(app.FS, app.Paths)
+	printWarnings(app, warns)
+	frag := &config.Config{}
+	frag.Network.Egress.Allow = append(append([]config.Rule{}, res.WebRules...), res.MCPRules...)
+	frag.Network.HostServices = res.Ports
+	seeded, changed, err := applyFragment(content, frag)
+	if err != nil {
+		return fmt.Errorf("seed global config from Claude Code config: %w", err)
+	}
+	content = seeded
+
+	if err := writeFileAtomic(app.FS, path, content, configFilePerm); err != nil {
 		return fmt.Errorf("write global config: %w", err)
 	}
-	fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline).\n", path)
+	if changed {
+		fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline, seeded from your global Claude Code config).\n", path)
+	} else {
+		fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline).\n", path)
+	}
 	return nil
 }
 

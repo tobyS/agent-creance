@@ -47,6 +47,37 @@ network:
         methods: [GET]
 ```
 
+## First-run config (init imports)
+
+`agent-creance init` scaffolds a project `.agent-creance.yaml`. On an interactive
+terminal it also offers to do the tedious allowlist/port wiring for you — each as
+its own yes/no prompt, all auto-skipped when there is no TTY (so CI behaves as
+before):
+
+- **Import allowed web domains** from the project's Claude Code settings
+  (`WebFetch(domain:…)` in `.claude/settings.json` / `settings.local.json`, plus
+  `sandbox.network.allowedDomains`) as GET-only `intercept` rules.
+- **Import MCP servers** from `.claude/settings*.json`, `.mcp.json`, and
+  `~/.claude.json`: remote servers become `passthrough` allow rules; an MCP server
+  bound to `localhost` becomes a `host_services` port.
+- **Detect dev ports** from `docker-compose.yml`, `package.json` scripts,
+  `Procfile`, and `.env`.
+
+It then shows the resulting config and asks you to confirm before writing.
+`agent-creance setup` does the same for the global baseline, seeding it from your
+*global* `~/.claude` config when it first creates `~/.config/agent-creance.yaml`.
+
+For everything that can't be inferred statically, `init` offers to print a prompt
+you hand to your agent; the agent writes a config fragment (documentation hosts,
+remaining ports) which you review and merge with:
+
+```sh
+agent-creance import agent-creance.suggested.yaml   # add --yes for non-interactive use
+```
+
+`import` strict-validates the fragment, shows the merged result, and writes only
+on confirmation.
+
 ## Development
 
 ```sh
