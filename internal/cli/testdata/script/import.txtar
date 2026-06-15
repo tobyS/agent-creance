@@ -1,0 +1,57 @@
+# import merges a YAML config fragment into the project .agent-creance.yaml after
+# review. --yes applies non-interactively; without it (and without a TTY) import
+# refuses to write. A fragment with an unknown key is rejected before any change.
+#
+# These scenarios are hermetic: import is pure filesystem work over the project
+# config plus a policy recompile, which lands in the sandboxed HOME/cache.
+env PATH=$CREANCE_BIN
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+
+# --help advertises --yes and the FILE arg.
+agent-creance import --help
+stdout '--yes'
+
+cd proj
+
+# 1. Unknown key in the fragment → rejected, project config untouched.
+! agent-creance import bad-frag.yaml --yes
+stderr 'invalid config fragment'
+grep 'seed.example' .agent-creance.yaml
+! grep 'typo.example' .agent-creance.yaml
+
+# 2. Non-interactive without --yes → shows the result but does not write.
+agent-creance import good-frag.yaml
+stdout 're-run with --yes'
+! grep 'docs.example.com' .agent-creance.yaml
+
+# 3. --yes applies the merge and recompiles.
+agent-creance import good-frag.yaml --yes
+stdout 'policy recompiled'
+grep 'docs.example.com' .agent-creance.yaml
+grep '- api:8080' .agent-creance.yaml
+
+# 4. Re-importing the same fragment is a no-op.
+agent-creance import good-frag.yaml --yes
+stdout 'Nothing to import'
+
+-- proj/.agent-creance.yaml --
+network:
+  host_services:
+    - web:3000
+  egress:
+    allow:
+      - host: seed.example
+-- proj/good-frag.yaml --
+network:
+  host_services:
+    - api:8080
+  egress:
+    allow:
+      - host: docs.example.com
+        methods: [GET]
+-- proj/bad-frag.yaml --
+network:
+  egress:
+    allwo:
+      - host: typo.example
