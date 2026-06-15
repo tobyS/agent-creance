@@ -1,10 +1,10 @@
 # AC-0044: Provide host Claude Code DX state to the caged agent
 
-**Status:** Open
+**Status:** Rejected
 **Estimated Complexity:** Large
 **Maturity:** Skeleton — to be detailed in a dedicated session
 **Created:** 2026-06-12
-**Updated:** 2026-06-12
+**Updated:** 2026-06-14
 
 > **Skeleton ticket.** Captures what we observed on 2026-06-12; the desired
 > outcome, scope, and acceptance criteria need a dedicated discussion
@@ -103,3 +103,11 @@ cage is a deliberate, visible choice rather than an accident.
   dedicated session. Key user statement: global CLAUDE.md, hooks config, etc.
   are vital for developer experience — not providing them "would scare users
   away immediately".
+
+### 2026-06-14
+- **Rejected, superseded by AC-0046.** The v0.1 pain (re-onboarding, missing
+  global CLAUDE.md/hooks) is already resolved as a side effect of the AC-0045
+  RW mount of `~/.claude`. The remaining substance — the careful per-class
+  sharing model and the open questions about which config classes are safe vs.
+  attack surface — folds into the config-cage revisit (AC-0046). Closed here to
+  avoid duplicate tracking.
