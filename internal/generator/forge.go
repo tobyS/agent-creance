@@ -70,6 +70,15 @@ func RepositoryRules(repoURL, src string) []Rule {
 	}}
 }
 
+// IsKnownForge reports whether host is a forge with a companion content-host table
+// (so RepositoryRules expands it to API/content hosts rather than a single bare
+// rule). init uses this to tell the operator when a remote's companions couldn't be
+// inferred. host is matched case-insensitively.
+func IsKnownForge(host string) bool {
+	_, ok := forges[strings.ToLower(host)]
+	return ok
+}
+
 // substitutePlaceholders replaces the <org>/<repo> placeholders in a forge host or
 // path template.
 func substitutePlaceholders(tmpl, org, repo string) string {
