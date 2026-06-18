@@ -1,3 +1,4 @@
+<!-- tce-config-version: 1.0.0 -->
 # Project Profile
 
 > Read by the tce workflow commands and research agents at runtime. `/tce:init`
@@ -6,19 +7,26 @@
 
 ## Tech stack
 
-Go 1.26 CLI, single module (`github.com/tobyS/agent-creance`) — not a monorepo.
+Go 1.26 CLI, single Go module (`github.com/tobyS/agent-creance`) — not a monorepo.
 macOS-only. Composes `agent-safehouse` (filesystem/process isolation) and
-`mitmproxy` (TLS-terminating egress allowlist) at runtime. Key libraries: spf13/cobra
-(command tree), stretchr/testify (assertions), rogpeppe/go-internal/testscript (CLI
-tests). Lint via golangci-lint. No datastore; security-critical runtime state lives
-out-of-tree in `~/.cache/agent-creance/`.
+`mitmproxy` (TLS-terminating egress allowlist) at runtime. The mitmproxy egress
+enforcer is a **Python addon** (`internal/proxy/enforcer/`) embedded in the Go
+binary and run against a pinned mitmproxy in a repo-local venv — the one piece of
+Python in the stack. Key Go libraries: spf13/cobra (command tree), stretchr/testify
+(assertions), rogpeppe/go-internal/testscript (CLI tests), gopkg.in/yaml.v3 (config
+parsing), fsnotify (file watching). Lint via golangci-lint. No datastore;
+security-critical runtime state lives out-of-tree in `~/.cache/agent-creance/`.
 
 ## Commands
 
 Always run from the repo root (`/Users/toby/code/work/agent-creance`).
 
-- **Test:** `make test` (= `go test -race ./...`; fast, hermetic). Slow real-tool
-  tests: `make test-integration` (= `go test -race -tags=integration ./...`).
+- **Test (Go):** `make test` (= `go test -race ./...`; fast, hermetic). Slow
+  real-tool Go tests: `make test-integration` (= `go test -race -tags=integration
+  ./...`; also runs `test-enforcer-integration`).
+- **Test (Python enforcer):** `make test-enforcer` (mitmproxy addon tests in a
+  repo-local venv with pinned mitmproxy); live mitmproxy + curl probes:
+  `make test-enforcer-integration`.
 - **Typecheck:** `go build ./...` (Go has no separate typecheck step).
 - **Lint/format:** `make lint` (= `go vet ./...` + `golangci-lint run`); format with
   `make fmt` (= `gofmt -s -w .`).
@@ -32,15 +40,43 @@ read this to know where to look.
 | Kind of code | Location(s) |
 |--------------|-------------|
 | Entry point (CLI main) | `cmd/agent-creance/main.go` (thin; calls into `internal/cli`) |
-| CLI commands + composition root | `internal/cli/` (`App` struct in `cli.go`; commands in `version.go`, `doctor.go`) |
-| Application / business logic | `internal/prereq/` (prerequisite detection, version-skew classification, report rendering) |
+| CLI commands + composition root | `internal/cli/` (`App` struct in `cli.go`; one file per command: `run`, `init`, `setup`, `doctor`, `status`, `policy`, `allow`, `deny`, `logs`, `import`, `clean`, `version`) |
+| Project identity / state dir | `internal/state/` |
+| Config parsing & schema | `internal/config/` (`.agent-creance.yaml` loader) |
+| Egress policy | `internal/policy/` (matcher) + `internal/policy/compile/`, `internal/policy/render/` |
+| Cage construction (agent-safehouse) | `internal/cage/` |
+| Seatbelt (SBPL) profile fragments | `internal/profile/` |
+| mitmproxy enforcer | `internal/proxy/` (Go lifecycle) + `internal/proxy/enforcer/` (Python addon) |
+| Egress audit log (read side) | `internal/audit/` |
+| CA bootstrap / setup | `internal/setup/`, `internal/setupcheck/` |
+| Credential detection | `internal/cred/` |
+| Prerequisite & version-skew detection | `internal/prereq/` |
+| Doctor diagnostics | `internal/doctor/` |
+| Status reporting | `internal/status/` |
+| Claude Code config import | `internal/claudeimport/` (+ `cli/import.go`, `cli/init_imports.go`) |
+| Dependency-manifest → rules generator | `internal/generator/` (+ `generator/registry/`) |
+| Dev-port detection | `internal/portscan/` |
+| Local plugin-marketplace detection | `internal/pluginmkt/` |
+| Progress events | `internal/progress/` |
+| Adversarial cage verification | `internal/verify/` |
 | Build / version metadata | `internal/buildinfo/` (version info + tested-against tool versions) |
 | OS abstraction (testability seam) | `internal/sysdep/` (interfaces + real impls); fakes in `internal/sysdep/sysdeptest/` |
 | Unit / table tests | co-located `*_test.go` (e.g. `internal/prereq/version_test.go`) |
-| Golden fixtures | `internal/prereq/testdata/` |
+| Golden fixtures | `testdata/` under each package (e.g. `internal/prereq/testdata/`) |
 | CLI behavior tests (testscript) | `internal/cli/testdata/script/*.txtar` |
+| Python enforcer tests | `internal/proxy/enforcer/test_*.py` |
 | Build/dev tasks | `Makefile`; lint config `.golangci.yml`; git hooks `.githooks/` |
 | Design doc | `docs/design.md` (architecture, threat model, config schema, roadmap) |
+
+## Commit convention
+
+**Conventional Commits**, with the ticket ID as the scope:
+`type(AC-NNNN): subject` — e.g.
+`feat(AC-0056): mount local plugin marketplace dirs read-only in the cage`. Types:
+`feat`, `fix`, `docs`, `refactor`, `test`, `chore`. Use `docs(AC-NNNN):` for
+ticket/research/plan/review docs under `thoughts/`. Subject imperative, lower-case,
+no trailing period. (The commit *flow* — write the message to `.claude-commit` and
+`git commit -F .claude-commit` — is under Conventions below.)
 
 ## Conventions
 
