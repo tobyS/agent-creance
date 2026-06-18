@@ -220,6 +220,30 @@ func TestBuildValidation(t *testing.T) {
 	}
 }
 
+// TestBuildExtraDirsROAppended asserts launch-resolved read-only mounts
+// (Inputs.ExtraDirsRO, e.g. local plugin-marketplace dirs, AC-0056) are appended
+// to --add-dirs-ro after the user's configured add_dirs_ro.
+func TestBuildExtraDirsROAppended(t *testing.T) {
+	in := fixtureInputs() // AddDirsRO: ["~/.config/git"] → /home/test/.config/git
+	in.ExtraDirsRO = []string{"/work/toby-plugins", "/work/other"}
+	inv, err := cage.Build(in)
+	require.NoError(t, err)
+	require.Equal(t,
+		"/home/test/.config/git:/work/toby-plugins:/work/other",
+		argValue(t, inv.Args, "--add-dirs-ro"))
+}
+
+// TestBuildExtraDirsROEmitsFlagWhenOnlyExtras asserts --add-dirs-ro is emitted
+// from extras alone when the user configured no add_dirs_ro.
+func TestBuildExtraDirsROEmitsFlagWhenOnlyExtras(t *testing.T) {
+	in := fixtureInputs()
+	in.Config.Safehouse.AddDirsRO = nil
+	in.ExtraDirsRO = []string{"/work/toby-plugins"}
+	inv, err := cage.Build(in)
+	require.NoError(t, err)
+	require.Equal(t, "/work/toby-plugins", argValue(t, inv.Args, "--add-dirs-ro"))
+}
+
 // argValue returns the token following the first occurrence of flag in args.
 func argValue(t *testing.T, args []string, flag string) string {
 	t.Helper()

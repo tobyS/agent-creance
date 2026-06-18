@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/tobyS/agent-creance/internal/cage"
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/cred"
+	"github.com/tobyS/agent-creance/internal/pluginmkt"
 	compile "github.com/tobyS/agent-creance/internal/policy/compile"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/profile"
@@ -163,6 +165,10 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// Launch exactly the binary the prereq check resolved (step 1 guarantees it
 	// is installed), so check and exec can never disagree on the name.
 	in.Binary, _ = prereq.ResolvedBinary(results, buildinfo.ToolSafehouse)
+	// Grant local Claude plugin-marketplace source dirs into the cage read-only so
+	// caged Claude Code can load them (AC-0056). Advisory: detection problems warn,
+	// never block.
+	in.ExtraDirsRO = pluginMarketplaceDirs(app, in.HomeDir, layout.Canonical)
 	if err := builder.Prepare(in); err != nil {
 		return fmt.Errorf("prepare cage: %w", err)
 	}
@@ -178,6 +184,49 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		return fmt.Errorf("run agent: %w", err)
 	}
 	return nil
+}
+
+// pluginMarketplaceDirs detects local Claude plugin-marketplace source dirs
+// (pluginmkt.Detect) and returns those that must be granted into the cage
+// read-only: the ones not already covered by a mounted root — the project dir
+// (mounted RW) or ~/.claude (mounted RW, where git marketplaces and the plugin
+// cache live). Detection problems are advisory: printed to stderr, never fatal
+// (matching warnVersionSkew). run's stdout belongs to the agent, so the notice and
+// warnings go to stderr. A one-line notice announces the granted dirs.
+func pluginMarketplaceDirs(app *App, homeDir, projectDir string) []string {
+	detected, warns := pluginmkt.Detect(app.FS, app.Paths)
+	for _, w := range warns {
+		fmt.Fprintf(app.Stderr, "⚠ plugin marketplace: %s\n", w)
+	}
+
+	claudeDir := filepath.Join(homeDir, ".claude")
+	if resolved, err := app.Paths.EvalSymlinks(claudeDir); err == nil {
+		claudeDir = resolved
+	}
+	roots := []string{projectDir, claudeDir}
+
+	var grant []string
+	for _, d := range detected {
+		if withinAny(d, roots) {
+			continue // already mounted read-write; no separate RO grant needed
+		}
+		grant = append(grant, d)
+	}
+	if len(grant) > 0 {
+		fmt.Fprintf(app.Stderr, "granting read-only cage access to %d local plugin marketplace dir(s): %s\n",
+			len(grant), strings.Join(grant, ", "))
+	}
+	return grant
+}
+
+// withinAny reports whether path equals, or is nested under, any of roots.
+func withinAny(path string, roots []string) bool {
+	for _, root := range roots {
+		if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // warnVersionSkew prints a single loud line per tool whose installed version is a

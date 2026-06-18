@@ -286,6 +286,61 @@ func TestRunMissingPrerequisite(t *testing.T) {
 	}
 }
 
+// TestRunGrantsLocalPluginMarketplaceDirs asserts a local ("directory") plugin
+// marketplace outside the cage is mounted read-only, while one inside the project
+// (already mounted) is filtered out (AC-0056).
+func TestRunGrantsLocalPluginMarketplaceDirs(t *testing.T) {
+	f := newRunFixture(t)
+	const outside = "/work/toby-plugins"
+	inside := runProj + "/embedded-mkt"
+	f.fs.Files[runHome+"/.claude/plugins/known_marketplaces.json"] = []byte(`{
+		"toby-plugins": {"source": {"source": "directory", "path": "` + outside + `"}},
+		"git":          {"source": {"source": "github", "repo": "x/y"}},
+		"embedded":     {"source": {"source": "directory", "path": "` + inside + `"}}
+	}`)
+	f.fs.Dirs[outside] = true
+	f.fs.Dirs[inside] = true
+
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun: %v\nstderr: %s", err, f.err)
+	}
+	started := f.pg.Started()
+	if len(started) != 1 {
+		t.Fatalf("cage starts = %d, want 1", len(started))
+	}
+	// Exactly the outside dir is granted (so the --add-dirs-ro value equals it);
+	// the inside-project dir was filtered, else the value would be colon-joined.
+	if !argsContain(started[0].Args, "--add-dirs-ro", outside) {
+		t.Errorf("cage args missing --add-dirs-ro %s: %v", outside, started[0].Args)
+	}
+	if !strings.Contains(f.err.String(), outside) {
+		t.Errorf("stderr missing read-only grant notice for %s: %s", outside, f.err)
+	}
+}
+
+// TestRunMalformedMarketplaceRegistryWarns asserts a broken known_marketplaces.json
+// is a non-fatal warning: the launch still proceeds and no extra RO mount is added.
+func TestRunMalformedMarketplaceRegistryWarns(t *testing.T) {
+	f := newRunFixture(t)
+	f.fs.Files[runHome+"/.claude/plugins/known_marketplaces.json"] = []byte(`{not json`)
+
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun should not fail on a malformed registry: %v", err)
+	}
+	if !strings.Contains(f.err.String(), "plugin marketplace") {
+		t.Errorf("stderr missing plugin-marketplace warning: %s", f.err)
+	}
+	started := f.pg.Started()
+	if len(started) != 1 {
+		t.Fatalf("cage starts = %d, want 1", len(started))
+	}
+	for i, a := range started[0].Args {
+		if a == "--add-dirs-ro" {
+			t.Errorf("unexpected --add-dirs-ro from a malformed registry: %v", started[0].Args[i:])
+		}
+	}
+}
+
 // --- helpers ---
 
 func argsContain(args []string, flag, value string) bool {

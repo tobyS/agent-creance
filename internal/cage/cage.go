@@ -70,6 +70,12 @@ type Inputs struct {
 	// resolved on PATH, so the launch can never exec a name the check didn't
 	// verify. Empty falls back to the default Binary (tests, integration).
 	Binary string
+	// ExtraDirsRO are additional read-only mounts resolved at launch (e.g. local
+	// plugin-marketplace source dirs detected from the Claude config, AC-0056).
+	// They are already absolute/canonical, so expandPath leaves them untouched;
+	// they are kept separate from Config.Safehouse.AddDirsRO because they are not
+	// user config but a derived, per-launch grant.
+	ExtraDirsRO []string
 }
 
 // Invocation is the constructed safehouse command: a pure function of Inputs.
@@ -108,8 +114,11 @@ func Build(in Inputs) (Invocation, error) {
 	// Prepare ensures the dir exists before Build's invocation is exec'd.
 	rw := append(append([]string{}, sh.AddDirsRW...), filepath.Join(in.HomeDir, ".claude"))
 	args = append(args, "--add-dirs", expandColonList(rw, in))
-	if len(sh.AddDirsRO) > 0 {
-		args = append(args, "--add-dirs-ro", expandColonList(sh.AddDirsRO, in))
+	// Read-only mounts: the user's configured add_dirs_ro plus any launch-resolved
+	// extras (local plugin-marketplace dirs, AC-0056).
+	ro := append(append([]string{}, sh.AddDirsRO...), in.ExtraDirsRO...)
+	if len(ro) > 0 {
+		args = append(args, "--add-dirs-ro", expandColonList(ro, in))
 	}
 	// Capabilities: comma-separated, =-form (matches docs/design.md and --help).
 	if len(sh.Enable) > 0 {
