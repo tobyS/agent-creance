@@ -31,7 +31,7 @@ func TestNormalizeRepoURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			host, org, repo, ok := normalizeRepoURL(tc.raw)
+			host, org, repo, ok := NormalizeRepoURL(tc.raw)
 			require.Equal(t, tc.ok, ok)
 			require.Equal(t, tc.host, host)
 			require.Equal(t, tc.org, org)
@@ -41,10 +41,11 @@ func TestNormalizeRepoURL(t *testing.T) {
 }
 
 func TestRepositoryRules_GitHubCompanionSet(t *testing.T) {
-	got := repositoryRules("git+https://github.com/facebook/react.git", "generated:package_json:react")
+	got := RepositoryRules("git+https://github.com/facebook/react.git", "generated:package_json:react")
 
 	want := []Rule{
 		{Rule: policy.Rule{Host: "github.com", Paths: []string{"/facebook/react/"}}, Source: "generated:package_json:react"},
+		{Rule: policy.Rule{Host: "api.github.com", Paths: []string{"/repos/facebook/react/"}}, Source: "generated:package_json:react"},
 		{Rule: policy.Rule{Host: "raw.githubusercontent.com", Paths: []string{"/facebook/react/"}}, Source: "generated:package_json:react"},
 		{Rule: policy.Rule{Host: "codeload.github.com", Paths: []string{"/facebook/react/"}}, Source: "generated:package_json:react"},
 		{Rule: policy.Rule{Host: "facebook.github.io", Paths: []string{"/react/"}}, Source: "generated:package_json:react"},
@@ -54,7 +55,7 @@ func TestRepositoryRules_GitHubCompanionSet(t *testing.T) {
 }
 
 func TestRepositoryRules_GitLab(t *testing.T) {
-	got := repositoryRules("https://gitlab.com/group/proj", "generated:composer_json:group/proj")
+	got := RepositoryRules("https://gitlab.com/group/proj", "generated:composer_json:group/proj")
 
 	want := []Rule{
 		{Rule: policy.Rule{Host: "gitlab.com", Paths: []string{"/group/proj/"}}, Source: "generated:composer_json:group/proj"},
@@ -64,7 +65,7 @@ func TestRepositoryRules_GitLab(t *testing.T) {
 }
 
 func TestRepositoryRules_NonForge(t *testing.T) {
-	got := repositoryRules("https://git.sr.ht/~user/lib", "generated:package_json:lib")
+	got := RepositoryRules("https://git.sr.ht/~user/lib", "generated:package_json:lib")
 	want := []Rule{
 		{Rule: policy.Rule{Host: "git.sr.ht", Paths: []string{"/~user/lib/"}}, Source: "generated:package_json:lib"},
 	}
@@ -72,6 +73,6 @@ func TestRepositoryRules_NonForge(t *testing.T) {
 }
 
 func TestRepositoryRules_NoRuleWhenUnparseable(t *testing.T) {
-	require.Nil(t, repositoryRules("", "src"))
-	require.Nil(t, repositoryRules("https://github.com/onlyorg", "src"))
+	require.Nil(t, RepositoryRules("", "src"))
+	require.Nil(t, RepositoryRules("https://github.com/onlyorg", "src"))
 }

@@ -16,6 +16,15 @@
   },
   {
     "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/scope/tool/"
+      ]
+    },
+    "source": "generated:package_json:@scope/tool"
+  },
+  {
+    "rule": {
       "host": "raw.githubusercontent.com",
       "paths": [
         "/scope/tool/"
@@ -59,6 +68,15 @@
       "host": "github.com",
       "paths": [
         "/oven-sh/bun/"
+      ]
+    },
+    "source": "generated:package_json:@types/bun"
+  },
+  {
+    "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/oven-sh/bun/"
       ]
     },
     "source": "generated:package_json:@types/bun"
@@ -111,6 +129,15 @@
       "host": "github.com",
       "paths": [
         "/vueuse/vueuse/"
+      ]
+    },
+    "source": "generated:package_json:@vueuse/core"
+  },
+  {
+    "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/vueuse/vueuse/"
       ]
     },
     "source": "generated:package_json:@vueuse/core"
@@ -193,6 +220,15 @@
       "host": "github.com",
       "paths": [
         "/facebook/react/"
+      ]
+    },
+    "source": "generated:package_json:react"
+  },
+  {
+    "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/facebook/react/"
       ]
     },
     "source": "generated:package_json:react"

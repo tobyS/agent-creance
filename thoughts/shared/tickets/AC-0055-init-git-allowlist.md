@@ -1,6 +1,6 @@
 # AC-0055: `init` auto-allowlists the project's Git remotes (repo + API + content hosts)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-18
 **Updated:** 2026-06-18

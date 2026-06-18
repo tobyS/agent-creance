@@ -189,7 +189,7 @@ func (g *Generator) generate(ctx context.Context, manifest []byte) ([]Rule, erro
 				rules = append(rules, r)
 			}
 		}
-		rules = append(rules, repositoryRules(md.Repository, src)...)
+		rules = append(rules, RepositoryRules(md.Repository, src)...)
 	}
 	return rules, nil
 }

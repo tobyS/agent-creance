@@ -23,6 +23,7 @@ type forgeHost struct {
 var forges = map[string][]forgeHost{
 	"github.com": {
 		{host: "github.com", pathTmpl: "/<org>/<repo>/"},                // web view + .git ops
+		{host: "api.github.com", pathTmpl: "/repos/<org>/<repo>/"},      // REST API (gh, PR tooling), repo-scoped
 		{host: "raw.githubusercontent.com", pathTmpl: "/<org>/<repo>/"}, // raw file fetches
 		{host: "codeload.github.com", pathTmpl: "/<org>/<repo>/"},       // tarball/zip + clone
 		{host: "<org>.github.io", pathTmpl: "/<repo>/"},                 // project pages
@@ -33,15 +34,18 @@ var forges = map[string][]forgeHost{
 	"gitlab.com": {
 		{host: "gitlab.com", pathTmpl: "/<org>/<repo>/"}, // web view + .git ops + raw/archive paths
 		{host: "<org>.gitlab.io", pathTmpl: "/<repo>/"},  // project pages
+		// GitLab's REST API (gitlab.com/api/v4) is project-ID-scoped, not <org>/<repo>
+		// path-scoped, so no repo-scoped API companion is emitted.
 	},
 }
 
-// repositoryRules returns the allow rules for a package's repository URL, annotated
+// RepositoryRules returns the allow rules for a package's repository URL, annotated
 // with src. A repository on a known forge expands to that forge's companion content
 // hosts; any other host yields a single rule scoped to <org>/<repo>. A URL with no
-// host or fewer than two path segments yields no rules (nil).
-func repositoryRules(repoURL, src string) []Rule {
-	host, org, repo, ok := normalizeRepoURL(repoURL)
+// host or fewer than two path segments yields no rules (nil). Exported so init's
+// git-remote allowlisting (AC-0055) can reuse the same forge expansion.
+func RepositoryRules(repoURL, src string) []Rule {
+	host, org, repo, ok := NormalizeRepoURL(repoURL)
 	if !ok {
 		return nil
 	}
@@ -72,13 +76,14 @@ func substitutePlaceholders(tmpl, org, repo string) string {
 	return strings.NewReplacer("<org>", org, "<repo>", repo).Replace(tmpl)
 }
 
-// normalizeRepoURL extracts the host and first two path segments (org, repo) from a
-// repository URL in any of the forms registries report: a leading "git+", an scp-like
-// "git@host:org/repo.git", "git://"/"ssh://"/"http(s)://" URLs, and trailing ".git"
-// or "/". ok is false when no host or fewer than two path segments can be extracted —
-// the caller emits no repository rule in that case. host is lower-cased; org/repo are
-// kept verbatim (the design trusts registry fields without rewriting).
-func normalizeRepoURL(raw string) (host, org, repo string, ok bool) {
+// NormalizeRepoURL extracts the host and first two path segments (org, repo) from a
+// repository URL in any of the forms registries (and git remotes) report: a leading
+// "git+", an scp-like "git@host:org/repo.git", "git://"/"ssh://"/"http(s)://" URLs,
+// and trailing ".git" or "/". ok is false when no host or fewer than two path segments
+// can be extracted — the caller emits no repository rule in that case. host is
+// lower-cased; org/repo are kept verbatim (the design trusts registry fields without
+// rewriting). Exported for reuse by init's git-remote detection (AC-0055).
+func NormalizeRepoURL(raw string) (host, org, repo string, ok bool) {
 	s := strings.TrimSpace(raw)
 	s = strings.TrimPrefix(s, "git+")
 	if s == "" {

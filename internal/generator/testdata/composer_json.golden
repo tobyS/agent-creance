@@ -16,6 +16,15 @@
   },
   {
     "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/laravel/framework/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/framework"
+  },
+  {
+    "rule": {
       "host": "raw.githubusercontent.com",
       "paths": [
         "/laravel/framework/"
@@ -65,6 +74,15 @@
   },
   {
     "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/laravel/pint/"
+      ]
+    },
+    "source": "generated:composer_json:laravel/pint"
+  },
+  {
+    "rule": {
       "host": "raw.githubusercontent.com",
       "paths": [
         "/laravel/pint/"
@@ -102,6 +120,15 @@
       "host": "github.com",
       "paths": [
         "/Seldaek/monolog/"
+      ]
+    },
+    "source": "generated:composer_json:monolog/monolog"
+  },
+  {
+    "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/Seldaek/monolog/"
       ]
     },
     "source": "generated:composer_json:monolog/monolog"
@@ -157,6 +184,15 @@
   },
   {
     "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/sebastianbergmann/phpunit/"
+      ]
+    },
+    "source": "generated:composer_json:phpunit/phpunit"
+  },
+  {
+    "rule": {
       "host": "raw.githubusercontent.com",
       "paths": [
         "/sebastianbergmann/phpunit/"
@@ -194,6 +230,15 @@
       "host": "github.com",
       "paths": [
         "/Roave/SecurityAdvisories/"
+      ]
+    },
+    "source": "generated:composer_json:roave/security-advisories"
+  },
+  {
+    "rule": {
+      "host": "api.github.com",
+      "paths": [
+        "/repos/Roave/SecurityAdvisories/"
       ]
     },
     "source": "generated:composer_json:roave/security-advisories"
