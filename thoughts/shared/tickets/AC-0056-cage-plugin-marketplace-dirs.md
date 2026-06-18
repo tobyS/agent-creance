@@ -1,6 +1,6 @@
 # AC-0056: Grant local Claude plugin marketplace directories into the cage (read-only)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-18
 **Updated:** 2026-06-18
@@ -54,24 +54,28 @@ user gets a clear, actionable warning rather than a silent loss or a hard failur
 
 ## Acceptance Criteria
 
-- [ ] agent-creance detects local **directory-source** plugin marketplaces from
+- [x] agent-creance detects local **directory-source** plugin marketplaces from
       the Claude config and grants their source directories into the cage
       read-only, so the marketplace's `marketplace.json` and the plugins it
       provides load inside the cage (the EPERM warning no longer occurs for a
-      validly-configured local marketplace).
-- [ ] Git/remote marketplace sources (installed under `~/.claude/plugins`, already
-      mounted) are not granted again — only paths outside the cage are added.
-- [ ] A detected directory that is already inside the cage (under the project or
-      `~/.claude`) is not duplicated as a mount.
-- [ ] A referenced marketplace/plugin directory that is missing or cannot be
+      validly-configured local marketplace). — `pluginmkt.Detect` +
+      `cage.Inputs.ExtraDirsRO`.
+- [x] Git/remote marketplace sources (installed under `~/.claude/plugins`, already
+      mounted) are not granted again — only paths outside the cage are added. —
+      source-type filter in `Detect`; `TestDetectSkipsGitSources`.
+- [x] A detected directory that is already inside the cage (under the project or
+      `~/.claude`) is not duplicated as a mount. — `withinAny` filter in
+      `pluginMarketplaceDirs`; `TestRunGrantsLocalPluginMarketplaceDirs`.
+- [x] A referenced marketplace/plugin directory that is missing or cannot be
       resolved produces a clear warning naming the path and the fix, not a silent
-      drop or a hard error that aborts the launch.
-- [ ] Granted directories are mounted read-only (the caged agent cannot modify the
-      plugin source).
-- [ ] Detection and mount-list construction are unit-tested against the `sysdep`
+      drop or a hard error that aborts the launch. — Stat check in `Detect`;
+      `TestDetectMissingSourceDirWarnsAndSkips`, `TestRunMalformedMarketplaceRegistryWarns`.
+- [x] Granted directories are mounted read-only (the caged agent cannot modify the
+      plugin source). — appended to `--add-dirs-ro`, never `--add-dirs`.
+- [x] Detection and mount-list construction are unit-tested against the `sysdep`
       fakes (no real filesystem or external tools); behavior covered consistent
       with the `claudeimport` tests.
-- [ ] `make test`, `make lint` pass; `make build` at the end.
+- [x] `make test`, `make lint` pass; `make build` at the end.
 
 ## Out of Scope
 
@@ -123,7 +127,11 @@ all settled during authoring.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-18-AC-0056-cage-plugin-marketplace-dirs.md`
+- Plan: `thoughts/shared/plans/2026-06-18-AC-0056-cage-plugin-marketplace-dirs.md`
+- Approach (chosen at the question checkpoint): **dynamic detection at each
+  launch**, read-only, with a one-line notice — not static config persistence
+  (marketplaces are a per-user registry, reloaded every run).
 
 ## Notes & Updates
 
@@ -138,3 +146,13 @@ all settled during authoring.
 - Complexity Medium: the detection mirrors `claudeimport` and the mount wiring
   reuses `safehouse.add_dirs_ro`, but it needs a new reader for Claude's plugin
   registration format, dedup against existing mounts, and a clear failure path.
+
+### 2026-06-18 (implemented)
+
+- Shipped via `/tce:work`: new `internal/pluginmkt` package (`Detect` reads
+  `~/.claude/plugins/known_marketplaces.json`), `cage.Inputs.ExtraDirsRO` appended
+  to `--add-dirs-ro`, and `run`'s `pluginMarketplaceDirs` filtering + notice.
+- Verified: `make test`, `make lint`, `make build` all green. Manual check pending
+  on a real caged `run` (expect `/Users/toby/code/work/toby-plugins` granted RO and
+  no EPERM for `toby-plugins`).
+- Note: research flagged `.claude/tce/tickets.md` missing — consider `/tce:refresh`.

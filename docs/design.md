@@ -86,6 +86,15 @@ safehouse:
   # deliberately deferred (see AC-0046), so the caged agent uses your
   # host Claude config and login out of the box. You don't list it here.
   # (see "The proxy and the credential story").
+  # It also grants any *local* plugin marketplace source dirs read-only at
+  # launch — the "directory"/"file" entries in
+  # ~/.claude/plugins/known_marketplaces.json, whose source dir lives outside
+  # ~/.claude (e.g. a checked-out plugins repo). Claude Code reads each
+  # marketplace's catalog on startup, so without this the Seatbelt sandbox
+  # EPERM-denies it and those plugins silently fail to load. Detection is
+  # per-launch (marketplaces are a per-user registry, reloaded every run), so
+  # you don't list these either. (AC-0056; git/remote marketplaces and the
+  # installed-plugin cache already live under the mounted ~/.claude.)
   add_dirs_rw: [.]
   add_dirs_ro: [~/.config/git]
   enable: [shell-init]
