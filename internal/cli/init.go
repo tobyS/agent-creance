@@ -131,7 +131,7 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup, gitPush 
 		return fmt.Errorf("init: write %q: %w", dest, err)
 	}
 
-	fmt.Fprintf(app.Stdout, "✓ Wrote %s %s\n", configFile, generatorsNote(gens))
+	fmt.Fprintf(app.Stdout, "%s Wrote %s %s\n", app.OutStyle.OK("✓"), configFile, generatorsNote(gens))
 	reportGitRemotes(app, len(remotes), allowPush, git)
 	// On the --no-setup path host setup is still pending, so keep pointing at it;
 	// otherwise setup is done (already, or just bootstrapped above) and the next

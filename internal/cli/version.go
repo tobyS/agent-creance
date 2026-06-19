@@ -16,12 +16,12 @@ func newVersionCmd(app *App) *cobra.Command {
 		// RunE receives the cobra command; we write through app.Stdout (not
 		// fmt.Println) so output is captured in tests.
 		RunE: func(_ *cobra.Command, _ []string) error {
-			fmt.Fprintf(app.Stdout, "agent-creance %s (commit %s, built %s)\n",
-				buildinfo.Version, buildinfo.Commit, buildinfo.Date)
-			fmt.Fprintln(app.Stdout, "tested against:")
+			fmt.Fprintf(app.Stdout, "agent-creance %s %s\n", buildinfo.Version,
+				app.OutStyle.Dim(fmt.Sprintf("(commit %s, built %s)", buildinfo.Commit, buildinfo.Date)))
+			fmt.Fprintln(app.Stdout, app.OutStyle.Header("tested against:"))
 			// Print in a stable order so the output is deterministic.
 			for _, name := range []string{buildinfo.ToolSafehouse, buildinfo.ToolMitmproxy} {
-				fmt.Fprintf(app.Stdout, "  %-16s %s\n", name, app.Tested[name])
+				fmt.Fprintf(app.Stdout, "  %-16s %s\n", name, app.OutStyle.Dim(app.Tested[name]))
 			}
 			return nil
 		},

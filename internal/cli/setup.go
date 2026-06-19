@@ -71,9 +71,9 @@ func runSetup(ctx context.Context, app *App, noSkill, noCAInstall, noGlobalConfi
 			return err // carries the actionable Message; Main → exit 1
 		}
 		if res.AlreadyTrusted {
-			fmt.Fprintln(app.Stdout, "✓ mitmproxy CA already trusted — skipped the keychain prompt.")
+			fmt.Fprintln(app.Stdout, app.OutStyle.OK("✓")+" mitmproxy CA already trusted — skipped the keychain prompt.")
 		} else {
-			fmt.Fprintln(app.Stdout, "✓ CA installed and verified.")
+			fmt.Fprintln(app.Stdout, app.OutStyle.OK("✓")+" CA installed and verified.")
 		}
 		fmt.Fprintln(app.Stdout, keychainNote())
 	}
@@ -85,7 +85,7 @@ func runSetup(ctx context.Context, app *App, noSkill, noCAInstall, noGlobalConfi
 		if err := inst.InstallSkill(); err != nil {
 			return fmt.Errorf("install skill: %w", err)
 		}
-		fmt.Fprintln(app.Stdout, "✓ Skill installed.")
+		fmt.Fprintln(app.Stdout, app.OutStyle.OK("✓")+" Skill installed.")
 	}
 
 	// Global config baseline: scaffold ~/.config/agent-creance.yaml so a fresh
@@ -139,9 +139,9 @@ func scaffoldGlobalConfig(app *App) error {
 		return fmt.Errorf("write global config: %w", err)
 	}
 	if changed {
-		fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline, seeded from your global Claude Code config).\n", path)
+		fmt.Fprintf(app.Stdout, "%s Wrote %s (Claude Code egress baseline, seeded from your global Claude Code config).\n", app.OutStyle.OK("✓"), path)
 	} else {
-		fmt.Fprintf(app.Stdout, "✓ Wrote %s (Claude Code egress baseline).\n", path)
+		fmt.Fprintf(app.Stdout, "%s Wrote %s (Claude Code egress baseline).\n", app.OutStyle.OK("✓"), path)
 	}
 	return nil
 }

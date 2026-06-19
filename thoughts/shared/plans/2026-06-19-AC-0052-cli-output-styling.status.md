@@ -11,7 +11,7 @@ started: 2026-06-19
 - [x] Phase 2 — doctor + prereq renderers
 - [x] Phase 3 — status renderer (two-path tabwriter/manual)
 - [x] Phase 4 — policy/render renderer
-- [ ] Phase 5 — remaining inline command glyphs
+- [x] Phase 5 — remaining inline command glyphs
 - [ ] Phase 6 — testscript coverage + final verification + build
 
 ## Notes
@@ -41,6 +41,10 @@ started: 2026-06-19
   refresh "(… cleared)". Width-before-inject for the dimmed tag column. Plain
   + JSON goldens unchanged; _color siblings added; render_vectors_test passes a
   plain styler. policy.go passes app.OutStyle. make test + make lint green.
+- Phase 5 (2026-06-19): inline ✓ success glyphs greened in init/setup/import/
+  mutate (via app.OutStyle.OK); version dims the (commit/built) detail and the
+  tested-version values, bolds "tested against:". Testscripts (non-tty → plain)
+  unchanged. make test + make lint green.
 - Phase 3 (2026-06-19): status.Render takes a styler; two-path — plain keeps
   tabwriter verbatim (byte-identical), color uses a manual visible-width layout
   with bold headers, state words colored (running green / orphan red / stranded

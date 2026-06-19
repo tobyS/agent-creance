@@ -98,7 +98,7 @@ func runImport(ctx context.Context, app *App, dir, file string, yes bool) error 
 	if err := recompile(ctx, app, dir); err != nil {
 		return fmt.Errorf("imported config into %s, but recompiling the policy failed: %w", configFile, err)
 	}
-	fmt.Fprintf(app.Stdout, "✓ Imported config into %s; policy recompiled\n", configFile)
+	fmt.Fprintf(app.Stdout, "%s Imported config into %s; policy recompiled\n", app.OutStyle.OK("✓"), configFile)
 	return nil
 }
 

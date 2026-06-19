@@ -111,7 +111,7 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 		return fmt.Errorf("%s %s in %s, but recompiling the policy failed: %w", verb, ruleLabel(rule), label, err)
 	}
 
-	fmt.Fprintf(app.Stdout, "✓ %s %s in %s; policy recompiled\n", verb, ruleLabel(rule), label)
+	fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, ruleLabel(rule), label)
 	return nil
 }
 
