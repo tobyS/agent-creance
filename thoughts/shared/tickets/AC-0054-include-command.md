@@ -1,9 +1,9 @@
 # AC-0054: `include` command — add config include-list entries
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Small
 **Created:** 2026-06-18
-**Updated:** 2026-06-18
+**Updated:** 2026-06-19
 
 ## Problem Statement
 
