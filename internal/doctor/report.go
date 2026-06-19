@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/proxy"
+	"github.com/tobyS/agent-creance/internal/style"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
@@ -102,21 +103,21 @@ func (r Report) Actionable() []string {
 // Render produces the full deterministic doctor report: Version, CA trust, Proxy,
 // Exposed host services, Filesystem reliability, then the missing-prerequisite
 // install block when applicable.
-func Render(r Report) string {
+func Render(r Report, sty *style.Styler) string {
 	var b strings.Builder
-	b.WriteString(prereq.Report(r.Version))
+	b.WriteString(prereq.Report(r.Version, sty))
 
-	b.WriteString("\nCA trust:\n")
-	line(&b, caGlyph(r.CA.State), r.CA.Detail)
+	b.WriteString("\n" + sty.Header("CA trust:") + "\n")
+	line(&b, caGlyph(r.CA.State, sty), r.CA.Detail)
 
-	b.WriteString("\nProxy (this project):\n")
-	renderProxy(&b, r.Proxy)
+	b.WriteString("\n" + sty.Header("Proxy (this project):") + "\n")
+	renderProxy(&b, r.Proxy, sty)
 
-	b.WriteString("\nExposed host services:\n")
-	renderExposed(&b, r.Exposed)
+	b.WriteString("\n" + sty.Header("Exposed host services:") + "\n")
+	renderExposed(&b, r.Exposed, sty)
 
-	b.WriteString("\nFilesystem reliability:\n")
-	renderFS(&b, r.FS)
+	b.WriteString("\n" + sty.Header("Filesystem reliability:") + "\n")
+	renderFS(&b, r.FS, sty)
 
 	if r.Missing != "" {
 		b.WriteString("\n")
@@ -129,54 +130,54 @@ func line(b *strings.Builder, glyph, text string) {
 	fmt.Fprintf(b, "  %s %s\n", glyph, text)
 }
 
-func caGlyph(s Status) string {
+func caGlyph(s Status, sty *style.Styler) string {
 	switch s {
 	case StatusOK:
-		return glyphOK
+		return sty.OK(glyphOK)
 	case StatusProblem:
-		return glyphMiss
+		return sty.Bad(glyphMiss)
 	default:
-		return glyphWarn
+		return sty.Warn(glyphWarn)
 	}
 }
 
-func renderProxy(b *strings.Builder, sec ProxySection) {
+func renderProxy(b *strings.Builder, sec ProxySection, sty *style.Styler) {
 	d := sec.Diag
 	switch {
 	case !d.LockPresent:
-		line(b, glyphOK, "no proxy state")
+		line(b, sty.OK(glyphOK), "no proxy state")
 	case sec.Cleaned != nil && sec.Cleaned.Cleaned:
-		line(b, glyphOK, fmt.Sprintf("cleaned orphan proxy (pid %d)", sec.Cleaned.ProxyPID))
+		line(b, sty.OK(glyphOK), "cleaned orphan proxy "+sty.Dim(fmt.Sprintf("(pid %d)", sec.Cleaned.ProxyPID)))
 	case d.Orphan:
-		line(b, glyphMiss, fmt.Sprintf("orphan proxy (pid %d, port %d) — no live agents; run `doctor --fix`", d.ProxyPID, d.Port))
+		line(b, sty.Bad(glyphMiss), "orphan proxy "+sty.Dim(fmt.Sprintf("(pid %d, port %d)", d.ProxyPID, d.Port))+" — no live agents; run `doctor --fix`")
 	case d.Stranded:
-		line(b, glyphWarn, fmt.Sprintf("%d attached agent(s) but proxy not reachable on recorded port %d; relaunch them", len(d.LiveAgents), d.Port))
+		line(b, sty.Warn(glyphWarn), fmt.Sprintf("%d attached agent(s) but proxy not reachable on recorded port ", len(d.LiveAgents))+sty.Dim(fmt.Sprintf("%d", d.Port))+"; relaunch them")
 	case d.ProxyUp:
-		line(b, glyphOK, fmt.Sprintf("proxy running (pid %d, port %d), %d agent(s) attached", d.ProxyPID, d.Port, len(d.LiveAgents)))
+		line(b, sty.OK(glyphOK), "proxy running "+sty.Dim(fmt.Sprintf("(pid %d, port %d)", d.ProxyPID, d.Port))+fmt.Sprintf(", %d agent(s) attached", len(d.LiveAgents)))
 	default:
-		line(b, glyphOK, "no active proxy")
+		line(b, sty.OK(glyphOK), "no active proxy")
 	}
 }
 
-func renderExposed(b *strings.Builder, sec ExposedSection) {
+func renderExposed(b *strings.Builder, sec ExposedSection, sty *style.Styler) {
 	switch sec.State {
 	case StatusOK:
-		line(b, glyphOK, "none on 0.0.0.0")
+		line(b, sty.OK(glyphOK), "none on 0.0.0.0")
 	case StatusSkipped:
-		line(b, glyphWarn, sec.Detail)
+		line(b, sty.Warn(glyphWarn), sec.Detail)
 	default:
 		for _, l := range sec.Listeners {
-			line(b, glyphWarn, fmt.Sprintf("%s (pid %d) listening on %s", l.Command, l.PID, l.Address))
+			line(b, sty.Warn(glyphWarn), fmt.Sprintf("%s ", l.Command)+sty.Dim(fmt.Sprintf("(pid %d)", l.PID))+fmt.Sprintf(" listening on %s", l.Address))
 		}
 	}
 }
 
-func renderFS(b *strings.Builder, sec FSSection) {
+func renderFS(b *strings.Builder, sec FSSection, sty *style.Styler) {
 	if sec.State == StatusOK {
-		line(b, glyphOK, "ok")
+		line(b, sty.OK(glyphOK), "ok")
 		return
 	}
 	for _, w := range sec.Warnings {
-		line(b, glyphWarn, fmt.Sprintf("%s (%s) is on %s (%s); file locks may be unreliable", w.Label, w.Path, w.FSType, w.Reason))
+		line(b, sty.Warn(glyphWarn), fmt.Sprintf("%s ", w.Label)+sty.Dim("("+w.Path+")")+fmt.Sprintf(" is on %s ", w.FSType)+sty.Dim("("+w.Reason+")")+"; file locks may be unreliable")
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/prereq"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // update is the conventional "-update" flag for golden tests. Run
@@ -35,15 +36,21 @@ func goldenResults() []prereq.Result {
 }
 
 func TestReport(t *testing.T) {
-	got := prereq.Report(goldenResults())
-	golden := filepath.Join("testdata", "doctor_report.golden")
+	// Plain keeps the original golden name; color adds a _color sibling.
+	modes := map[string]*style.Styler{"": style.Plain(), "_color": style.New(true)}
+	for suffix, sty := range modes {
+		t.Run("report"+suffix, func(t *testing.T) {
+			got := prereq.Report(goldenResults(), sty)
+			golden := filepath.Join("testdata", "doctor_report"+suffix+".golden")
 
-	if *update {
-		require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
-		return
+			if *update {
+				require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
+				return
+			}
+
+			want, err := os.ReadFile(golden)
+			require.NoError(t, err, "missing golden file; run with -update to create it")
+			require.Equal(t, string(want), got)
+		})
 	}
-
-	want, err := os.ReadFile(golden)
-	require.NoError(t, err, "missing golden file; run with -update to create it")
-	require.Equal(t, string(want), got)
 }

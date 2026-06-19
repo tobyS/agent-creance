@@ -1,0 +1,9 @@
+[1mVersion compatibility:[22m
+  agent-safehouse:   installed 1.4.5 via safehouse, [2mtested against 1.4.2[22m   [33m⚠[0m patch skew
+  mitmproxy:         installed 12.0.1, [2mtested against 12.0.1[22m               [32m✓[0m
+  some-future-tool:  not installed                                         [31m✗[0m missing
+
+[2m  agent-creance was tested against specific versions of its dependencies.[22m
+[2m  Other versions may work, but behavior is not guaranteed. If you hit[22m
+[2m  unexpected issues, try pinning to the tested versions or open an[22m
+[2m  issue with your version combination.[22m

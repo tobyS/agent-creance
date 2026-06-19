@@ -56,7 +56,7 @@ func runDoctor(ctx context.Context, app *App, fix bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(app.Stdout, doctor.Render(rep))
+	fmt.Fprint(app.Stdout, doctor.Render(rep, app.OutStyle))
 
 	if probs := rep.Actionable(); len(probs) > 0 {
 		return fmt.Errorf("%d actionable problem(s) remain: %s", len(probs), strings.Join(probs, ", "))

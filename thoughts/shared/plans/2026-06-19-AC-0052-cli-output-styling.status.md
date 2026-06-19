@@ -8,7 +8,7 @@ started: 2026-06-19
 
 - [x] Phase 0 — Foundation (fatih/color dep, internal/style, IsStdoutTerminal, --color flag + App stylers)
 - [x] Phase 1 — Progress printer color (run / stderr)
-- [ ] Phase 2 — doctor + prereq renderers
+- [x] Phase 2 — doctor + prereq renderers
 - [ ] Phase 3 — status renderer (two-path tabwriter/manual)
 - [ ] Phase 4 — policy/render renderer
 - [ ] Phase 5 — remaining inline command glyphs
@@ -27,3 +27,10 @@ started: 2026-06-19
   app.ErrStyle into NewPrinter and colors its inline ⚠ warnings (skew detail
   dimmed). Plain output byte-identical (existing printer assertions unchanged);
   added two colored-mode tests. make test + make lint green.
+- Phase 2 (2026-06-19): doctor.Render + prereq.Report take a styler. Bold section
+  headers; glyphs colored (green ok / yellow warn / red miss); secondary detail
+  dimmed — "tested against X", the tested-versions paragraph, and the mid-message
+  pids/ports/paths/reasons (isolate-every-token). Width-before-inject: prereq
+  column pads computed from plain fields. Existing plain goldens unchanged
+  (verified via git: only render_*_color / doctor_report_color added). doctor.go
+  passes app.OutStyle. make test + make lint green.
