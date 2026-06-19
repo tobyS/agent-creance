@@ -4,7 +4,7 @@ Plan: `thoughts/shared/plans/2026-06-19-AC-0053-config-hot-reload.md`
 
 - [x] Phase 1: Loader include-graph enumeration (`ResolveFiles`)
 - [x] Phase 2: `FileWatcher` sysdep seam + fake
-- [ ] Phase 3: `internal/configwatch` package
+- [x] Phase 3: `internal/configwatch` package
 - [ ] Phase 4: wire into run session
 - [ ] Phase 5: integration test + docs + build
 
@@ -25,3 +25,12 @@ Plan: `thoughts/shared/plans/2026-06-19-AC-0053-config-hot-reload.md`
   translation goroutine. Fake `FakeFileWatcher`/`FakeFileWatcherFactory` in
   `sysdeptest/`. Light fake tests; real impl deferred to the Phase 5 integration
   test. `-race`/lint green.
+
+### Phase 3 (done)
+
+- Added `internal/configwatch` package: `Watcher` with `Start`/`Stop`, a single
+  event-loop goroutine doing op/name filtering, re-armed-timer debounce,
+  `doReload` (✓ reloaded / "policy unchanged" / ⚠ keep last-good), and
+  `rederive`/`reconcileDirs` to track added/removed includes. `ReloadFunc` keeps
+  it decoupled from `policy/compile`. 12 fake-driven tests (small debounce +
+  `require.Eventually`/`require.Never`); `-race -count=5` and lint green.
