@@ -1,6 +1,6 @@
 # AC-0053: Hot-reload the source config on change during a run session
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-18
 **Updated:** 2026-06-19
@@ -43,21 +43,21 @@ when the session ends.
 
 ## Acceptance Criteria
 
-- [ ] While a cage is running, modifying the project config recompiles
+- [x] While a cage is running, modifying the project config recompiles
       `policy.json` without a restart, and the live proxy enforces the change;
       a concise feedback line reports the reload.
-- [ ] Modifying any file in the resolved include graph (included fragments plus
+- [x] Modifying any file in the resolved include graph (included fragments plus
       the global baseline) also triggers the recompile.
-- [ ] An invalid or unparseable edit does **not** change the enforced policy: the
+- [x] An invalid or unparseable edit does **not** change the enforced policy: the
       last-good compiled policy stays in force, a clear warning naming the problem
       is printed, and a subsequent valid save recompiles and reloads.
-- [ ] The watcher is active only during an active run session and stops cleanly
+- [x] The watcher is active only during an active run session and stops cleanly
       on shutdown — no leftover goroutine/process, no file-descriptor leak.
-- [ ] Reload feedback is distinguishable from the agent's own foreground output
+- [x] Reload feedback is distinguishable from the agent's own foreground output
       (does not clobber or interleave destructively with it).
-- [ ] OS file-watching goes through the `internal/sysdep` seam with a fake; no
+- [x] OS file-watching goes through the `internal/sysdep` seam with a fake; no
       external tool is invoked in unit tests (project convention).
-- [ ] `make test`, `make lint` pass; `make build` at the end.
+- [x] `make test`, `make lint` pass; `make build` at the end.
 
 ## Out of Scope
 
@@ -113,6 +113,33 @@ ticket authoring.
 [Leave empty — filled when the plan is created.]
 
 ## Notes & Updates
+
+### 2026-06-19 — Done
+
+- Implemented and verified. Status → Done. Plan + status:
+  `thoughts/shared/plans/2026-06-19-AC-0053-config-hot-reload.md`.
+- **Checkpoint chose fsnotify** (new `internal/sysdep` `FileWatcher` seam) over
+  mtime polling. Shape: `config.Loader.ResolveFiles` enumerates the include graph;
+  `internal/configwatch` watches the parent dirs, filters by name, debounces, and
+  recompiles via the existing offline compile; wired into `run` after proxy
+  attach, torn down via `defer`.
+- **Scope expanded for a security fix found during implementation.** The watcher
+  recompiles on any edit to `.agent-creance.yaml`, which is mounted read-write
+  into the cage — so as first specified it would let a prompt-injected agent widen
+  its own egress, breaking the design's line-341 invariant. Per the checkpoint
+  decision, the cage now denies in-cage *write* of every resolved config file via
+  a final Seatbelt fragment (`config-ro.sb`); read stays allowed. Proven by an
+  adversarial integration test against real safehouse. Threat + behaviour
+  documented in `docs/design.md` (config-compilation + new "In-session config
+  hot-reload" section).
+- Residual (documented): if the *developer* adds a new in-project include
+  mid-session, that new file isn't in the launch-time `config-ro.sb` set and is
+  agent-writable until the next run — human-initiated and narrow (the agent can't
+  edit the top config to add includes itself). Possible follow-up: re-derive the
+  deny set on reload, which needs a live profile update mechanism the cage doesn't
+  have today.
+- `make test`, `make lint`, `make build` green; Go integration tests pass
+  (`TestOSFileWatcherReportsDirectoryChanges`, `TestLiveSafehouseConfigReadOnly`).
 
 ### 2026-06-19
 
