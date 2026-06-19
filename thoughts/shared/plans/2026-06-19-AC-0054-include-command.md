@@ -2,7 +2,7 @@
 date: 2026-06-19
 ticket: AC-0054
 title: "Plan — `include` command: add config include-list entries"
-status: ready
+status: complete
 research: thoughts/shared/research/2026-06-19-AC-0054-include-command.md
 ---
 

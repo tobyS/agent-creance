@@ -1,0 +1,51 @@
+# `agent-creance include` appends an entry to the project config's include: list,
+# preserving comments, and recompiles so the merged fragment takes effect. The
+# config lists no generators, so the whole scenario runs offline — no network, no
+# external tools. HOME/XDG_CACHE_HOME under $WORK keep it hermetic; PATH is pinned to
+# $CREANCE_BIN so only the CLI is reachable. This mirrors the ticket's Acceptance
+# Criteria (AC-0054).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# --help advertises the command; a missing PATH is rejected before any side effect.
+agent-creance include --help
+stdout 'include PATH'
+! agent-creance include
+stderr 'accepts 1 arg'
+
+# A missing target is reported up front (naming the path), before the config is
+# touched — the pre-check, not a later compile failure.
+! agent-creance include ./missing.yaml
+stderr 'missing\.yaml'
+stderr 'not found'
+! grep 'missing.yaml' .agent-creance.yaml
+
+# include a valid fragment → entry appended to the project config (comment
+# preserved), policy recompiled, and the fragment's rule visible in policy show.
+agent-creance include ./baseline.yaml
+stdout 'included \./baseline\.yaml in \.agent-creance\.yaml'
+stdout 'policy recompiled'
+grep '# keep this comment' .agent-creance.yaml
+grep 'include:' .agent-creance.yaml
+grep 'baseline.yaml' .agent-creance.yaml
+agent-creance policy show
+stdout 'included\.example'
+
+# Re-including the same path is a reported no-op.
+agent-creance include ./baseline.yaml
+stdout 'already included'
+
+-- .agent-creance.yaml --
+# keep this comment
+network:
+  egress:
+    allow:
+      - host: seed.example
+
+-- baseline.yaml --
+network:
+  egress:
+    allow:
+      - host: included.example

@@ -1,6 +1,6 @@
 # AC-0054: `include` command — add config include-list entries
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Small
 **Created:** 2026-06-18
 **Updated:** 2026-06-19
@@ -37,21 +37,23 @@ resolved or parsed produces a clear error rather than a silently broken config.
 
 ## Acceptance Criteria
 
-- [ ] `agent-creance include PATH` appends `PATH` to the project config's
+- [x] `agent-creance include PATH` appends `PATH` to the project config's
       `include:` list, preserving existing comments and formatting, and recompiles
       the policy.
-- [ ] Re-adding an entry already present is a no-op with an "already included"
+- [x] Re-adding an entry already present is a no-op with an "already included"
       message (idempotent), matching the allow/deny behavior.
-- [ ] On success, a confirmation line reports the change and that the policy
+- [x] On success, a confirmation line reports the change and that the policy
       recompiled.
-- [ ] If the added include cannot be resolved or parsed, the command surfaces a
+- [x] If the added include cannot be resolved or parsed, the command surfaces a
       clear error naming the path; the user is left able to recover (not silently
       broken).
-- [ ] Target selection parallels `allow`/`deny` at least for the project config
-      (whether `--global` / `--once` also apply is resolved in planning).
-- [ ] Unit-tested via the `sysdep` fakes (no real filesystem or external tools);
+- [x] Target selection parallels `allow`/`deny` at least for the project config
+      (whether `--global` / `--once` also apply is resolved in planning). Resolved:
+      project config only — relative includes resolve against the declaring file's
+      dir, so `--global`/`--once` would resolve from a surprising base.
+- [x] Unit-tested via the `sysdep` fakes (no real filesystem or external tools);
       CLI behavior covered by a hermetic testscript.
-- [ ] `make test`, `make lint` pass; `make build` at the end.
+- [x] `make test`, `make lint` pass; `make build` at the end.
 
 ## Out of Scope
 
@@ -92,7 +94,8 @@ None blocking.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-19-AC-0054-include-command.md`
+- Plan: `thoughts/shared/plans/2026-06-19-AC-0054-include-command.md`
 
 ## Notes & Updates
 
@@ -104,3 +107,18 @@ None blocking.
 - Complexity Small: the append + recompile + idempotency machinery already exists
   for rules; this reuses it for the include list. The only real unknowns are
   include-path validation and which targets to support.
+
+### 2026-06-19
+
+- Done. Added `config.AppendInclude` (comment-preserving splice for the top-level
+  `include:` list, mirroring `AppendRule`/`AppendHostService`; synthesizes a missing
+  key and rewrites an empty `include: []`/null to block form) and
+  `config.Loader.ValidateInclude` (single-entry resolve + read + parse pre-check).
+- Added the `include` command, reusing a new generic `applyAndRecompile` extracted
+  from `mutateAndRecompile` (allow/deny now wrap it, behavior unchanged).
+- Checkpoint decisions: pre-check before write; project config only (no
+  `--global`/`--once`, to avoid relative includes resolving from a surprising base);
+  exact-string dedup (matches the loader's no-normalization handling).
+- Coverage: golden tests for the splice, table tests for `ValidateInclude`, four CLI
+  unit tests over the sysdep fakes, and `include.txtar`. `make test`, `make lint`
+  green; `make golden` no diff; `make build` done.
