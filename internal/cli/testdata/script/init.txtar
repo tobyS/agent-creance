@@ -21,18 +21,58 @@ stderr 'unknown command'
 
 # 1. Empty dir → commented generators placeholder; re-run refuses; --force wins.
 #    With --no-setup the success line still points at setup (host setup pending).
+#    No .git → no git-remote block.
 mkdir empty
 cd empty
 agent-creance init --no-setup
 stdout 'no manifests detected'
 stdout 'Next: run `agent-creance setup`'
+! stdout 'Git remotes:'
 exists .agent-creance.yaml
 grep '# generators:' .agent-creance.yaml
+! grep 'git-receive-pack' .agent-creance.yaml
 ! agent-creance init --no-setup
 stderr 'already exists'
 stderr '--force'
 agent-creance init --no-setup --force
 stdout 'Wrote .agent-creance.yaml'
+cd ..
+
+# 5. GitHub HTTPS remote, non-interactive → read-only by default: repo/API/content
+#    allow entries plus a deny_always on git-receive-pack.
+cd ghttps
+agent-creance init --no-setup
+stdout 'Git remotes: allowlisted 1 remote'
+stdout 'read-only'
+grep 'host: github.com' .agent-creance.yaml
+grep 'host: api.github.com' .agent-creance.yaml
+grep '/repos/foo/bar/' .agent-creance.yaml
+grep 'deny_always:' .agent-creance.yaml
+grep 'git-receive-pack' .agent-creance.yaml
+cd ..
+
+# 6. --git-push grants write: same allow entries, no deny_always push block.
+cd ghpush
+agent-creance init --no-setup --git-push
+stdout 'push allowed'
+grep 'host: github.com' .agent-creance.yaml
+! grep 'git-receive-pack' .agent-creance.yaml
+cd ..
+
+# 7. SSH remote → HTTPS forge hosts still added, with the SSH-transport caveat.
+cd sshremote
+agent-creance init --no-setup
+stdout 'non-HTTPS transport'
+grep 'host: github.com' .agent-creance.yaml
+grep 'host: api.github.com' .agent-creance.yaml
+cd ..
+
+# 8. Unknown/self-hosted forge → bare repo-host allow, no API/CDN companions.
+cd selfhost
+agent-creance init --no-setup
+stdout 'not a known forge'
+grep 'host: git.example.com' .agent-creance.yaml
+! grep 'api.github.com' .agent-creance.yaml
 cd ..
 
 # 2. package.json only → package_json listed (object form), composer_json absent.
@@ -73,3 +113,15 @@ cd ..
 {"dependencies": {"react": "^18.0.0"}}
 -- mono/node_modules/react/package.json --
 {"name": "react"}
+-- ghttps/.git/config --
+[remote "origin"]
+url = https://github.com/foo/bar.git
+-- ghpush/.git/config --
+[remote "origin"]
+url = https://github.com/foo/bar.git
+-- sshremote/.git/config --
+[remote "origin"]
+url = git@github.com:foo/bar.git
+-- selfhost/.git/config --
+[remote "origin"]
+url = https://git.example.com/team/lib.git

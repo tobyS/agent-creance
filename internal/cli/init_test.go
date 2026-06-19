@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
+	"github.com/tobyS/agent-creance/internal/gitremote"
 	"github.com/tobyS/agent-creance/internal/setupcheck"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
@@ -76,6 +77,52 @@ func TestRenderConfigTemplateParses(t *testing.T) {
 			require.Equal(t, tc.gens, cfg.Network.Egress.Generators)
 		})
 	}
+}
+
+// TestRenderConfigTemplateGitRemotes golden-tests a full template carrying the
+// project's git-remote allow + deny_always blocks alongside a generator and an
+// imported allow rule — exercising the grouped/commented git-remotes rendering.
+func TestRenderConfigTemplateGitRemotes(t *testing.T) {
+	gens := []config.Generator{{Type: generator.GeneratorPackageJSON, Path: "package.json"}}
+	git := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://github.com/foo/bar.git"}}, false)
+	imported := []config.Rule{{Host: "docs.example.com", Methods: &[]string{"GET"}, Mode: config.ModeIntercept}}
+
+	got := renderConfigTemplate(gens, git.Allow, imported, nil, git.Deny)
+	golden := filepath.Join("testdata", "init", "git_remotes.golden")
+	if *update {
+		require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
+		return
+	}
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err, "missing golden file; run with -update to create it")
+	require.Equal(t, string(want), got)
+}
+
+// TestRenderConfigTemplateGitRemotesParses guards that a git-remote config parses and
+// validates, and that the repo/API allow and the read-only push deny survive the loader.
+func TestRenderConfigTemplateGitRemotesParses(t *testing.T) {
+	git := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://github.com/foo/bar.git"}}, false)
+	out := renderConfigTemplate(nil, git.Allow, nil, nil, git.Deny)
+
+	cfg, err := config.Parse([]byte(out))
+	require.NoError(t, err)
+
+	var hasRepo, hasAPI bool
+	for _, r := range cfg.Network.Egress.Allow {
+		switch r.Host {
+		case "github.com":
+			hasRepo = true
+		case "api.github.com":
+			hasAPI = true
+		}
+	}
+	require.True(t, hasRepo, "repo host allow must survive parse")
+	require.True(t, hasAPI, "api host allow must survive parse")
+
+	require.Len(t, cfg.Network.Egress.DenyAlways, 1)
+	require.Equal(t, "github.com", cfg.Network.Egress.DenyAlways[0].Host)
+	require.NotNil(t, cfg.Network.Egress.DenyAlways[0].Paths)
+	require.Contains(t, *cfg.Network.Egress.DenyAlways[0].Paths, "/foo/bar/git-receive-pack")
 }
 
 // initFixture wires an App from the sysdep fakes for the project dir initDir, with

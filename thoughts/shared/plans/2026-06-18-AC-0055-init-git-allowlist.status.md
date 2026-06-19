@@ -10,7 +10,7 @@ updated: 2026-06-18
 - [x] Phase 2 — internal/gitremote detection package (.git/config parser)
 - [x] Phase 3 — Build git-remote config.Rule allow/deny sets
 - [x] Phase 4 — Wire into runInit (flag, prompt, render, report)
-- [ ] Phase 5 — Tests: testscript + goldens
+- [x] Phase 5 — Tests: testscript + goldens
 - [ ] Phase 6 — Docs (design.md) + ticket close
 
 ## Notes
