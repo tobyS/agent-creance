@@ -1,9 +1,9 @@
 # AC-0053: Hot-reload the source config on change during a run session
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-18
-**Updated:** 2026-06-18
+**Updated:** 2026-06-19
 
 ## Problem Statement
 
@@ -113,6 +113,16 @@ ticket authoring.
 [Leave empty — filled when the plan is created.]
 
 ## Notes & Updates
+
+### 2026-06-19
+
+- Research complete (`thoughts/shared/research/2026-06-19-AC-0053-config-hot-reload.md`).
+  Status → In Progress. Key findings: the delivery half (compiler atomic write +
+  enforcer mtime poll) already exists and guarantees last-good on invalid edits;
+  the one real gap is that the config loader discards the resolved include-graph
+  file list, so a new loader API is needed to enumerate the watch set. One open
+  design fork for the checkpoint: fsnotify (new sysdep seam) vs. mtime polling
+  (existing seams).
 
 ### 2026-06-18
 
