@@ -1,9 +1,9 @@
 # AC-0055: `init` auto-allowlists the project's Git remotes (repo + API + content hosts)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-18
-**Updated:** 2026-06-18
+**Updated:** 2026-06-19
 
 ## Problem Statement
 
@@ -52,25 +52,27 @@ asked, defaulting to the safe (read-only) option when running non-interactively.
 
 ## Acceptance Criteria
 
-- [ ] `init` detects all configured git remotes and, for each, writes allow
+- [x] `init` detects all configured git remotes and, for each, writes allow
       entries into the committed config: the repo host (clone/fetch), the forge
       API host scoped to `/repos/<org>/<repo>/`, and the forge content companion
       hosts — reusing the existing forge→content-host table.
-- [ ] The written entries are visible in the generated config (commented/grouped
+- [x] The written entries are visible in the generated config (commented/grouped
       like the generators block) and reported in init's output.
-- [ ] Whether push (write) is allowed is an init-time prompt; non-interactive runs
+- [x] Whether push (write) is allowed is an init-time prompt; non-interactive runs
       (`--no-setup`/CI, or a preset flag) default to **read-only**, with a flag to
-      preset the choice.
-- [ ] Read-only is enforced by scoping the rule (path/method) so git-receive-pack
+      preset the choice (`--git-push`).
+- [x] Read-only is enforced by scoping the rule (path/method) so git-receive-pack
       (push) is not permitted; full access additionally permits push to the repo.
-- [ ] An SSH remote (`git@host:org/repo.git`) is translated to its forge identity
+      (Implemented as a `deny_always` on the receive-pack path — research found the
+      allow rule alone can't express it; both POSTs share the repo prefix and method.)
+- [x] An SSH remote (`git@host:org/repo.git`) is translated to its forge identity
       and gets the HTTPS forge/API/content hosts; init notes that SSH git
       *transport* itself remains unsupported (HTTPS remotes only, per v0.1).
-- [ ] An unknown/self-hosted forge host gets a bare allow for the remote host
+- [x] An unknown/self-hosted forge host gets a bare allow for the remote host
       scoped to `<org>/<repo>` (clone/fetch/push as chosen); API/CDN companions are
       omitted and init notes they couldn't be inferred.
-- [ ] No configured remotes → nothing is added and init does not error.
-- [ ] `make test`, `make lint` pass; `make build` at the end.
+- [x] No configured remotes → nothing is added and init does not error.
+- [x] `make test`, `make lint` pass; `make build` at the end.
 
 ## Out of Scope
 
@@ -118,7 +120,11 @@ configured remotes were all settled during authoring.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+See `thoughts/shared/plans/2026-06-18-AC-0055-init-git-allowlist.md` (research:
+`thoughts/shared/research/2026-06-18-AC-0055-init-git-allowlist.md`). Implemented in
+six phases: forge-table API host + exported expansion; `internal/gitremote`
+.git/config parser; `config.Rule` allow/deny builder; init wiring (`--git-push`,
+prompt, grouped render, report); tests; docs.
 
 ## Notes & Updates
 
@@ -135,3 +141,20 @@ configured remotes were all settled during authoring.
 - Complexity Medium: the forge→content-host table and `allow <repo-url>` expansion
   already exist; the new work is remote detection (ideally via `.git/config` to
   keep init tool-free), the push prompt/flag, and the read-only rule scoping.
+
+### 2026-06-19 — Done
+
+- Implemented per the plan. Two research findings shaped the design and were
+  confirmed at the checkpoint: (1) `allow <repo-url>` does **not** actually do forge
+  expansion today — the machinery lives in `internal/generator` (now exported as
+  `RepositoryRules`/`NormalizeRepoURL`); (2) read-only **cannot** be expressed by
+  scoping the allow rule (method scoping can't separate push from fetch — both POST —
+  and the `/<org>/<repo>/` prefix already permits push), so it is enforced by a
+  generated `deny_always` on the `git-receive-pack` endpoint.
+- Decisions taken at the checkpoint: read-only via allow + `deny_always`; the forge
+  **API host was added to the shared `forges` table** (so dependency repos also gain
+  `api.github.com` access — generator goldens updated accordingly).
+- Detection reads `.git/config` via `app.FS` (new `internal/gitremote` package) — no
+  external tools, no new sysdep seam, as intended.
+- Commits: c065a62 (forge table/export), 6093488 (gitremote), dd685a3 (rule builder),
+  6e5e695 (init wiring), 8051afd (tests), plus this docs commit.

@@ -134,7 +134,10 @@ network:
       #   path: apps/web/package.json
 
     # Soft-allow rules. URLs not matched here get a soft-deny (the agent
-    # may escalate to the user if it really needs them).
+    # may escalate to the user if it really needs them). The project's own
+    # repo/API/content hosts shown here are written automatically by
+    # `agent-creance init` from .git/config (AC-0055) — they no longer need
+    # to be hand-added.
     allow:
       - host: api.github.com
         paths: ["/repos/tobyS/this-project/"]
@@ -184,12 +187,13 @@ If a package has no homepage in its registry metadata, no homepage rule is emitt
 
 **Forge content hosts.** A repository on a forge isn't reachable from one host alone — viewing files, cloning, fetching raw content, and pulling release assets each hit a *different* host, and a `repository` rule scoped to `github.com/<org>/<repo>/` covers none of them. So when the repository host is a known forge, the generator emits companion allow rules for that forge's content hosts, scoped to the same `<org>/<repo>` wherever the host's URL layout permits. For a GitHub `repository`, alongside `github.com/<org>/<repo>/`:
 
+- `api.github.com/repos/<org>/<repo>/` — the REST API, repo-scoped (used by `gh` and PR tooling). Scoping to the repo path means `gh`'s `/graphql` and `/user` calls still need a manual allow — an accepted trade for not opening the whole API host.
 - `raw.githubusercontent.com/<org>/<repo>/` — raw file fetches (READMEs, schemas, example configs, install scripts).
 - `codeload.github.com/<org>/<repo>/` — tarball/zip downloads and `git` clone-over-HTTPS.
 - `<org>.github.io/<repo>/` — project documentation pages.
 - `objects.githubusercontent.com` — the release-asset CDN. Its URLs are hash-addressed, not org-scoped, so this rule is necessarily host-wide; it's emitted as a separate, lower-trust rule that a stricter threat model can drop.
 
-GitLab and other forges get analogous companion-host tables (`gitlab.com` → `*.gitlab.io`, etc.) as they're added. The forge→content-host mapping is data, not per-generator code, so extending it is a table edit — and the same table is what `agent-creance allow <repo-url>` consults, so a manual repo allow expands to the same companion set.
+GitLab and other forges get analogous companion-host tables (`gitlab.com` → `*.gitlab.io`, etc.) as they're added; GitLab's REST API is project-ID-scoped rather than `<org>/<repo>`-path-scoped, so it gets no repo-scoped API companion. The forge→content-host mapping is data, not per-generator code, so extending it is a table edit — and the same table is what `agent-creance allow <repo-url>` consults and what `agent-creance init` uses to allowlist the project's *own* git remotes (see "The `init` command"), so a manual repo allow, a dependency's repository rule, and the project's own remote all expand to the same companion set.
 
 **Monorepos — one generator per manifest.** A generator may be listed more than once for the same type, each scoped to a manifest path, so a monorepo gets dependency allow-rules for every one of its packages:
 
@@ -405,6 +409,11 @@ agent-creance init                  # writes .agent-creance.yaml template in the
                                     #   manifests (package.json, composer.json) at the root and up to
                                     #   two directory levels deep — skipping node_modules/ & vendor/ —
                                     #   and pre-populates one generators: entry per detected manifest.
+                                    #   Also reads .git/config and writes static allow entries for the
+                                    #   project's own remotes — repo host (clone/fetch), repo-scoped
+                                    #   forge API host, and forge content hosts (reusing the forge table,
+                                    #   AC-0055); whether push is allowed is an init-time choice (see
+                                    #   --git-push below).
                                     #   On an interactive terminal it also offers (each its own y/N,
                                     #   auto-skipped without a TTY) to import the project's Claude Code
                                     #   allowed web domains and MCP servers (.claude/settings*.json,
@@ -412,6 +421,15 @@ agent-creance init                  # writes .agent-creance.yaml template in the
                                     #   (docker-compose, package.json scripts, Procfile, .env), shows
                                     #   the resulting config and confirms before writing, then offers
                                     #   an agent prompt to fill in the rest (AC-0051)
+agent-creance init --git-push       # grant the agent push (write) access to the project's git remotes;
+                                    #   without it, init defaults to read-only (interactive runs prompt;
+                                    #   non-interactive runs stay read-only). Read-only is enforced by a
+                                    #   deny_always on the git-receive-pack push endpoint — the broad repo
+                                    #   allow alone would permit push, and method scoping can't separate
+                                    #   push from fetch (both are POST). SSH remotes get their HTTPS forge
+                                    #   hosts (git-over-SSH transport itself stays unsupported, HTTPS only,
+                                    #   per S4); an unknown/self-hosted forge gets a bare repo-host allow
+                                    #   with no inferable API/content companions.
 agent-creance run                   # starts the cage and the agent; if setup hasn't been run
                                     #   yet (no trusted CA, no skill), prints a clear pointer
                                     #   to `agent-creance setup` and exits non-zero rather than

@@ -11,7 +11,8 @@ updated: 2026-06-18
 - [x] Phase 3 — Build git-remote config.Rule allow/deny sets
 - [x] Phase 4 — Wire into runInit (flag, prompt, render, report)
 - [x] Phase 5 — Tests: testscript + goldens
-- [ ] Phase 6 — Docs (design.md) + ticket close
+- [x] Phase 6 — Docs (design.md) + ticket close
 
 ## Notes
-- Started 2026-06-18.
+- Started 2026-06-18; completed 2026-06-19. All phases verified (make test, make
+  lint, make build green). Ticket set to Done.
