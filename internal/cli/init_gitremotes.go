@@ -26,17 +26,13 @@ type gitRemoteResult struct {
 	Notes []string      // caveats to print (SSH transport, uninferable companions, …)
 }
 
-// gatherGitRemoteRules detects the project's git remotes and expands each into allow
-// (and, unless allowPush, deny) rules. No remotes yields a zero result and no error.
-// Rules are deduplicated by host+path so multiple remotes sharing a host (origin +
-// upstream, fork + upstream) coexist without collapsing distinct repos.
-func gatherGitRemoteRules(app *App, dir string, allowPush bool) (gitRemoteResult, error) {
-	remotes, err := gitremote.Detect(app.FS, dir)
-	if err != nil {
-		return gitRemoteResult{}, fmt.Errorf("read git remotes: %w", err)
-	}
+// buildGitRemoteRules expands the detected remotes into allow (and, unless allowPush,
+// deny) rules. No remotes yields a zero result. Rules are deduplicated by host+path so
+// multiple remotes sharing a host (origin + upstream, fork + upstream) coexist without
+// collapsing distinct repos.
+func buildGitRemoteRules(remotes []gitremote.Remote, allowPush bool) gitRemoteResult {
 	if len(remotes) == 0 {
-		return gitRemoteResult{}, nil
+		return gitRemoteResult{}
 	}
 
 	var (
@@ -96,7 +92,7 @@ func gatherGitRemoteRules(app *App, dir string, allowPush bool) (gitRemoteResult
 			})
 		}
 	}
-	return res, nil
+	return res
 }
 
 // repoPath is the bare repo path prefix, e.g. "/facebook/react/".

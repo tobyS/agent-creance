@@ -1,34 +1,18 @@
 package cli
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/config"
-	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
+	"github.com/tobyS/agent-creance/internal/gitremote"
 )
-
-// gitRemoteApp builds a minimal App whose FS holds a .git/config with the given body.
-func gitRemoteApp(t *testing.T, gitConfig string) *App {
-	t.Helper()
-	fs := sysdeptest.NewFakeFileSystem()
-	if gitConfig != "" {
-		fs.Files[filepath.Join(gitRemoteDir, ".git", "config")] = []byte(gitConfig)
-	}
-	return &App{FS: fs}
-}
-
-const gitRemoteDir = "/proj"
 
 func pp(s ...string) *[]string { return &s }
 
-func TestGatherGitRemoteRules_GitHubReadOnly(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = https://github.com/foo/bar.git\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, false)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_GitHubReadOnly(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://github.com/foo/bar.git"}}, false)
 
 	reason := "project git remote (origin)"
 	require.Equal(t, []config.Rule{
@@ -48,20 +32,14 @@ func TestGatherGitRemoteRules_GitHubReadOnly(t *testing.T) {
 	require.Empty(t, res.Notes)
 }
 
-func TestGatherGitRemoteRules_PushGrantedNoDeny(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = https://github.com/foo/bar.git\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, true)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_PushGrantedNoDeny(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://github.com/foo/bar.git"}}, true)
 	require.NotEmpty(t, res.Allow)
 	require.Empty(t, res.Deny)
 }
 
-func TestGatherGitRemoteRules_SSHRemoteNoted(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = git@github.com:foo/bar.git\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, false)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_SSHRemoteNoted(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "git@github.com:foo/bar.git"}}, false)
 	// Same HTTPS forge hosts as the https case (transport is irrelevant to the rules).
 	require.Equal(t, "github.com", res.Allow[0].Host)
 	require.Equal(t, "api.github.com", res.Allow[1].Host)
@@ -69,11 +47,8 @@ func TestGatherGitRemoteRules_SSHRemoteNoted(t *testing.T) {
 	require.Contains(t, res.Notes[0], "non-HTTPS transport")
 }
 
-func TestGatherGitRemoteRules_UnknownForge(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = https://git.example.com/team/lib.git\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, false)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_UnknownForge(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://git.example.com/team/lib.git"}}, false)
 	// One bare repo-host allow covering both path forms, no companions.
 	require.Equal(t, []config.Rule{{
 		Host:   "git.example.com",
@@ -85,11 +60,11 @@ func TestGatherGitRemoteRules_UnknownForge(t *testing.T) {
 	require.Len(t, res.Deny, 1)
 }
 
-func TestGatherGitRemoteRules_TwoRemotesDistinctRepos(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = https://github.com/me/fork.git\n[remote \"upstream\"]\n\turl = https://github.com/org/repo.git\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, true)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_TwoRemotesDistinctRepos(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{
+		{Name: "origin", URL: "https://github.com/me/fork.git"},
+		{Name: "upstream", URL: "https://github.com/org/repo.git"},
+	}, true)
 	// Both repos' github.com rules present (distinct paths, not collapsed by dedupe).
 	var ghPaths [][]string
 	for _, r := range res.Allow {
@@ -103,20 +78,15 @@ func TestGatherGitRemoteRules_TwoRemotesDistinctRepos(t *testing.T) {
 	}, ghPaths)
 }
 
-func TestGatherGitRemoteRules_NoRemotes(t *testing.T) {
-	app := gitRemoteApp(t, "")
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, false)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_NoRemotes(t *testing.T) {
+	res := buildGitRemoteRules(nil, false)
 	require.Empty(t, res.Allow)
 	require.Empty(t, res.Deny)
 	require.Empty(t, res.Notes)
 }
 
-func TestGatherGitRemoteRules_UnparseableRemoteSkipped(t *testing.T) {
-	app := gitRemoteApp(t, "[remote \"origin\"]\n\turl = https://github.com/onlyorg\n")
-
-	res, err := gatherGitRemoteRules(app, gitRemoteDir, false)
-	require.NoError(t, err)
+func TestBuildGitRemoteRules_UnparseableRemoteSkipped(t *testing.T) {
+	res := buildGitRemoteRules([]gitremote.Remote{{Name: "origin", URL: "https://github.com/onlyorg"}}, false)
 	require.Empty(t, res.Allow)
 	require.Len(t, res.Notes, 1)
 	require.Contains(t, res.Notes[0], "couldn't parse")

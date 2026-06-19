@@ -23,7 +23,7 @@ func TestInitImportsWebDomainInteractive(t *testing.T) {
 	// web gate=y, review=y, agent-prompt=n
 	f.withStdin("y\ny\nn\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
@@ -42,7 +42,7 @@ func TestInitImportsDeclineReviewWritesNothing(t *testing.T) {
 	// web gate=y, review=n
 	f.withStdin("y\nn\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	_, ok := f.fs.Files[filepath.Join(initDir, configFile)]
 	require.False(t, ok, "declined review must write no config")
 	require.Contains(t, f.out.String(), "not written")
@@ -56,7 +56,7 @@ func TestInitImportsDeclineGateScaffoldsPlain(t *testing.T) {
 	// remaining line: agent-prompt=n
 	f.withStdin("n\nn\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
 	require.Empty(t, cfg.Network.Egress.Allow, "declined gate imports nothing")
@@ -70,7 +70,7 @@ func TestInitImportsDetectedPorts(t *testing.T) {
 	// port gate=y, review=y, agent-prompt=n
 	f.withStdin("y\ny\nn\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
 	require.Equal(t, []config.HostService{{Label: "web", Port: 8080}}, cfg.Network.HostServices)
@@ -82,7 +82,7 @@ func TestInitImportsAgentPromptPrinted(t *testing.T) {
 	// no imports available → no gates/review; only the agent-prompt offer (=y).
 	f.withStdin("y\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	require.Contains(t, f.out.String(), "agent-creance.suggested.yaml")
 	require.Contains(t, f.out.String(), "host_services:")
 }
@@ -91,7 +91,7 @@ func TestInitNonInteractiveIgnoresClaudeSettings(t *testing.T) {
 	f := newInitFixture() // terminal non-interactive by default
 	f.seedClaudeWebDomain("docs.example.com")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
 	require.Empty(t, cfg.Network.Egress.Allow, "non-interactive must not import")

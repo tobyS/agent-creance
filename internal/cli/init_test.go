@@ -50,7 +50,7 @@ var renderCases = []struct {
 func TestRenderConfigTemplate(t *testing.T) {
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := renderConfigTemplate(tc.gens, nil, nil)
+			got := renderConfigTemplate(tc.gens, nil, nil, nil, nil)
 			golden := filepath.Join("testdata", "init", tc.golden)
 
 			if *update {
@@ -71,7 +71,7 @@ func TestRenderConfigTemplate(t *testing.T) {
 func TestRenderConfigTemplateParses(t *testing.T) {
 	for _, tc := range renderCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens, nil, nil)))
+			cfg, err := config.Parse([]byte(renderConfigTemplate(tc.gens, nil, nil, nil, nil)))
 			require.NoError(t, err)
 			require.Equal(t, tc.gens, cfg.Network.Egress.Generators)
 		})
@@ -161,7 +161,7 @@ func (f *initFixture) configAt(t *testing.T) []byte {
 func TestInitEmptyDir(t *testing.T) {
 	f := newInitFixture()
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
@@ -178,7 +178,7 @@ func TestInitPackageJSONOnly(t *testing.T) {
 	f := newInitFixture()
 	f.fs.Files[filepath.Join(initDir, "package.json")] = []byte(`{"dependencies":{}}`)
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
@@ -193,7 +193,7 @@ func TestInitBothManifests(t *testing.T) {
 	f.fs.Files[filepath.Join(initDir, "package.json")] = []byte(`{}`)
 	f.fs.Files[filepath.Join(initDir, "composer.json")] = []byte(`{}`)
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestInitRefusesExistingConfig(t *testing.T) {
 	dest := filepath.Join(initDir, configFile)
 	f.fs.Files[dest] = original
 
-	err := runInit(context.Background(), f.app, initDir, false /*force*/, false /*noSetup*/)
+	err := runInit(context.Background(), f.app, initDir, false /*force*/, false /*noSetup*/, false /*gitPush*/)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already exists")
 	require.Contains(t, err.Error(), "--force")
@@ -224,7 +224,7 @@ func TestInitForceOverwrites(t *testing.T) {
 	dest := filepath.Join(initDir, configFile)
 	f.fs.Files[dest] = []byte("agent:\n  command: [mine]\n")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, true /*force*/, false /*noSetup*/))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, true /*force*/, false /*noSetup*/, false /*gitPush*/))
 
 	require.NotContains(t, string(f.fs.Files[dest]), "mine", "force should overwrite")
 	cfg, err := config.Parse(f.fs.Files[dest])
@@ -235,14 +235,14 @@ func TestInitForceOverwrites(t *testing.T) {
 // TestInitTemplatePerm pins the written config to the expected file mode.
 func TestInitTemplatePerm(t *testing.T) {
 	f := newInitFixture()
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	require.Equal(t, configFilePerm, f.fs.Perms[filepath.Join(initDir, configFile)])
 }
 
 // guard against accidental gitignore-writing (design.md: init writes no gitignore).
 func TestInitWritesNoGitignore(t *testing.T) {
 	f := newInitFixture()
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 	for name := range f.fs.Files {
 		require.False(t, strings.HasSuffix(name, ".gitignore"),
 			"init must not write a .gitignore (%s)", name)
@@ -330,7 +330,7 @@ func TestInitMonorepoWritesObjectForm(t *testing.T) {
 	f.seedManifest("package.json")
 	f.seedManifest("apps/web/package.json")
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	cfg, err := config.Parse(f.configAt(t))
 	require.NoError(t, err)
@@ -356,7 +356,7 @@ func (f *initFixture) configWritten() bool {
 func TestInitAlreadySetUp(t *testing.T) {
 	f := newInitFixture() // default: CA in keychain + skill present → StatusOK
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	// The cheap gate ran, but no setup work was driven and no prompt was shown.
 	require.Equal(t, []string{setupcheck.CACommonName}, f.kc.CertLookups, "gate should probe the CA")
@@ -377,7 +377,7 @@ func TestInitInteractiveConfirmDrivesSetup(t *testing.T) {
 	// Verify-first untrusted then trusted post-install → the install path runs.
 	f.prober.Outcomes = []sysdep.ProbeOutcome{sysdep.ProbeUntrusted, sysdep.ProbeTrusted}
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, false, false))
 
 	// The shared setup orchestration actually ran: CA installed, skill (re)written.
 	require.Equal(t, []string{setupCAPath}, f.kc.AddedCerts, "confirmed setup should install the CA")
@@ -397,7 +397,7 @@ func TestInitInteractiveDeclineAborts(t *testing.T) {
 	f.term.Interactive = true
 	f.withStdin("n\n")
 
-	err := runInit(context.Background(), f.app, initDir, false, false)
+	err := runInit(context.Background(), f.app, initDir, false, false, false)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "declined")
@@ -412,7 +412,7 @@ func TestInitSetupFailureAborts(t *testing.T) {
 	f.withStdin("y\n")
 	f.prober.Outcome = sysdep.ProbeUntrusted // post-install verify keeps failing
 
-	err := runInit(context.Background(), f.app, initDir, false, false)
+	err := runInit(context.Background(), f.app, initDir, false, false, false)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "CA verification failed", "setup's actionable error surfaces")
@@ -423,7 +423,7 @@ func TestInitKeychainLockedAborts(t *testing.T) {
 	f := newInitFixture()
 	f.kc.Locked = true // FindCertificate → ErrKeychainLocked → StatusKeychainLocked
 
-	err := runInit(context.Background(), f.app, initDir, false, false)
+	err := runInit(context.Background(), f.app, initDir, false, false, false)
 
 	require.Error(t, err)
 	got := f.out.String()
@@ -437,7 +437,7 @@ func TestInitNonInteractiveMissingAborts(t *testing.T) {
 	f.setupMissing()
 	f.term.Interactive = false // no TTY to confirm on
 
-	err := runInit(context.Background(), f.app, initDir, false, false)
+	err := runInit(context.Background(), f.app, initDir, false, false, false)
 
 	require.Error(t, err)
 	require.Empty(t, f.kc.AddedCerts, "never silently sudo in a non-interactive run")
@@ -452,7 +452,7 @@ func TestInitNoSetupSkipsGate(t *testing.T) {
 	f := newInitFixture()
 	f.setupMissing() // setup is missing, but --no-setup skips the gate entirely
 
-	require.NoError(t, runInit(context.Background(), f.app, initDir, false, true /*noSetup*/))
+	require.NoError(t, runInit(context.Background(), f.app, initDir, false, true /*noSetup*/, false /*gitPush*/))
 
 	require.Empty(t, f.kc.CertLookups, "--no-setup must not even probe the keychain")
 	require.Empty(t, f.kc.AddedCerts)

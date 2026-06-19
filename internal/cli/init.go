@@ -14,6 +14,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/generator"
+	"github.com/tobyS/agent-creance/internal/gitremote"
 	"github.com/tobyS/agent-creance/internal/setupcheck"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
@@ -25,19 +26,21 @@ import (
 // filesystem work over app.FS — no external tools, no new sysdep seam.
 // (docs/design.md "Commands".)
 func newInitCmd(app *App) *cobra.Command {
-	var force, noSetup bool
+	var force, noSetup, gitPush bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a starter .agent-creance.yaml (detecting package.json / composer.json)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runInit(cmd.Context(), app, ".", force, noSetup)
+			return runInit(cmd.Context(), app, ".", force, noSetup, gitPush)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false,
 		"overwrite an existing .agent-creance.yaml")
 	cmd.Flags().BoolVar(&noSetup, "no-setup", false,
 		"scaffold the config only; skip the one-time host-setup check (CI / config-only use)")
+	cmd.Flags().BoolVar(&gitPush, "git-push", false,
+		"allow the agent to push to the project's git remotes (default: read-only; skips the push prompt)")
 	return cmd
 }
 
@@ -50,7 +53,7 @@ func newInitCmd(app *App) *cobra.Command {
 // is all-or-nothing, so a declined prompt or a failed setup must abort before any
 // config is written (re-running init then retries cleanly, since both setup and the
 // scaffold are idempotent). --no-setup skips the gate entirely for config-only use.
-func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) error {
+func runInit(ctx context.Context, app *App, dir string, force, noSetup, gitPush bool) error {
 	if !noSetup {
 		if err := ensureHostSetup(ctx, app); err != nil {
 			return err // abort before writing any config
@@ -73,6 +76,24 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) err
 
 	gens := scanGenerators(app.FS, dir)
 
+	// Auto-allowlist the project's own git remotes (AC-0055). This runs regardless
+	// of TTY — the rules are static config — but whether push is granted is an
+	// init-time choice: --git-push presets it; otherwise an interactive run prompts
+	// and a non-interactive run defaults to the safe read-only option.
+	remotes, err := gitremote.Detect(app.FS, dir)
+	if err != nil {
+		return fmt.Errorf("init: read git remotes: %w", err)
+	}
+	allowPush := gitPush
+	if !gitPush && len(remotes) > 0 && app.Terminal.IsInteractive() {
+		ok, err := confirm(app, "Allow the agent to push to your git remote(s)? (write access)")
+		if err != nil {
+			return fmt.Errorf("read confirmation: %w", err)
+		}
+		allowPush = ok
+	}
+	git := buildGitRemoteRules(remotes, allowPush)
+
 	// On an interactive terminal, offer to seed the config from the project's
 	// Claude Code settings and from static port detection. Non-interactive runs
 	// skip all of this and scaffold exactly as before.
@@ -88,11 +109,13 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) err
 		allow, ports = a, p
 	}
 
-	content := renderConfigTemplate(gens, allow, ports)
+	content := renderConfigTemplate(gens, git.Allow, allow, ports, git.Deny)
 
-	// When an import step contributed entries, show the result and confirm before
-	// writing — the engineer reviews exactly what lands in the allowlist.
-	if len(allow) > 0 || len(ports) > 0 {
+	// When an import step or git-remote detection contributed entries, show the
+	// result and confirm before writing — but only interactively (a non-interactive
+	// confirm would read EOF as "no" and refuse to write). The engineer reviews
+	// exactly what lands in the allowlist.
+	if app.Terminal.IsInteractive() && (len(allow) > 0 || len(ports) > 0 || len(git.Allow) > 0 || len(git.Deny) > 0) {
 		fmt.Fprintf(app.Stdout, "\nResulting %s:\n\n%s\n", configFile, content)
 		ok, err := confirm(app, "Write this configuration?")
 		if err != nil {
@@ -109,6 +132,7 @@ func runInit(ctx context.Context, app *App, dir string, force, noSetup bool) err
 	}
 
 	fmt.Fprintf(app.Stdout, "✓ Wrote %s %s\n", configFile, generatorsNote(gens))
+	reportGitRemotes(app, len(remotes), allowPush, git)
 	// On the --no-setup path host setup is still pending, so keep pointing at it;
 	// otherwise setup is done (already, or just bootstrapped above) and the next
 	// step is simply run.
@@ -335,12 +359,14 @@ func writeFileAtomic(fsys sysdep.FileSystem, name string, data []byte, perm fs.F
 }
 
 // renderConfigTemplate builds the .agent-creance.yaml template: the generators
-// block for the detected manifests, plus any imported host_services (ports) and
-// allow rules. With no imports (nil allow/ports) the output is the original
-// minimal scaffold with commented allow/deny stubs — byte-for-byte unchanged, so
-// non-interactive init behaves exactly as before. Per docs/design.md it never
-// writes a .gitignore block (all runtime state lives out-of-tree).
-func renderConfigTemplate(generators []config.Generator, allow []config.Rule, ports []config.HostService) string {
+// block for the detected manifests, the project's git-remote allow entries
+// (gitAllow) and any read-only push-block deny entries (gitDeny), plus any imported
+// host_services (ports) and allow rules. With no git remotes and no imports the
+// output is the original minimal scaffold with commented allow/deny stubs —
+// byte-for-byte unchanged, so a manifest-free non-interactive init behaves exactly
+// as before. Per docs/design.md it never writes a .gitignore block (all runtime
+// state lives out-of-tree).
+func renderConfigTemplate(generators []config.Generator, gitAllow, allow []config.Rule, ports []config.HostService, gitDeny []config.Rule) string {
 	var b strings.Builder
 	b.WriteString(configHeader)
 	if len(ports) > 0 {
@@ -353,18 +379,60 @@ func renderConfigTemplate(generators []config.Generator, allow []config.Rule, po
 	}
 	b.WriteString("  egress:\n")
 	b.WriteString(generatorsBlock(generators))
-	if len(allow) > 0 {
+
+	if len(gitAllow) > 0 || len(allow) > 0 {
 		b.WriteString("    allow:\n")
-		for _, r := range allow {
-			for _, line := range config.RenderRule(r, 6) {
-				b.WriteString(line + "\n")
+		if len(gitAllow) > 0 {
+			b.WriteString("      # Project git remotes — repo, API, and content hosts (agent-creance init)\n")
+			for _, r := range gitAllow {
+				for _, line := range config.RenderRule(r, 6) {
+					b.WriteString(line + "\n")
+				}
+			}
+		}
+		if len(allow) > 0 {
+			if len(gitAllow) > 0 {
+				b.WriteString("      # Imported from project settings\n")
+			}
+			for _, r := range allow {
+				for _, line := range config.RenderRule(r, 6) {
+					b.WriteString(line + "\n")
+				}
 			}
 		}
 	} else {
 		b.WriteString(commentedAllowStub)
 	}
-	b.WriteString(commentedDenyStub)
+
+	if len(gitDeny) > 0 {
+		b.WriteString("    deny_always:\n")
+		b.WriteString("      # Read-only git access — block push (git-receive-pack) to project remotes\n")
+		for _, r := range gitDeny {
+			for _, line := range config.RenderRule(r, 6) {
+				b.WriteString(line + "\n")
+			}
+		}
+	} else {
+		b.WriteString(commentedDenyStub)
+	}
 	return b.String()
+}
+
+// reportGitRemotes prints init's summary of what it added for the project's git
+// remotes: how many were allowlisted, whether push was granted, and any caveats
+// (non-HTTPS transport, uninferable companion hosts, unparseable remotes). A project
+// with no remotes prints nothing, preserving the original output.
+func reportGitRemotes(app *App, n int, allowPush bool, git gitRemoteResult) {
+	if n > 0 && len(git.Allow) > 0 {
+		access := "read-only — re-run with --git-push to allow push"
+		if allowPush {
+			access = "push allowed"
+		}
+		fmt.Fprintf(app.Stdout, "  Git remotes: allowlisted %d remote(s) (%s).\n", n, access)
+	}
+	for _, note := range git.Notes {
+		fmt.Fprintf(app.Stdout, "  Note: %s\n", note)
+	}
 }
 
 // generatorsBlock renders the network.egress.generators: region: a real list of
