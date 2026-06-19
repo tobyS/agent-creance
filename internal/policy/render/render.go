@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/policy"
 	"github.com/tobyS/agent-creance/internal/policy/compile"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // Distinct flags appended to a rule line. Kept as constants so the code and the
@@ -36,22 +37,22 @@ const (
 // Show renders the resolved policy as annotated, aligned text: an ALLOW block then
 // a DENY block, each rule tagged with its [source] and (for allow) its mode, with
 // distinct markers for passthrough and lower-trust rules.
-func Show(c policy.Compiled) string {
+func Show(c policy.Compiled, sty *style.Styler) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Resolved egress policy (%d allow, %d deny)\n", len(c.Allow), len(c.DenyAlways))
 
-	b.WriteString("\nALLOW\n")
+	b.WriteString("\n" + sty.Header("ALLOW") + "\n")
 	if len(c.Allow) == 0 {
 		b.WriteString("  (none)\n")
 	} else {
-		b.WriteString(renderAllow(c.Allow))
+		b.WriteString(renderAllow(c.Allow, sty))
 	}
 
-	b.WriteString("\nDENY\n")
+	b.WriteString("\n" + sty.Header("DENY") + "\n")
 	if len(c.DenyAlways) == 0 {
 		b.WriteString("  (none)\n")
 	} else {
-		b.WriteString(renderDeny(c.DenyAlways))
+		b.WriteString(renderDeny(c.DenyAlways, sty))
 	}
 	return b.String()
 }
@@ -69,7 +70,7 @@ func ShowJSON(c policy.Compiled) (string, error) {
 // renderAllow renders the allow block with two-pass column alignment over the
 // [source] tag, mode, and host columns (the same manual-width idiom as
 // prereq.Report — no tabwriter in this codebase).
-func renderAllow(rules []policy.Rule) string {
+func renderAllow(rules []policy.Rule, sty *style.Styler) string {
 	tagW, modeW, hostW := 0, 0, 0
 	for _, r := range rules {
 		tagW = max(tagW, len(tag(r.Source)))
@@ -79,13 +80,17 @@ func renderAllow(rules []policy.Rule) string {
 
 	var b strings.Builder
 	for _, r := range rules {
-		fmt.Fprintf(&b, "  %-*s  %-*s  %-*s  %s",
-			tagW, tag(r.Source), modeW, mode(r.Mode), hostW, r.Host, pathField(r.Paths))
+		// The [source] tag is dimmed; its pad is computed from the plain width so
+		// the escapes don't disturb the column (mode/host stay plain %-*s).
+		tg := tag(r.Source)
+		fmt.Fprintf(&b, "  %s%s  %-*s  %-*s  %s",
+			sty.Dim(tg), strings.Repeat(" ", tagW-len(tg)),
+			modeW, mode(r.Mode), hostW, r.Host, pathField(r.Paths))
 		if m := methodField(r.Methods); m != "" {
-			b.WriteString("  " + m)
+			b.WriteString("  " + sty.Dim(m))
 		}
 		for _, mk := range markers(r) {
-			b.WriteString("  " + mk)
+			b.WriteString("  " + sty.Warn(mk))
 		}
 		b.WriteString("\n")
 	}
@@ -95,7 +100,7 @@ func renderAllow(rules []policy.Rule) string {
 // renderDeny renders the deny block. Deny rules carry no meaningful mode column
 // (a deny_always is enforced at the host level regardless), so it is omitted; the
 // trailing (reason: …) is what matters.
-func renderDeny(rules []policy.Rule) string {
+func renderDeny(rules []policy.Rule, sty *style.Styler) string {
 	tagW, hostW := 0, 0
 	for _, r := range rules {
 		tagW = max(tagW, len(tag(r.Source)))
@@ -104,12 +109,14 @@ func renderDeny(rules []policy.Rule) string {
 
 	var b strings.Builder
 	for _, r := range rules {
-		fmt.Fprintf(&b, "  %-*s  %-*s  %s", tagW, tag(r.Source), hostW, r.Host, pathField(r.Paths))
+		tg := tag(r.Source)
+		fmt.Fprintf(&b, "  %s%s  %-*s  %s",
+			sty.Dim(tg), strings.Repeat(" ", tagW-len(tg)), hostW, r.Host, pathField(r.Paths))
 		if m := methodField(r.Methods); m != "" {
-			b.WriteString("  " + m)
+			b.WriteString("  " + sty.Dim(m))
 		}
 		if r.Reason != "" {
-			fmt.Fprintf(&b, "  (reason: %s)", r.Reason)
+			b.WriteString("  " + sty.Dim(fmt.Sprintf("(reason: %s)", r.Reason)))
 		}
 		b.WriteString("\n")
 	}
@@ -119,15 +126,15 @@ func renderDeny(rules []policy.Rule) string {
 // Explain runs the shared matcher (C1) on req against c and renders the decision,
 // the carried enforcement mode, and the matched rule + its source. A soft-deny has
 // no matching rule; a passthrough allow gets an explanatory note.
-func Explain(c policy.Compiled, req policy.Request) string {
+func Explain(c policy.Compiled, req policy.Request, sty *style.Styler) string {
 	res := c.Decide(req)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Request:   %s %s %s\n", req.Host, req.Method, reqPath(req.Path))
 	if res.Mode != "" {
-		fmt.Fprintf(&b, "Decision:  %s (%s)\n", res.Decision, res.Mode)
+		fmt.Fprintf(&b, "Decision:  %s (%s)\n", colorDecision(res.Decision, sty), sty.Dim(res.Mode))
 	} else {
-		fmt.Fprintf(&b, "Decision:  %s\n", res.Decision)
+		fmt.Fprintf(&b, "Decision:  %s\n", colorDecision(res.Decision, sty))
 	}
 
 	if res.Matched == nil {
@@ -137,19 +144,34 @@ func Explain(c policy.Compiled, req policy.Request) string {
 
 	r := matchedRule(c, res.Matched)
 	fmt.Fprintf(&b, "Matched:   %s[%d]  %s  %s %s",
-		res.Matched.List, res.Matched.Index, tag(r.Source), r.Host, pathField(r.Paths))
+		res.Matched.List, res.Matched.Index, sty.Dim(tag(r.Source)), r.Host, pathField(r.Paths))
 	if m := methodField(r.Methods); m != "" {
-		b.WriteString("  " + m)
+		b.WriteString("  " + sty.Dim(m))
 	}
 	if r.Reason != "" {
-		fmt.Fprintf(&b, "  (reason: %s)", r.Reason)
+		b.WriteString("  " + sty.Dim(fmt.Sprintf("(reason: %s)", r.Reason)))
 	}
 	b.WriteString("\n")
 
 	if res.Decision == policy.DecisionAllow && res.Mode == policy.ModePassthrough {
-		fmt.Fprintf(&b, "Note:      %s\n", notePassthrough)
+		fmt.Fprintf(&b, "Note:      %s\n", sty.Dim(notePassthrough))
 	}
 	return b.String()
+}
+
+// colorDecision colors a decision verdict: allow green, soft-deny yellow,
+// hard-deny red.
+func colorDecision(decision string, sty *style.Styler) string {
+	switch decision {
+	case policy.DecisionAllow:
+		return sty.OK(decision)
+	case policy.DecisionHardDeny:
+		return sty.Bad(decision)
+	case policy.DecisionSoftDeny:
+		return sty.Warn(decision)
+	default:
+		return decision
+	}
 }
 
 // explainOutput is the `policy explain --json` shape: the request, the decision and
@@ -190,21 +212,21 @@ func ExplainJSON(c policy.Compiled, req policy.Request) (string, error) {
 // Refresh renders the outcome of `policy refresh`: a per-generator line (packages
 // considered + registry cache entries cleared) and the rule counts of the recompiled
 // policy. With no generators configured it says so plainly — refresh still recompiles.
-func Refresh(r compile.RefreshResult) string {
+func Refresh(r compile.RefreshResult, sty *style.Styler) string {
 	var b strings.Builder
 	if len(r.Generators) == 0 {
 		b.WriteString("No generators configured — nothing to refresh.\n")
 	} else {
-		b.WriteString("Refreshed generator metadata:\n")
+		b.WriteString(sty.Header("Refreshed generator metadata:") + "\n")
 		nameW := 0
 		for _, g := range r.Generators {
 			nameW = max(nameW, len(g.Name))
 		}
 		for _, g := range r.Generators {
-			fmt.Fprintf(&b, "  %-*s  %s  (%s cleared)\n",
+			fmt.Fprintf(&b, "  %-*s  %s  %s\n",
 				nameW, g.Name,
 				countN(g.Packages, "package", "packages"),
-				countN(g.CacheEntriesCleared, "cache entry", "cache entries"))
+				sty.Dim("("+countN(g.CacheEntriesCleared, "cache entry", "cache entries")+" cleared)"))
 		}
 	}
 	fmt.Fprintf(&b, "Recompiled policy: %d allow, %d deny.\n", r.AllowCount, r.DenyCount)

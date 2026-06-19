@@ -1,0 +1,4 @@
+Request:   api.anthropic.com POST /v1/messages
+Decision:  [32mallow[0m ([2mpassthrough[22m)
+Matched:   allow[0]  [2m[global][22m  api.anthropic.com (any path)
+Note:      [2mpassthrough host — the proxy tunnels raw bytes; path and method are not inspected and auditing is host-level only.[22m

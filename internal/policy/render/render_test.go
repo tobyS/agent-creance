@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,7 @@ import (
 	"github.com/tobyS/agent-creance/internal/policy"
 	"github.com/tobyS/agent-creance/internal/policy/compile"
 	"github.com/tobyS/agent-creance/internal/policy/render"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 var update = flag.Bool("update", false, "regenerate golden files")
@@ -52,8 +54,18 @@ func assertGolden(t *testing.T, name, got string) {
 	require.Equal(t, string(want), got)
 }
 
+// assertGoldenModes pins both the plain and colored rendering. Plain keeps the
+// original golden name (proving byte-identical plain parity); color adds a
+// _color sibling. r is invoked once per mode with the matching styler.
+func assertGoldenModes(t *testing.T, baseName string, r func(*style.Styler) string) {
+	t.Helper()
+	base := strings.TrimSuffix(baseName, ".golden")
+	assertGolden(t, base+".golden", r(style.Plain()))
+	assertGolden(t, base+"_color.golden", r(style.New(true)))
+}
+
 func TestShow(t *testing.T) {
-	assertGolden(t, "show.golden", render.Show(fixture()))
+	assertGoldenModes(t, "show.golden", func(s *style.Styler) string { return render.Show(fixture(), s) })
 }
 
 func TestShowJSON(t *testing.T) {
@@ -63,7 +75,9 @@ func TestShowJSON(t *testing.T) {
 }
 
 func TestShowEmpty(t *testing.T) {
-	assertGolden(t, "show_empty.golden", render.Show(policy.Compiled{Version: 1, InputHash: "deadbeef"}))
+	assertGoldenModes(t, "show_empty.golden", func(s *style.Styler) string {
+		return render.Show(policy.Compiled{Version: 1, InputHash: "deadbeef"}, s)
+	})
 }
 
 func TestExplain(t *testing.T) {
@@ -78,7 +92,9 @@ func TestExplain(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertGolden(t, "explain_"+tc.name+".golden", render.Explain(fixture(), tc.req))
+			assertGoldenModes(t, "explain_"+tc.name+".golden", func(s *style.Styler) string {
+				return render.Explain(fixture(), tc.req, s)
+			})
 		})
 	}
 }
@@ -98,7 +114,7 @@ func refreshFixture() compile.RefreshResult {
 }
 
 func TestRefresh(t *testing.T) {
-	assertGolden(t, "refresh.golden", render.Refresh(refreshFixture()))
+	assertGoldenModes(t, "refresh.golden", func(s *style.Styler) string { return render.Refresh(refreshFixture(), s) })
 }
 
 func TestRefreshJSON(t *testing.T) {
@@ -108,7 +124,9 @@ func TestRefreshJSON(t *testing.T) {
 }
 
 func TestRefreshEmpty(t *testing.T) {
-	assertGolden(t, "refresh_empty.golden", render.Refresh(compile.RefreshResult{AllowCount: 2, DenyCount: 1}))
+	assertGoldenModes(t, "refresh_empty.golden", func(s *style.Styler) string {
+		return render.Refresh(compile.RefreshResult{AllowCount: 2, DenyCount: 1}, s)
+	})
 }
 
 func TestRefreshEmptyJSON(t *testing.T) {

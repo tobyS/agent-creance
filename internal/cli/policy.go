@@ -52,7 +52,7 @@ func newPolicyRefreshCmd(app *App) *cobra.Command {
 				fmt.Fprint(app.Stdout, out)
 				return nil
 			}
-			fmt.Fprint(app.Stdout, render.Refresh(res))
+			fmt.Fprint(app.Stdout, render.Refresh(res, app.OutStyle))
 			return nil
 		},
 	}
@@ -82,7 +82,7 @@ func newPolicyShowCmd(app *App) *cobra.Command {
 				fmt.Fprint(app.Stdout, out)
 				return nil
 			}
-			fmt.Fprint(app.Stdout, render.Show(compiled))
+			fmt.Fprint(app.Stdout, render.Show(compiled, app.OutStyle))
 			return nil
 		},
 	}
@@ -119,7 +119,7 @@ func newPolicyExplainCmd(app *App) *cobra.Command {
 				fmt.Fprint(app.Stdout, out)
 				return nil
 			}
-			fmt.Fprint(app.Stdout, render.Explain(compiled, req))
+			fmt.Fprint(app.Stdout, render.Explain(compiled, req, app.OutStyle))
 			return nil
 		},
 	}

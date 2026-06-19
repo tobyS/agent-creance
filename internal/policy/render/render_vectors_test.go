@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/policy"
 	"github.com/tobyS/agent-creance/internal/policy/render"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // vector decodes one language-neutral decision-vector — the same corpus the matcher
@@ -55,7 +56,7 @@ func TestExplainMatchesMatcher(t *testing.T) {
 
 			want := v.Ruleset.Decide(v.Request)
 			c := policy.Compiled{Version: policy.CompiledVersion, RuleSet: v.Ruleset}
-			got := render.Explain(c, v.Request)
+			got := render.Explain(c, v.Request, style.Plain())
 
 			// The decision line carries the verdict (and mode when present).
 			if want.Mode != "" {

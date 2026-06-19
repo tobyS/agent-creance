@@ -10,7 +10,7 @@ started: 2026-06-19
 - [x] Phase 1 — Progress printer color (run / stderr)
 - [x] Phase 2 — doctor + prereq renderers
 - [x] Phase 3 — status renderer (two-path tabwriter/manual)
-- [ ] Phase 4 — policy/render renderer
+- [x] Phase 4 — policy/render renderer
 - [ ] Phase 5 — remaining inline command glyphs
 - [ ] Phase 6 — testscript coverage + final verification + build
 
@@ -34,6 +34,13 @@ started: 2026-06-19
   column pads computed from plain fields. Existing plain goldens unchanged
   (verified via git: only render_*_color / doctor_report_color added). doctor.go
   passes app.OutStyle. make test + make lint green.
+- Phase 4 (2026-06-19): policy render Show/Explain/Refresh take a styler (JSON
+  variants untouched). Bold ALLOW/DENY + refresh headers; ⚠ markers yellow;
+  Explain decision word colored (allow green / soft-deny yellow / hard-deny red);
+  dimmed [source] tags, (method), (reason), the passthrough Note, mode, and the
+  refresh "(… cleared)". Width-before-inject for the dimmed tag column. Plain
+  + JSON goldens unchanged; _color siblings added; render_vectors_test passes a
+  plain styler. policy.go passes app.OutStyle. make test + make lint green.
 - Phase 3 (2026-06-19): status.Render takes a styler; two-path — plain keeps
   tabwriter verbatim (byte-identical), color uses a manual visible-width layout
   with bold headers, state words colored (running green / orphan red / stranded

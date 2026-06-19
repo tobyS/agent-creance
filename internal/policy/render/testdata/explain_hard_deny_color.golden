@@ -1,0 +1,3 @@
+Request:   w3schools.com GET /html
+Decision:  [31mhard-deny[0m ([2mintercept[22m)
+Matched:   deny_always[0]  [2m[global][22m  w3schools.com (any path)  [2m(reason: low quality)[22m
