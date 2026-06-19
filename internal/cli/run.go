@@ -156,6 +156,8 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		}
 	}()
 
+	cfgPath := filepath.Join(dir, configFile)
+
 	// 10. Build the Safehouse invocation: resolve inputs, write the launch-time
 	//     proxy-port fragment + seed the ephemeral config dir (Prepare), assemble argv.
 	builder := cage.New(app.FS, app.Paths)
@@ -170,6 +172,14 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// caged Claude Code can load them (AC-0056). Advisory: detection problems warn,
 	// never block.
 	in.ExtraDirsRO = pluginMarketplaceDirs(app, in.HomeDir, layout.Canonical)
+	// Resolve the include graph so the cage can deny in-cage write of every config
+	// file the run-session watcher hot-reloads (AC-0053). Fail closed: launching
+	// without this deny would let the caged agent widen its own egress by editing
+	// the config the watcher recompiles.
+	in.ConfigFiles, err = config.NewLoader(app.FS, app.Paths).ResolveFiles(cfgPath)
+	if err != nil {
+		return fmt.Errorf("resolve config files: %w", err)
+	}
 	if err := builder.Prepare(in); err != nil {
 		return fmt.Errorf("prepare cage: %w", err)
 	}
@@ -200,7 +210,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		return true, fmt.Sprintf("%d allow, %d deny", res.AllowCount, res.DenyCount), nil
 	}
 	watcher := configwatch.New(config.NewLoader(app.FS, app.Paths), app.WatcherFactory, reload, app.Stderr)
-	if err := watcher.Start(ctx, filepath.Join(dir, configFile)); err != nil {
+	if err := watcher.Start(ctx, cfgPath); err != nil {
 		fmt.Fprintf(app.Stderr, "⚠ config hot-reload unavailable: %v\n", err)
 	} else {
 		defer func() { _ = watcher.Stop() }()

@@ -78,6 +78,59 @@ func TestLiveSafehouseEgressDenied(t *testing.T) {
 	require.NotContains(t, out, "succeeded", "connection unexpectedly succeeded:\n%s", out)
 }
 
+// TestLiveSafehouseConfigReadOnly confirms the config-ro fragment (AC-0053) makes
+// the source config unwritable in-cage while leaving it readable: the project is
+// mounted read-write, so without the deny a caged agent could edit the config the
+// run-session watcher hot-reloads and widen its own egress.
+func TestLiveSafehouseConfigReadOnly(t *testing.T) {
+	requireSafehouse(t)
+	proj, layout := setupLayout(t)
+	b := cage.New(sysdep.OSFileSystem{}, sysdep.OSPathResolver{})
+
+	// A real config file in the RW-mounted project. Use the canonical path so the
+	// Seatbelt literal matches what the kernel resolves inside the cage.
+	cfgPath := proj + "/.agent-creance.yaml"
+	require.NoError(t, os.WriteFile(cfgPath, []byte("network: {}\n"), 0o644))
+	canon, err := sysdep.OSPathResolver{}.EvalSymlinks(cfgPath)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Agent: config.Agent{
+			// Read must succeed; the write must be refused (deny file-write*).
+			Command: []string{"/bin/sh", "-c",
+				`cat ` + cfgPath + ` >/dev/null && echo READ_OK; ` +
+					`(echo "allow: evil" >> ` + cfgPath + ` && echo WROTE) || echo WRITE_DENIED`},
+			Workdir: proj,
+		},
+		Safehouse: config.Safehouse{AddDirsRW: []string{proj}},
+	}
+	in, err := b.Resolve(cfg, layout, 18081)
+	require.NoError(t, err)
+	in.ConfigFiles = []string{canon}
+
+	require.NoError(t, b.Prepare(in))
+	inv, err := cage.Build(in)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, inv.Path, inv.Args...)
+	cmd.Env = append(os.Environ(), inv.Env...)
+	out, _ := cmd.CombinedOutput()
+	if strings.Contains(string(out), "sandbox_apply: Operation not permitted") {
+		t.Skip("host cannot apply a nested sandbox-exec policy; run on an unsandboxed macOS host")
+	}
+
+	require.Contains(t, string(out), "READ_OK", "config must stay readable in-cage:\n%s", out)
+	require.Contains(t, string(out), "WRITE_DENIED", "config write must be denied in-cage:\n%s", out)
+	require.NotContains(t, string(out), "WROTE", "config write unexpectedly succeeded:\n%s", out)
+
+	// The on-disk file is unchanged: the deny held.
+	after, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, "network: {}\n", string(after), "config file was modified despite the deny")
+}
+
 func requireSafehouse(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS != "darwin" {

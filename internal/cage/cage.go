@@ -76,6 +76,12 @@ type Inputs struct {
 	// they are kept separate from Config.Safehouse.AddDirsRO because they are not
 	// user config but a derived, per-launch grant.
 	ExtraDirsRO []string
+	// ConfigFiles is the resolved include graph (the project config plus every
+	// transitively-included file and the global baseline), as canonical absolute
+	// paths. Prepare emits a Seatbelt fragment denying in-cage write of these so a
+	// caged agent cannot edit the config the run-session watcher hot-reloads
+	// (AC-0053). Set at launch by run; empty in tests yields a header-only fragment.
+	ConfigFiles []string
 }
 
 // Invocation is the constructed safehouse command: a pure function of Inputs.
@@ -139,6 +145,9 @@ func Build(in Inputs) (Invocation, error) {
 	args = append(args, "--append-profile", in.Layout.CAProfileSB())
 	args = append(args, "--append-profile", in.Layout.KeychainProfileSB())
 	args = append(args, "--append-profile", in.Layout.ClaudeProfileSB())
+	// Appended last so its config-write denies win (last-match) over the project's
+	// read-write mount: the agent may read but not edit the hot-reloaded config.
+	args = append(args, "--append-profile", in.Layout.ConfigProfileSB())
 
 	env := buildEnv(in)
 	keys := sortedKeys(env)
@@ -265,6 +274,18 @@ func (b *Builder) Prepare(in Inputs) error {
 	csDst := in.Layout.ClaudeProfileSB()
 	if err := b.fs.WriteFile(csDst, []byte(csFrag), 0o600); err != nil {
 		return fmt.Errorf("cage: write claude-state fragment %q: %w", csDst, err)
+	}
+
+	// Deny in-cage write of the source config + include graph (AC-0053). The paths
+	// are already canonical (loader.ResolveFiles symlink-resolves them), matching
+	// the kernel-resolved paths Seatbelt literals compare against.
+	cfgFrag, err := profile.RenderConfigReadOnlyFragment(in.ConfigFiles)
+	if err != nil {
+		return fmt.Errorf("cage: render config read-only fragment: %w", err)
+	}
+	cfgDst := in.Layout.ConfigProfileSB()
+	if err := b.fs.WriteFile(cfgDst, []byte(cfgFrag), 0o600); err != nil {
+		return fmt.Errorf("cage: write config read-only fragment %q: %w", cfgDst, err)
 	}
 	return nil
 }

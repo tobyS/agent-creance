@@ -1,0 +1,9 @@
+;; agent-creance config-ro.sb — appended after safehouse's base via --append-profile (AC-0053).
+;; Deny in-cage write of the project's source config + its include graph. The project
+;; is mounted read-write, and the run-session watcher recompiles the egress policy on
+;; any edit to these files; without this deny a prompt-injected agent could widen its
+;; own egress by editing them. Read stays allowed; only write is denied (last-match-
+;; wins over safehouse's RW grant). Generated; do not edit.
+(deny file-write* (literal "/home/test/proj/.agent-creance.yaml"))
+(deny file-write* (literal "/home/test/proj/team.yaml"))
+(deny file-write* (literal "/home/test/.config/agent-creance.yaml"))

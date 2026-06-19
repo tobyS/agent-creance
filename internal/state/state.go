@@ -40,6 +40,7 @@ const (
 	caProfileSBName    = "ca.sb"
 	keychainSBName     = "keychain.sb"
 	claudeSBName       = "claude.sb"
+	configROSBName     = "config-ro.sb"
 	proxyLockName      = "proxy.lock"
 	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
@@ -236,6 +237,15 @@ func (l Layout) KeychainProfileSB() string { return filepath.Join(l.Root, keycha
 // deferral, AC-0046), passed to Safehouse via a fifth --append-profile.
 // Rewritten every launch because the grant embeds the host's resolved home dir.
 func (l Layout) ClaudeProfileSB() string { return filepath.Join(l.Root, claudeSBName) }
+
+// ConfigProfileSB is the launch-time Seatbelt fragment that denies in-cage write
+// of the project's source config and its include graph (AC-0053), passed to
+// Safehouse via a final --append-profile. The project is mounted read-write, so
+// without this a prompt-injected agent could edit .agent-creance.yaml and have the
+// run-session config watcher recompile a widened egress policy onto the live proxy;
+// the deny closes that. Rewritten every launch because the resolved file set is
+// project-specific.
+func (l Layout) ConfigProfileSB() string { return filepath.Join(l.Root, configROSBName) }
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }

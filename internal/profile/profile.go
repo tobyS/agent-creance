@@ -61,6 +61,12 @@ const (
 		";; account state. ~/.claude is a --add-dirs RW mount; this fragment grants the\n" +
 		";; file-level RW on ~/.claude.json* (the prefix regex also covers Claude's sibling\n" +
 		";; writes such as .claude.json.backup). Generated; do not edit.\n"
+	configROHeader = ";; agent-creance config-ro.sb — appended after safehouse's base via --append-profile (AC-0053).\n" +
+		";; Deny in-cage write of the project's source config + its include graph. The project\n" +
+		";; is mounted read-write, and the run-session watcher recompiles the egress policy on\n" +
+		";; any edit to these files; without this deny a prompt-injected agent could widen its\n" +
+		";; own egress by editing them. Read stays allowed; only write is denied (last-match-\n" +
+		";; wins over safehouse's RW grant). Generated; do not edit.\n"
 )
 
 // allowRule renders one outbound allow for the loopback at the given port. The host
@@ -165,6 +171,31 @@ func RenderClaudeStateFragment(home string) (string, error) {
 	fmt.Fprintf(&b, "(allow file-read-metadata (literal %q))\n", home)
 	fmt.Fprintf(&b, "(allow file-read* file-write* (regex #\"^%s/\\.claude\\.json\"))\n",
 		sbplRegexEscape(home))
+	return b.String(), nil
+}
+
+// RenderConfigReadOnlyFragment renders the config-ro.sb append fragment: one
+// (deny file-write* (literal "<path>")) per resolved config file, so the caged
+// agent can read but not modify the project config or any file in its include
+// graph (AC-0053). Each path must be absolute (Seatbelt literals match the
+// kernel-resolved path, so callers pass symlink-resolved paths — the loader's
+// ResolveFiles already canonicalises them). Paths are deduplicated, preserving
+// first-seen order. A non-absolute path is rejected. With no paths the result is
+// just the header. The result ends with a trailing newline.
+func RenderConfigReadOnlyFragment(paths []string) (string, error) {
+	var b strings.Builder
+	b.WriteString(configROHeader)
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return "", fmt.Errorf("profile: config path %q is not absolute", p)
+		}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		fmt.Fprintf(&b, "(deny file-write* (literal %q))\n", p)
+	}
 	return b.String(), nil
 }
 

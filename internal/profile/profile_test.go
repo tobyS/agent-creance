@@ -313,3 +313,61 @@ func TestHomeFragments_Errors(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderConfigReadOnlyFragment_Golden(t *testing.T) {
+	// Fixed, host-independent paths keep the golden stable: the project config plus
+	// one in-project include and one out-of-project (home) include.
+	got, err := RenderConfigReadOnlyFragment([]string{
+		"/home/test/proj/.agent-creance.yaml",
+		"/home/test/proj/team.yaml",
+		"/home/test/.config/agent-creance.yaml",
+	})
+	if err != nil {
+		t.Fatalf("RenderConfigReadOnlyFragment: %v", err)
+	}
+
+	golden := filepath.Join("testdata", "config-ro.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("config-ro.sb mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderConfigReadOnlyFragment_DeniesWriteOnly(t *testing.T) {
+	got, err := RenderConfigReadOnlyFragment([]string{"/p/.agent-creance.yaml"})
+	if err != nil {
+		t.Fatalf("RenderConfigReadOnlyFragment: %v", err)
+	}
+	if !strings.Contains(got, `(deny file-write* (literal "/p/.agent-creance.yaml"))`) {
+		t.Errorf("missing the deny-write rule:\n%s", got)
+	}
+	// Read must stay allowed: the agent still needs to read its own config.
+	if strings.Contains(got, "file-read") {
+		t.Errorf("must not touch read permissions:\n%s", got)
+	}
+}
+
+func TestRenderConfigReadOnlyFragment_Dedupes(t *testing.T) {
+	got, err := RenderConfigReadOnlyFragment([]string{"/p/a.yaml", "/p/a.yaml"})
+	if err != nil {
+		t.Fatalf("RenderConfigReadOnlyFragment: %v", err)
+	}
+	if n := strings.Count(got, "/p/a.yaml"); n != 1 {
+		t.Errorf("duplicate path not deduped, got %d occurrences:\n%s", n, got)
+	}
+}
+
+func TestRenderConfigReadOnlyFragment_Errors(t *testing.T) {
+	if _, err := RenderConfigReadOnlyFragment([]string{"relative.yaml"}); err == nil {
+		t.Error("relative path: want error, got nil")
+	}
+}

@@ -62,6 +62,24 @@ func TestPrepareWritesFragments(t *testing.T) {
 	wantCS, err := profile.RenderClaudeStateFragment(in.HomeDir)
 	require.NoError(t, err)
 	require.Equal(t, wantCS, string(fsys.Files[in.Layout.ClaudeProfileSB()]))
+
+	// Config read-only fragment matches the renderer for the resolved file set (AC-0053).
+	wantCfg, err := profile.RenderConfigReadOnlyFragment(in.ConfigFiles)
+	require.NoError(t, err)
+	require.Equal(t, wantCfg, string(fsys.Files[in.Layout.ConfigProfileSB()]))
+}
+
+func TestPrepareDeniesConfigWrite(t *testing.T) {
+	fsys := sysdeptest.NewFakeFileSystem()
+	b := cage.New(fsys, sysdeptest.NewFakePathResolver())
+	in := prepareInputs()
+	in.ConfigFiles = []string{"/proj/.agent-creance.yaml", "/proj/team.yaml"}
+
+	require.NoError(t, b.Prepare(in))
+
+	got := string(fsys.Files[in.Layout.ConfigProfileSB()])
+	require.Contains(t, got, `(deny file-write* (literal "/proj/.agent-creance.yaml"))`)
+	require.Contains(t, got, `(deny file-write* (literal "/proj/team.yaml"))`)
 }
 
 func TestPrepareNeverWritesIntoRealClaude(t *testing.T) {
