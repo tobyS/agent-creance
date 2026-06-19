@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -279,6 +280,154 @@ func TestResolveLayer_RequiredMissingIsError(t *testing.T) {
 	if _, err := l.ResolveLayer("/no/such/file.yaml", false); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
 	}
+}
+
+func TestResolveFiles_ProjectOnly(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "network:\n  egress:\n    allow:\n      - host: react.dev\n",
+	})
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	if want := []string{"/proj/.agent-creance.yaml"}; !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v", got, want)
+	}
+}
+
+func TestResolveFiles_GlobalAndNestedIncludes(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		globalPath:                  "network:\n  egress:\n    allow:\n      - host: global.example\n",
+		"/proj/.agent-creance.yaml": "include:\n  - team.yaml\n",
+		"/proj/team.yaml":           "include:\n  - base.yaml\n",
+		"/proj/base.yaml":           "network:\n  egress:\n    allow:\n      - host: base.example\n",
+	})
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	want := []string{globalPath, "/proj/.agent-creance.yaml", "/proj/team.yaml", "/proj/base.yaml"}
+	if !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v", got, want)
+	}
+}
+
+func TestResolveFiles_GlobalAbsentOmitted(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "network:\n  egress:\n    allow:\n      - host: react.dev\n",
+	})
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	if want := []string{"/proj/.agent-creance.yaml"}; !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v (absent global omitted)", got, want)
+	}
+}
+
+func TestResolveFiles_DiamondDeduped(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - a.yaml\n  - b.yaml\n",
+		"/proj/a.yaml":              "include:\n  - shared.yaml\n",
+		"/proj/b.yaml":              "include:\n  - shared.yaml\n",
+		"/proj/shared.yaml":         "network:\n  egress:\n    allow:\n      - host: shared.example\n",
+	})
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	want := []string{"/proj/.agent-creance.yaml", "/proj/a.yaml", "/proj/b.yaml", "/proj/shared.yaml"}
+	if !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v (shared.yaml deduped)", got, want)
+	}
+}
+
+func TestResolveFiles_AbsoluteAndHomeIncludes(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - /etc/ac/abs.yaml\n  - ~/frag.yaml\n",
+		"/etc/ac/abs.yaml":          "network:\n  egress:\n    allow:\n      - host: abs.example\n",
+		testHome + "/frag.yaml":     "network:\n  egress:\n    allow:\n      - host: home.example\n",
+	})
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	want := []string{"/proj/.agent-creance.yaml", "/etc/ac/abs.yaml", testHome + "/frag.yaml"}
+	if !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v", got, want)
+	}
+}
+
+func TestResolveFiles_MissingIncludeIsError(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - nope.yaml\n",
+	})
+	_, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v, want fs.ErrNotExist", err)
+	}
+	if !strings.Contains(err.Error(), "nope.yaml") {
+		t.Errorf("error missing path: %v", err)
+	}
+}
+
+func TestResolveFiles_MissingProjectIsError(t *testing.T) {
+	l, _ := newLoader(nil)
+	if _, err := l.ResolveFiles("/proj/.agent-creance.yaml"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want fs.ErrNotExist for missing project", err)
+	}
+}
+
+func TestResolveFiles_CycleDetected(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/a.yaml": "include:\n  - b.yaml\n",
+		"/proj/b.yaml": "include:\n  - a.yaml\n",
+	})
+	_, err := l.ResolveFiles("/proj/a.yaml")
+	if !errors.Is(err, ErrIncludeCycle) {
+		t.Fatalf("err = %v, want ErrIncludeCycle", err)
+	}
+}
+
+func TestResolveFiles_DepthLimitExceeded(t *testing.T) {
+	files := map[string]string{}
+	for i := 0; i <= maxIncludeDepth; i++ {
+		files[fmt.Sprintf("/proj/f%d.yaml", i)] = fmt.Sprintf("include:\n  - f%d.yaml\n", i+1)
+	}
+	l, _ := newLoader(files)
+	_, err := l.ResolveFiles("/proj/f0.yaml")
+	if !errors.Is(err, ErrMaxIncludeDepth) {
+		t.Fatalf("err = %v, want ErrMaxIncludeDepth", err)
+	}
+}
+
+func TestResolveFiles_SymlinkCanonicalised(t *testing.T) {
+	l, paths := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - link.yaml\n",
+		"/proj/link.yaml":           "network:\n  egress:\n    allow:\n      - host: real.example\n",
+	})
+	// link.yaml is a symlink to the real fragment; ResolveFiles reports the target.
+	paths.Symlinks["/proj/link.yaml"] = "/real/frag.yaml"
+
+	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ResolveFiles: %v", err)
+	}
+	want := []string{"/proj/.agent-creance.yaml", "/real/frag.yaml"}
+	if !sortedEqual(got, want) {
+		t.Errorf("files = %v, want %v (symlink canonicalised)", got, want)
+	}
+}
+
+func sortedEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as := append([]string{}, a...)
+	bs := append([]string{}, b...)
+	sort.Strings(as)
+	sort.Strings(bs)
+	return reflect.DeepEqual(as, bs)
 }
 
 func allowHosts(c *Config) []string {

@@ -102,6 +102,90 @@ func (l *Loader) ResolveLayer(path string, optional bool) (*Config, error) {
 	return cfg, nil
 }
 
+// ResolveFiles returns the canonical absolute paths of every file that contributes
+// to the effective project config: the implicit global baseline (if present), the
+// project file, and all transitively-included fragments. It is the watch-set
+// counterpart to Load — same include rules, cycle detection, and depth limit — but
+// accumulates file paths instead of merging values, so the run-session config
+// watcher knows which files to watch. Paths are symlink-resolved (the on-disk
+// identity a file watcher observes) and deduplicated; order is unspecified. A
+// missing global is a no-op; a missing project file or declared include is an error.
+func (l *Loader) ResolveFiles(projectPath string) ([]string, error) {
+	home, err := l.paths.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("config: locate home directory: %w", err)
+	}
+	globalPath := filepath.Join(home, ".config", "agent-creance.yaml")
+
+	seen := map[string]struct{}{}
+	var out []string
+	// Shared seen across both trees collapses a file reachable from each into one
+	// entry; the separate stacks keep cycle detection per resolution tree.
+	if err := l.collectFiles(globalPath, home, true /*optional*/, seen, &out, nil, 0); err != nil {
+		return nil, err
+	}
+	if err := l.collectFiles(projectPath, home, false /*required*/, seen, &out, nil, 0); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// collectFiles is the path-accumulating counterpart to resolve: it walks the same
+// include graph (same resolveIncludePath rules, cycle detection via the canonical
+// stack, and maxIncludeDepth) but records each file's canonical path into out/seen
+// instead of merging its values. seen deduplicates files reachable on more than one
+// branch (e.g. a diamond).
+func (l *Loader) collectFiles(path, home string, optional bool, seen map[string]struct{}, out *[]string, stack []string, depth int) error {
+	if depth > maxIncludeDepth {
+		return fmt.Errorf("%w: %s", ErrMaxIncludeDepth, path)
+	}
+
+	abs, err := l.paths.Abs(path)
+	if err != nil {
+		return fmt.Errorf("config: resolve path %s: %w", path, err)
+	}
+
+	data, err := l.fs.ReadFile(abs)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			if optional {
+				return nil
+			}
+			return fmt.Errorf("config: file not found: %s: %w", path, err)
+		}
+		return fmt.Errorf("config: read %s: %w", path, err)
+	}
+
+	canon, err := l.paths.EvalSymlinks(abs)
+	if err != nil {
+		canon = abs
+	}
+	for _, s := range stack {
+		if s == canon {
+			return fmt.Errorf("%w: %s", ErrIncludeCycle, renderCycle(stack, canon))
+		}
+	}
+	if _, ok := seen[canon]; ok {
+		return nil
+	}
+	seen[canon] = struct{}{}
+	*out = append(*out, canon)
+
+	cfg, err := Parse(data)
+	if err != nil {
+		return fmt.Errorf("config: %s: %w", path, err)
+	}
+
+	stack = append(stack, canon)
+	for _, inc := range cfg.Include {
+		incPath := l.resolveIncludePath(abs, home, inc)
+		if err := l.collectFiles(incPath, home, false /*required*/, seen, out, stack, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // resolve reads, parses, and recursively resolves one config file into a fully-merged
 // Config. stack holds the canonical paths currently on the resolution path (for cycle
 // detection); depth counts include nesting. When optional is true a not-exist file
