@@ -124,8 +124,10 @@ func TestReloadOnWrite(t *testing.T) {
 
 	h.send(projectPath, sysdep.FileWrite)
 
-	require.Eventually(t, func() bool { return h.reload.count() == 1 }, time.Second, time.Millisecond)
-	assert.Contains(t, h.out.String(), "✓ config reloaded (3 allow, 1 deny)")
+	require.Eventually(t, func() bool {
+		return strings.Contains(h.out.String(), "✓ config reloaded (3 allow, 1 deny)")
+	}, time.Second, time.Millisecond)
+	assert.Equal(t, 1, h.reload.count())
 }
 
 func TestDebounceCoalesces(t *testing.T) {
