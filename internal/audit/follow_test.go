@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/audit"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // safeBuf is a mutex-guarded sink so the Follow goroutine and the test can write/read
@@ -55,7 +56,7 @@ func startFollow(t *testing.T, dir, cur string) (*safeBuf, func()) {
 	sink := &safeBuf{}
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- audit.Follow(ctx, sink, dir, cur) }()
+	go func() { errCh <- audit.Follow(ctx, sink, dir, cur, style.Plain()) }()
 	stop := func() {
 		cancel()
 		select {
@@ -156,7 +157,7 @@ func TestFollowWaitsForFileToAppear(t *testing.T) {
 func TestFollowErrorsWhenDirMissing(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nope")
 	cur := filepath.Join(dir, "egress.jsonl")
-	err := audit.Follow(context.Background(), &safeBuf{}, dir, cur)
+	err := audit.Follow(context.Background(), &safeBuf{}, dir, cur, style.Plain())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "has the cage run?")
 }

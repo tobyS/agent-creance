@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // Summary is the aggregate of an audit-log stream: decision counts plus totals and an
@@ -79,22 +81,25 @@ func (s *Summary) tally(line string) {
 	}
 }
 
-// Render formats the summary for the operator. The layout is golden-stable.
-func (s Summary) Render() string {
+// Render formats the summary for the operator. The layout is golden-stable. sty
+// bolds the header, colors the decision labels by verdict, and dims the
+// secondary detail; a disabled styler reproduces the original bytes.
+func (s Summary) Render(sty *style.Styler) string {
 	if s.Total == 0 && s.Malformed == 0 {
 		return "No audit entries yet.\n"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Audit summary: %d entries (%d intercepted, %d passthrough)\n",
-		s.Total, s.Intercepted, s.Passthrough)
-	fmt.Fprintf(&b, "  allow      %d\n", s.Allow)
-	fmt.Fprintf(&b, "  soft-deny  %d\n", s.SoftDeny)
-	fmt.Fprintf(&b, "  hard-deny  %d\n", s.HardDeny)
+	fmt.Fprintf(&b, "%s %d entries %s\n",
+		sty.Header("Audit summary:"), s.Total,
+		sty.Dim(fmt.Sprintf("(%d intercepted, %d passthrough)", s.Intercepted, s.Passthrough)))
+	fmt.Fprintf(&b, "  %s      %d\n", sty.OK("allow"), s.Allow)
+	fmt.Fprintf(&b, "  %s  %d\n", sty.Warn("soft-deny"), s.SoftDeny)
+	fmt.Fprintf(&b, "  %s  %d\n", sty.Bad("hard-deny"), s.HardDeny)
 	if s.Unknown > 0 {
-		fmt.Fprintf(&b, "  unknown    %d\n", s.Unknown)
+		fmt.Fprintf(&b, "  %s    %d\n", sty.Dim("unknown"), s.Unknown)
 	}
 	if s.Malformed > 0 {
-		fmt.Fprintf(&b, "(%d malformed line(s) skipped)\n", s.Malformed)
+		fmt.Fprintf(&b, "%s\n", sty.Dim(fmt.Sprintf("(%d malformed line(s) skipped)", s.Malformed)))
 	}
 	return b.String()
 }

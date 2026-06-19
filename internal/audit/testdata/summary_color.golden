@@ -1,0 +1,5 @@
+[1mAudit summary:[22m 6 entries [2m(4 intercepted, 2 passthrough)[22m
+  [32mallow[0m      3
+  [33msoft-deny[0m  1
+  [31mhard-deny[0m  2
+[2m(1 malformed line(s) skipped)[22m

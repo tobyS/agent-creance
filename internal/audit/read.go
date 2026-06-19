@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // openStreams opens the rotated (.1) file then the current file, in that order, so
@@ -50,7 +52,7 @@ func SummarizeFiles(rotatedPath, currentPath string) (Summary, error) {
 // Dump writes every entry in the rotated then current audit file to w, one
 // human-formatted line each. Malformed lines are skipped. Missing files produce no
 // output (and no error).
-func Dump(w io.Writer, rotatedPath, currentPath string) error {
+func Dump(w io.Writer, rotatedPath, currentPath string, sty *style.Styler) error {
 	readers, closeAll, err := openStreams(rotatedPath, currentPath)
 	if err != nil {
 		return err
@@ -62,7 +64,7 @@ func Dump(w io.Writer, rotatedPath, currentPath string) error {
 			line, readErr := br.ReadString('\n')
 			if len(strings.TrimSpace(line)) > 0 {
 				if entry, perr := ParseLine([]byte(line)); perr == nil {
-					if _, werr := fmt.Fprintln(w, FormatEntry(entry)); werr != nil {
+					if _, werr := fmt.Fprintln(w, FormatEntry(entry, sty)); werr != nil {
 						return fmt.Errorf("write audit line: %w", werr)
 					}
 				}

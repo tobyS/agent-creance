@@ -1,0 +1,25 @@
+# Colored output behavior, exercised through `version` (which dims its build
+# detail and tested-version values and bolds "tested against:"). Under testscript
+# stdout is a pipe, so auto stays plain and color must be forced with --color.
+
+# --color=always forces ANSI escapes even though stdout is not a tty.
+agent-creance --color=always version
+stdout '\x1b\['
+stdout 'agent-creance dev'
+
+# --color=auto on a pipe is plain: no escapes.
+agent-creance --color=auto version
+! stdout '\x1b\['
+
+# --color=never is plain.
+agent-creance --color=never version
+! stdout '\x1b\['
+
+# NO_COLOR forces plain under auto...
+env NO_COLOR=1
+agent-creance --color=auto version
+! stdout '\x1b\['
+
+# ...but an explicit --color=always overrides NO_COLOR (per no-color.org).
+agent-creance --color=always version
+stdout '\x1b\['

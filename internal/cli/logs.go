@@ -41,12 +41,12 @@ func newLogsCmd(app *App) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprint(app.Stdout, s.Render())
+				fmt.Fprint(app.Stdout, s.Render(app.OutStyle))
 				return nil
 			case follow:
-				return audit.Follow(cmd.Context(), app.Stdout, filepath.Dir(cur), cur)
+				return audit.Follow(cmd.Context(), app.Stdout, filepath.Dir(cur), cur, app.OutStyle)
 			default:
-				return audit.Dump(app.Stdout, rot, cur)
+				return audit.Dump(app.Stdout, rot, cur, app.OutStyle)
 			}
 		},
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/audit"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -60,7 +61,7 @@ func TestDumpReadsRotatedThenCurrent(t *testing.T) {
 	writeFile(t, cur, `{"ts":"t2","host":"api.anthropic.com","decision":"allow"}`+"\n")
 
 	var buf bytes.Buffer
-	require.NoError(t, audit.Dump(&buf, rot, cur))
+	require.NoError(t, audit.Dump(&buf, rot, cur, style.Plain()))
 
 	want := "t1  allow      GET https://a/ -> 200\n" +
 		"t2  allow      api.anthropic.com (passthrough)\n"
@@ -71,6 +72,6 @@ func TestDumpMissingFilesIsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	cur := filepath.Join(dir, "egress.jsonl")
 	var buf bytes.Buffer
-	require.NoError(t, audit.Dump(&buf, cur+".1", cur))
+	require.NoError(t, audit.Dump(&buf, cur+".1", cur, style.Plain()))
 	require.Empty(t, buf.String())
 }

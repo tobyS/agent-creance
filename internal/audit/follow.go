@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // pollInterval is the stat-poll backstop. fsnotify events on macOS/kqueue are
@@ -29,7 +31,7 @@ const pollInterval = 1 * time.Second
 // delivers the Create for the new file — which, together with inode-identity checks
 // and the poll backstop, is how rotation is detected. dirPath is the directory holding
 // currentPath (typically filepath.Dir(layout.EgressJSONL())).
-func Follow(ctx context.Context, w io.Writer, dirPath, currentPath string) error {
+func Follow(ctx context.Context, w io.Writer, dirPath, currentPath string, sty *style.Styler) error {
 	if _, err := os.Stat(dirPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("no audit log directory yet (%s) — has the cage run?", dirPath)
@@ -46,7 +48,7 @@ func Follow(ctx context.Context, w io.Writer, dirPath, currentPath string) error
 		return fmt.Errorf("watch %s: %w", dirPath, err)
 	}
 
-	f := &follower{w: w, currentPath: currentPath}
+	f := &follower{w: w, currentPath: currentPath, sty: sty}
 	defer f.closeFile()
 
 	// Open the current file at its end so only entries appended after we start are
@@ -92,6 +94,7 @@ func Follow(ctx context.Context, w io.Writer, dirPath, currentPath string) error
 // follower holds the streaming state for one Follow call.
 type follower struct {
 	w           io.Writer
+	sty         *style.Styler
 	currentPath string
 	file        *os.File    // nil until the current file exists
 	info        os.FileInfo // identity of file, for rotation detection via os.SameFile
@@ -174,7 +177,7 @@ func (f *follower) emitLines() error {
 		if err != nil {
 			continue // skip malformed lines, like Dump/Summarize
 		}
-		if _, err := fmt.Fprintln(f.w, FormatEntry(entry)); err != nil {
+		if _, err := fmt.Fprintln(f.w, FormatEntry(entry, f.sty)); err != nil {
 			return fmt.Errorf("write audit line: %w", err)
 		}
 	}

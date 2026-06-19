@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/tobyS/agent-creance/internal/audit"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 func TestFormatEntryGolden(t *testing.T) {
@@ -15,10 +16,14 @@ func TestFormatEntryGolden(t *testing.T) {
 		{TS: "2026-06-06T10:22:05Z", Host: "api.anthropic.com", Decision: "allow"},
 		{TS: "2026-06-06T10:22:06Z", Host: "tunnel.example", Decision: "hard-deny"},
 	}
-	var b strings.Builder
-	for _, e := range entries {
-		b.WriteString(audit.FormatEntry(e))
-		b.WriteByte('\n')
+	// Plain keeps the original golden name; color adds a _color sibling.
+	modes := map[string]*style.Styler{"": style.Plain(), "_color": style.New(true)}
+	for suffix, sty := range modes {
+		var b strings.Builder
+		for _, e := range entries {
+			b.WriteString(audit.FormatEntry(e, sty))
+			b.WriteByte('\n')
+		}
+		assertGolden(t, "format_lines"+suffix+".golden", b.String())
 	}
-	assertGolden(t, "format_lines.golden", b.String())
 }

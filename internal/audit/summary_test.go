@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/audit"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 // rotated holds the older entries; current holds the newer ones. Summarize reads them
@@ -44,7 +45,7 @@ func TestSummarizeEmpty(t *testing.T) {
 	s, err := audit.Summarize(strings.NewReader(""))
 	require.NoError(t, err)
 	require.Equal(t, audit.Summary{}, s)
-	require.Equal(t, "No audit entries yet.\n", s.Render())
+	require.Equal(t, "No audit entries yet.\n", s.Render(style.Plain()))
 }
 
 func TestSummarizeUnknownDecision(t *testing.T) {
@@ -57,5 +58,8 @@ func TestSummarizeUnknownDecision(t *testing.T) {
 func TestSummaryRenderGolden(t *testing.T) {
 	s, err := audit.Summarize(strings.NewReader(rotatedFixture), strings.NewReader(currentFixture))
 	require.NoError(t, err)
-	assertGolden(t, "summary.golden", s.Render())
+	// Plain keeps the original golden name; color adds a _color sibling.
+	for suffix, sty := range map[string]*style.Styler{"": style.Plain(), "_color": style.New(true)} {
+		assertGolden(t, "summary"+suffix+".golden", s.Render(sty))
+	}
 }

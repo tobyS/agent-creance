@@ -1,0 +1,5 @@
+[2m2026-06-06T10:22:01Z[22m  [32mallow[0m      GET https://api.github.com/ -> 200
+[2m2026-06-06T10:22:03Z[22m  [33msoft-deny[0m  GET https://evil.example/ -> 470
+[2m2026-06-06T10:22:04Z[22m  [31mhard-deny[0m  POST https://w3schools.com/x -> 471
+[2m2026-06-06T10:22:05Z[22m  [32mallow[0m      api.anthropic.com (passthrough)
+[2m2026-06-06T10:22:06Z[22m  [31mhard-deny[0m  tunnel.example (passthrough)
