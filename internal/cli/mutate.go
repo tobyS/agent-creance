@@ -79,10 +79,22 @@ func mutationTarget(app *App, dir string, once, global bool) (path, label string
 }
 
 // mutateAndRecompile appends rule to the list in the file at path, then recompiles the
-// policy so a running proxy hot-reloads (the rule changes the compiler's input hash,
-// forcing a policy.json rewrite). An identical rule already present is a reported
-// no-op — no write, no recompile.
+// policy so a running proxy hot-reloads. An identical rule already present is a reported
+// no-op — no write, no recompile. It is a thin wrapper over applyAndRecompile that
+// plugs in config.AppendRule and the rule's human label.
 func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, list config.RuleList, rule config.Rule, verb string) error {
+	return applyAndRecompile(ctx, app, dir, path, label, ruleLabel(rule), verb,
+		func(src []byte) ([]byte, bool, error) { return config.AppendRule(src, list, rule) })
+}
+
+// applyAndRecompile is the read → append → atomic-write → recompile skeleton shared by
+// the config-editing commands (allow/deny via mutateAndRecompile, and include). apply
+// performs the comment-preserving edit and reports whether anything changed; subject is
+// the human label of the thing being added (a rule label or an include path) and verb
+// the past-tense action ("allowed"/"denied"/"included"). A no-op (changed=false) is
+// reported without writing or recompiling. The recompile forces a policy.json rewrite
+// (the edit changed the compiler's input hash) so a running proxy hot-reloads.
+func applyAndRecompile(ctx context.Context, app *App, dir, path, fileLabel, subject, verb string, apply func(src []byte) (out []byte, changed bool, err error)) error {
 	data, err := app.FS.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -91,12 +103,12 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 		data = nil // absent target (e.g. first --once, or no global yet) — create it
 	}
 
-	out, changed, err := config.AppendRule(data, list, rule)
+	out, changed, err := apply(data)
 	if err != nil {
 		return err
 	}
 	if !changed {
-		fmt.Fprintf(app.Stdout, "%s is already %s in %s; nothing to do\n", ruleLabel(rule), verb, label)
+		fmt.Fprintf(app.Stdout, "%s is already %s in %s; nothing to do\n", subject, verb, fileLabel)
 		return nil
 	}
 
@@ -108,10 +120,10 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 	}
 
 	if err := recompile(ctx, app, dir); err != nil {
-		return fmt.Errorf("%s %s in %s, but recompiling the policy failed: %w", verb, ruleLabel(rule), label, err)
+		return fmt.Errorf("%s %s in %s, but recompiling the policy failed: %w", verb, subject, fileLabel, err)
 	}
 
-	fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, ruleLabel(rule), label)
+	fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, subject, fileLabel)
 	return nil
 }
 

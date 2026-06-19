@@ -6,5 +6,5 @@ ticket: AC-0054
 # Status — AC-0054 include command
 
 - [x] Phase 1 — config: `AppendInclude` + `ValidateInclude` (+ golden + validate tests)
-- [ ] Phase 2 — CLI: `applyAndRecompile` refactor, `include` command, registration (+ unit tests)
+- [x] Phase 2 — CLI: `applyAndRecompile` refactor, `include` command, registration (+ unit tests)
 - [ ] Phase 3 — testscript + final verification (make test/lint/golden/build)

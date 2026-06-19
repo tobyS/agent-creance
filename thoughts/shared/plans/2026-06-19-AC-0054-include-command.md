@@ -249,6 +249,8 @@ absolute path, e.g. `/proj/baseline.yaml`):
   the path; project config unchanged.
 
 **Verify Phase 2:** `make test` (cli + config green, allow/deny unchanged), `make lint`.
+✓ Done — `applyAndRecompile` extracted (allow/deny wrap it, tests unchanged), `include`
+command + registration, four unit tests over `mutateFixture`; build, cli tests, lint green.
 
 ---
 
