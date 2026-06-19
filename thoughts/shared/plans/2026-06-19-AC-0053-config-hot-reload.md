@@ -432,4 +432,3 @@ so teardown is driven by the function returning — `Stop()` does not rely on
 - **Skip-on-unchanged-policy**: a comment-only edit yields `changed=false` (cache
   skip) — we still re-derive the watch set and print a concise "policy unchanged"
   line so the user knows the edit registered.
-</content>

@@ -310,5 +310,3 @@ No UX surface → no design exploration needed. The ticket's other
 new loader API; lifecycle placement = after run.go:156, defer teardown;
 debouncing = reset timer / re-armed `time.After`; last-good = already guaranteed;
 feedback = plain stderr).
-</content>
-</invoke>
