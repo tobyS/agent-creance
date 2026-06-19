@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"syscall"
 	"testing"
@@ -30,6 +31,7 @@ type runFixture struct {
 	proc  *sysdeptest.FakeProcessManager
 	ports *sysdeptest.FakePortAllocator
 	pg    *sysdeptest.FakeProcessGroup
+	watch *sysdeptest.FakeFileWatcherFactory
 	out   *bytes.Buffer
 	err   *bytes.Buffer
 	lay   state.Layout
@@ -85,6 +87,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	ports := sysdeptest.NewFakePortAllocator()
 	ports.AllocPort = allocPort
 	pg := sysdeptest.NewFakeProcessGroup() // Start returns a process that Waits clean
+	watch := sysdeptest.NewFakeFileWatcherFactory()
 
 	out, errb := &bytes.Buffer{}, &bytes.Buffer{}
 	app := &App{
@@ -102,10 +105,11 @@ func newRunFixture(t *testing.T) *runFixture {
 		Flock:          flock,
 		ProcessManager: proc,
 		PortAllocator:  ports,
+		WatcherFactory: watch,
 	}
 	return &runFixture{
 		app: app, fs: fs, paths: paths, kc: kc, cmd: cmd, flock: flock,
-		proc: proc, ports: ports, pg: pg, out: out, err: errb, lay: lay,
+		proc: proc, ports: ports, pg: pg, watch: watch, out: out, err: errb, lay: lay,
 	}
 }
 
@@ -341,7 +345,44 @@ func TestRunMalformedMarketplaceRegistryWarns(t *testing.T) {
 	}
 }
 
+// TestRunStartsAndStopsConfigWatcher asserts the run session watches the project
+// config dir for hot-reload (AC-0053) and tears the watcher down cleanly when the
+// agent exits.
+func TestRunStartsAndStopsConfigWatcher(t *testing.T) {
+	f := newRunFixture(t)
+
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun: %v\nstderr: %s", err, f.err)
+	}
+
+	if added := f.watch.Watcher.Added(); len(added) != 1 || added[0] != runProj {
+		t.Errorf("watched dirs = %v, want [%s] (the project config dir)", added, runProj)
+	}
+	if !f.watch.Watcher.Closed() {
+		t.Error("config watcher was not closed on run exit")
+	}
+}
+
+// TestRunConfigWatcherFailureIsAdvisory asserts that a watcher that cannot be
+// created warns but does not fail the run (hot-reload is best-effort).
+func TestRunConfigWatcherFailureIsAdvisory(t *testing.T) {
+	f := newRunFixture(t)
+	f.watch.NewErr = errFakeWatcher
+
+	if err := runRun(context.Background(), f.app, "."); err != nil {
+		t.Fatalf("runRun should not fail when the watcher can't start: %v", err)
+	}
+	if !strings.Contains(f.err.String(), "config hot-reload unavailable") {
+		t.Errorf("stderr missing the advisory warning: %s", f.err)
+	}
+	if len(f.pg.Started()) != 1 {
+		t.Errorf("agent was not launched despite the watcher failure")
+	}
+}
+
 // --- helpers ---
+
+var errFakeWatcher = errors.New("fake watcher unavailable")
 
 func argsContain(args []string, flag, value string) bool {
 	for i := 0; i+1 < len(args); i++ {

@@ -12,6 +12,7 @@ import (
 	"github.com/tobyS/agent-creance/internal/buildinfo"
 	"github.com/tobyS/agent-creance/internal/cage"
 	"github.com/tobyS/agent-creance/internal/config"
+	"github.com/tobyS/agent-creance/internal/configwatch"
 	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/pluginmkt"
 	compile "github.com/tobyS/agent-creance/internal/policy/compile"
@@ -175,6 +176,34 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	inv, err := cage.Build(in)
 	if err != nil {
 		return fmt.Errorf("build cage invocation: %w", err)
+	}
+
+	// 10b. Watch the source config + its include graph for the duration of the
+	//      session. A hand-edit recompiles policy.json, which the enforcer's mtime
+	//      poll then applies to the live cage — no restart. Advisory: a watcher
+	//      failure warns but never blocks the run; an invalid edit keeps the
+	//      last-good policy (the compiler never overwrites policy.json on a failed
+	//      compile). The deferred Stop runs before the deferred Detach (LIFO), so
+	//      the watcher is gone before the proxy is torn down.
+	reload := func(ctx context.Context) (bool, string, error) {
+		c, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
+		if err != nil {
+			return false, "", err
+		}
+		res, err := c.Compile(ctx, dir)
+		if err != nil {
+			return false, "", err
+		}
+		if res.Skipped {
+			return false, "", nil
+		}
+		return true, fmt.Sprintf("%d allow, %d deny", res.AllowCount, res.DenyCount), nil
+	}
+	watcher := configwatch.New(config.NewLoader(app.FS, app.Paths), app.WatcherFactory, reload, app.Stderr)
+	if err := watcher.Start(ctx, filepath.Join(dir, configFile)); err != nil {
+		fmt.Fprintf(app.Stderr, "⚠ config hot-reload unavailable: %v\n", err)
+	} else {
+		defer func() { _ = watcher.Stop() }()
 	}
 
 	// 11. Run the agent in its own process group, forwarding signals; blocks until

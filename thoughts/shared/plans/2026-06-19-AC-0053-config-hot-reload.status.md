@@ -5,7 +5,7 @@ Plan: `thoughts/shared/plans/2026-06-19-AC-0053-config-hot-reload.md`
 - [x] Phase 1: Loader include-graph enumeration (`ResolveFiles`)
 - [x] Phase 2: `FileWatcher` sysdep seam + fake
 - [x] Phase 3: `internal/configwatch` package
-- [ ] Phase 4: wire into run session
+- [x] Phase 4: wire into run session
 - [ ] Phase 5: integration test + docs + build
 
 ## Notes
@@ -34,3 +34,13 @@ Plan: `thoughts/shared/plans/2026-06-19-AC-0053-config-hot-reload.md`
   `rederive`/`reconcileDirs` to track added/removed includes. `ReloadFunc` keeps
   it decoupled from `policy/compile`. 12 fake-driven tests (small debounce +
   `require.Eventually`/`require.Never`); `-race -count=5` and lint green.
+
+### Phase 4 (done)
+
+- Added `App.WatcherFactory` (wired `OSFileWatcherFactory{}` in `Main`). `runRun`
+  now builds a `configwatch.ReloadFunc` over the compiler and starts the watcher
+  after proxy attach, stopping it via `defer` (before the proxy Detach). Watcher
+  start failure warns but never blocks the run. Extended `run_test.go` (fake
+  factory) with start/stop and advisory-failure tests. The one run testscript
+  refuses at the prereq gate, so the real watcher is never hit there. `make
+  test`/`make lint` green.

@@ -63,6 +63,11 @@ type App struct {
 	// listening-socket enumeration (the exposed-0.0.0.0-service scan).
 	FSType    sysdep.FilesystemTyper
 	Listeners sysdep.ListenerScanner
+	// WatcherFactory creates the filesystem watcher the run command (AC-0053) uses
+	// to hot-reload the source config + its include graph during an active session;
+	// a hand-edit recompiles policy.json, which the proxy enforcer's mtime poll then
+	// applies to the live cage. Tests wire the sysdeptest fake.
+	WatcherFactory sysdep.FileWatcherFactory
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -123,6 +128,7 @@ func Main() int {
 		Sleeper:        sysdep.OSSleeper{},
 		FSType:         sysdep.OSFilesystemTyper{},
 		Listeners:      sysdep.OSListenerScanner{},
+		WatcherFactory: sysdep.OSFileWatcherFactory{},
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.
