@@ -152,7 +152,8 @@ user just gave.
   absolute forms resolve correctly.
 
 **Verify Phase 1:** `make test` (config package green), `make golden` then review,
-`make lint`.
+`make lint`. ✓ Done — `AppendInclude` + golden fixtures (existing/from-scratch/
+empty-flow/home), `ValidateInclude` + table tests; config tests, vet, lint green.
 
 ---
 

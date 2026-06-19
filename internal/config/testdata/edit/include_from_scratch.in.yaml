@@ -1,0 +1,5 @@
+# network config, no include: key yet
+network:
+  egress:
+    allow:
+      - host: seed.example

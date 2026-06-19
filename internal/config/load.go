@@ -248,6 +248,37 @@ func (l *Loader) resolve(path, home string, optional bool, stack []string, depth
 	return &acc, nil
 }
 
+// ValidateInclude checks that include entry inc, as declared by the config file at
+// declaringPath, resolves to a readable, parseable config file. It is the pre-write
+// check for `agent-creance include`: it pinpoints a wrong or missing path before the
+// entry is committed, so the user is never left with a config that only fails to
+// compile later. It validates the single entry (resolve + read + parse) using the
+// same form rules as the loader; it does not walk the whole include graph. The
+// returned error names the resolved path.
+func (l *Loader) ValidateInclude(declaringPath, inc string) error {
+	home, err := l.paths.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("config: locate home directory: %w", err)
+	}
+	abs, err := l.paths.Abs(declaringPath)
+	if err != nil {
+		return fmt.Errorf("config: resolve path %s: %w", declaringPath, err)
+	}
+	incPath := l.resolveIncludePath(abs, home, inc)
+
+	data, err := l.fs.ReadFile(incPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("config: include not found: %s", incPath)
+		}
+		return fmt.Errorf("config: read include %s: %w", incPath, err)
+	}
+	if _, err := Parse(data); err != nil {
+		return fmt.Errorf("config: include %s: %w", incPath, err)
+	}
+	return nil
+}
+
 // resolveIncludePath turns an include: entry into a path to read. A leading ~/ expands
 // against the home directory; an absolute path is used verbatim; a relative path is
 // resolved against the directory of the file that declared the include.

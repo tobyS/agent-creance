@@ -1,0 +1,7 @@
+# empty include list, flow style
+include:
+  - "./frag.yaml"
+network:
+  egress:
+    allow:
+      - host: seed.example

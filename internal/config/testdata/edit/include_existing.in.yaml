@@ -1,0 +1,7 @@
+# top comment — must survive the splice
+include:
+  - ./base.yaml
+network:
+  egress:
+    allow:
+      - host: seed.example

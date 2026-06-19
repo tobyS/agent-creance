@@ -1,0 +1,6 @@
+# empty include list, flow style
+include: []
+network:
+  egress:
+    allow:
+      - host: seed.example
