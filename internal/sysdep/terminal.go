@@ -12,7 +12,9 @@ import (
 // (non-interactive), so it never blocks an unattended run waiting on input. The
 // run command asks about stderr to decide whether its progress counter may
 // rewrite a line in place (\r) or must degrade to append-only milestone lines
-// for pipes and CI logs.
+// for pipes and CI logs. Color resolution asks about stdout and stderr
+// separately, since a command's report (stdout) and its progress (stderr) can be
+// piped independently.
 //
 // Why a seam rather than calling the tty ioctl inline (for someone coming from
 // PHP/TS): under testscript the CLI always runs with non-tty pipes, so the
@@ -26,6 +28,9 @@ type Terminal interface {
 	// IsStderrTerminal reports whether standard error is a terminal (in-place
 	// line rewrites render sensibly) rather than a pipe or redirected file.
 	IsStderrTerminal() bool
+	// IsStdoutTerminal reports whether standard output is a terminal, so color
+	// auto-detection can enable styling for reports written to stdout.
+	IsStdoutTerminal() bool
 }
 
 // OSTerminal is the production Terminal. It probes the stream with the termios
@@ -42,6 +47,10 @@ func (OSTerminal) IsInteractive() bool {
 
 func (OSTerminal) IsStderrTerminal() bool {
 	return isTerminal(os.Stderr)
+}
+
+func (OSTerminal) IsStdoutTerminal() bool {
+	return isTerminal(os.Stdout)
 }
 
 func isTerminal(f *os.File) bool {

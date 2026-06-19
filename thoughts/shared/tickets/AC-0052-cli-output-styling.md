@@ -1,9 +1,9 @@
 # AC-0052: Polish CLI output — semantic color and visual hierarchy, TTY-aware
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Large
 **Created:** 2026-06-17
-**Updated:** 2026-06-17
+**Updated:** 2026-06-19
 
 ## Problem Statement
 

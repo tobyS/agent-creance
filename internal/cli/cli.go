@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobyS/agent-creance/internal/buildinfo"
+	"github.com/tobyS/agent-creance/internal/style"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
@@ -68,6 +69,13 @@ type App struct {
 	// a hand-edit recompiles policy.json, which the proxy enforcer's mtime poll then
 	// applies to the live cage. Tests wire the sysdeptest fake.
 	WatcherFactory sysdep.FileWatcherFactory
+	// OutStyle and ErrStyle carry the semantic color layer (AC-0052) for stdout
+	// and stderr respectively. The root command's --color flag resolves them once
+	// (per stream, honoring NO_COLOR and isatty) before any subcommand runs.
+	// A nil styler is safe and behaves as plain, so tests that omit them — and any
+	// path reached before resolution — produce byte-identical plain output.
+	OutStyle *style.Styler
+	ErrStyle *style.Styler
 }
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -78,15 +86,35 @@ type App struct {
 // into a non-zero exit — idiomatic error handling rather than calling
 // os.Exit deep in a handler.
 func newRootCmd(app *App) *cobra.Command {
+	var colorMode string
 	root := &cobra.Command{
 		Use:           "agent-creance",
 		Short:         "Run a coding agent inside an isolated, egress-filtered cage",
 		SilenceUsage:  true, // don't dump usage on a runtime error
 		SilenceErrors: true, // we print errors ourselves in Main
+		// Resolve the color decision once, before any subcommand runs. Per stream,
+		// because a report (stdout) and progress (stderr) can be piped separately.
+		// --color=always overrides NO_COLOR per the no-color.org spec.
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			noColor := app.Paths.Getenv("NO_COLOR") != ""
+			out, err := style.Resolve(colorMode, noColor, app.Terminal.IsStdoutTerminal())
+			if err != nil {
+				return err
+			}
+			errOn, err := style.Resolve(colorMode, noColor, app.Terminal.IsStderrTerminal())
+			if err != nil {
+				return err
+			}
+			app.OutStyle = style.New(out)
+			app.ErrStyle = style.New(errOn)
+			return nil
+		},
 	}
 	// Route cobra's own output through the App writers so tests capture it.
 	root.SetOut(app.Stdout)
 	root.SetErr(app.Stderr)
+	root.PersistentFlags().StringVar(&colorMode, "color", "auto",
+		"when to colorize output: auto (a tty, unless NO_COLOR), always, or never")
 
 	root.AddCommand(newInitCmd(app))
 	root.AddCommand(newVersionCmd(app))
@@ -129,6 +157,10 @@ func Main() int {
 		FSType:         sysdep.OSFilesystemTyper{},
 		Listeners:      sysdep.OSListenerScanner{},
 		WatcherFactory: sysdep.OSFileWatcherFactory{},
+		// Plain until the root PersistentPreRunE resolves --color; safe for any
+		// path reached before that (e.g. bare `agent-creance`).
+		OutStyle: style.Plain(),
+		ErrStyle: style.Plain(),
 	}
 	if err := newRootCmd(app).ExecuteContext(context.Background()); err != nil {
 		// Cobra already validated args; this is a runtime failure.

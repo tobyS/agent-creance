@@ -1,0 +1,16 @@
+# The global --color flag is accepted by every command and validated before the
+# command runs. (Per-command colored output is asserted in color_output.txtar.)
+
+# A recognized value runs normally.
+agent-creance --color=auto version
+stdout 'agent-creance dev'
+
+agent-creance --color=never version
+stdout 'agent-creance dev'
+
+agent-creance --color=always version
+stdout 'agent-creance dev'
+
+# An unrecognized value is rejected (printed by Main, non-zero exit).
+! agent-creance --color=bogus version
+stderr 'invalid --color value'
