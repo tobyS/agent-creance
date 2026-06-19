@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobyS/agent-creance/internal/proxy"
+	"github.com/tobyS/agent-creance/internal/style"
 )
 
 var update = flag.Bool("update", false, "regenerate golden files")
@@ -57,18 +58,22 @@ func goldenCases() map[string]Report {
 }
 
 func TestRender(t *testing.T) {
+	// Plain keeps the original golden name; color adds a _color sibling.
+	modes := map[string]*style.Styler{"": style.Plain(), "_color": style.New(true)}
 	for name, rep := range goldenCases() {
-		t.Run(name, func(t *testing.T) {
-			got := Render(rep)
-			golden := filepath.Join("testdata", "render_"+name+".golden")
-			if *update {
-				require.NoError(t, os.MkdirAll("testdata", 0o755))
-				require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
-				return
-			}
-			want, err := os.ReadFile(golden)
-			require.NoError(t, err, "missing golden file; run with -update to create it")
-			require.Equal(t, string(want), got)
-		})
+		for suffix, sty := range modes {
+			t.Run(name+suffix, func(t *testing.T) {
+				got := Render(rep, sty)
+				golden := filepath.Join("testdata", "render_"+name+suffix+".golden")
+				if *update {
+					require.NoError(t, os.MkdirAll("testdata", 0o755))
+					require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
+					return
+				}
+				want, err := os.ReadFile(golden)
+				require.NoError(t, err, "missing golden file; run with -update to create it")
+				require.Equal(t, string(want), got)
+			})
+		}
 	}
 }

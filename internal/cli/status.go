@@ -37,6 +37,6 @@ func runStatus(app *App) error {
 	if err != nil {
 		return fmt.Errorf("scan projects: %w", err)
 	}
-	fmt.Fprint(app.Stdout, status.Render(rep))
+	fmt.Fprint(app.Stdout, status.Render(rep, app.OutStyle))
 	return nil
 }

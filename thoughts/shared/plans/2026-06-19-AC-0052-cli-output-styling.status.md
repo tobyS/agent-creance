@@ -9,7 +9,7 @@ started: 2026-06-19
 - [x] Phase 0 — Foundation (fatih/color dep, internal/style, IsStdoutTerminal, --color flag + App stylers)
 - [x] Phase 1 — Progress printer color (run / stderr)
 - [x] Phase 2 — doctor + prereq renderers
-- [ ] Phase 3 — status renderer (two-path tabwriter/manual)
+- [x] Phase 3 — status renderer (two-path tabwriter/manual)
 - [ ] Phase 4 — policy/render renderer
 - [ ] Phase 5 — remaining inline command glyphs
 - [ ] Phase 6 — testscript coverage + final verification + build
@@ -33,4 +33,10 @@ started: 2026-06-19
   pids/ports/paths/reasons (isolate-every-token). Width-before-inject: prereq
   column pads computed from plain fields. Existing plain goldens unchanged
   (verified via git: only render_*_color / doctor_report_color added). doctor.go
+  passes app.OutStyle. make test + make lint green.
+- Phase 3 (2026-06-19): status.Render takes a styler; two-path — plain keeps
+  tabwriter verbatim (byte-identical), color uses a manual visible-width layout
+  with bold headers, state words colored (running green / orphan red / stranded
+  yellow / down dim) and the port dimmed. Color alignment matches the plain
+  table. Existing render_*.golden unchanged; _color siblings added. status.go
   passes app.OutStyle. make test + make lint green.
