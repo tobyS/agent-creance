@@ -1,6 +1,6 @@
 # AC-0052: Polish CLI output — semantic color and visual hierarchy, TTY-aware
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-17
 **Updated:** 2026-06-19
@@ -48,24 +48,24 @@ already conveyed by glyphs and words, so nothing is lost when color is absent.
 
 ## Acceptance Criteria
 
-- [ ] Every command's output adopts the shared visual language: semantic
+- [x] Every command's output adopts the shared visual language: semantic
       green/yellow/red on glyphs and key tokens, bold section headers, dimmed
       secondary detail. Covers at minimum `doctor`, `status`, `run` (progress),
       `policy`, `import`, `init`, `setup`, `logs`, `version`.
-- [ ] Color is **never the only signal**: each status remains identifiable by its
+- [x] Color is **never the only signal**: each status remains identifiable by its
       glyph and wording with color stripped.
-- [ ] Color mode auto-detects a TTY and honors the `NO_COLOR` environment
+- [x] Color mode auto-detects a TTY and honors the `NO_COLOR` environment
       variable; a `--color=auto|always|never` flag overrides detection, default
       `auto`.
-- [ ] When stdout/stderr is not a TTY, or `NO_COLOR` is set, or `--color=never`,
+- [x] When stdout/stderr is not a TTY, or `NO_COLOR` is set, or `--color=never`,
       the output is **byte-for-byte identical to today's** plain output (verified
       by the existing plain golden files remaining unchanged).
-- [ ] Colorized output is also covered by golden-file tests, so both the plain
+- [x] Colorized output is also covered by golden-file tests, so both the plain
       and colored renderings are pinned.
-- [ ] The progress printer's in-place `\r` rewrite math accounts for ANSI escape
+- [x] The progress printer's in-place `\r` rewrite math accounts for ANSI escape
       bytes vs. on-screen rune width (no misaligned padding or residue when color
       is active).
-- [ ] `make test`, `make lint` pass; `make build` at the end.
+- [x] `make test`, `make lint` pass; `make build` at the end.
 
 ## Out of Scope
 
@@ -112,9 +112,31 @@ plain-fallback behavior were all settled during ticket authoring.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-19-AC-0052-cli-output-styling.md`
+- Plan: `thoughts/shared/plans/2026-06-19-AC-0052-cli-output-styling.md`
+  (status: `…-cli-output-styling.status.md`)
 
 ## Notes & Updates
+
+### 2026-06-19
+
+- Implemented in seven phases (research → plan → phased build). Decisions taken
+  at the question checkpoint: use `fatih/color` (wrapped in a thin
+  `internal/style.Styler`), isolate-and-dim every secondary token, and commit
+  raw-escape colored goldens.
+- Approach: a per-stream styler resolved once at the cobra root behind a
+  `--color=auto|always|never` flag (honoring `NO_COLOR`, `--color=always`
+  overrides per no-color.org). A disabled styler is the identity function, so
+  the plain path is byte-identical — every pre-existing plain/JSON golden is
+  unchanged and gained a `_color` sibling. `style.VisibleWidth` keeps the
+  progress printer's `\r` math and the column padding correct under color
+  (width-before-inject). `sysdep.Terminal` gained `IsStdoutTerminal()`.
+- Coverage: doctor, prereq (in doctor), status, run progress, policy
+  show/explain/refresh, logs (audit summary/dump/follow), import, init, setup,
+  mutate, version. Status uses a two-path renderer (tabwriter plain / manual
+  colored) to preserve byte-identical plain output. `make test` (28 pkgs) +
+  `make lint` green; `make build` done.
+- Marked Done.
 
 ### 2026-06-17
 

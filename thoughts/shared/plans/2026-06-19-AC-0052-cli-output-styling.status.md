@@ -12,7 +12,7 @@ started: 2026-06-19
 - [x] Phase 3 — status renderer (two-path tabwriter/manual)
 - [x] Phase 4 — policy/render renderer
 - [x] Phase 5 — remaining inline command glyphs
-- [ ] Phase 6 — testscript coverage + final verification + build
+- [x] Phase 6 — testscript coverage + final verification + build
 
 ## Notes
 - Phase 0 (2026-06-19): added fatih/color v1.19.0 (+ go-isatty, go-colorable);
@@ -45,6 +45,16 @@ started: 2026-06-19
   mutate (via app.OutStyle.OK); version dims the (commit/built) detail and the
   tested-version values, bolds "tested against:". Testscripts (non-tty → plain)
   unchanged. make test + make lint green.
+- Phase 5b/logs (2026-06-19): colored the audit renderers behind `logs`
+  (FormatEntry, Summary.Render, Dump, Follow) — decision verdict colored, ts +
+  detail dimmed, summary header bold, decision column width-before-inject. Plain
+  format_lines/summary goldens unchanged; _color siblings added. logs.go passes
+  app.OutStyle. Completes per-command coverage.
+- Phase 6 (2026-06-19): color_output.txtar asserts --color=always emits escapes,
+  auto/never/NO_COLOR stay plain, and --color=always overrides NO_COLOR. Manual
+  smoke on the built binary confirmed colored TTY-forced output and byte-plain
+  fallback. Final: make test (28 pkgs, no failures) + make lint green; make build.
+  Ticket marked Done, acceptance criteria ticked.
 - Phase 3 (2026-06-19): status.Render takes a styler; two-path — plain keeps
   tabwriter verbatim (byte-identical), color uses a manual visible-width layout
   with bold headers, state words colored (running green / orphan red / stranded
