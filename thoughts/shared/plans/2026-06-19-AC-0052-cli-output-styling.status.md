@@ -7,7 +7,7 @@ started: 2026-06-19
 # AC-0052 implementation status
 
 - [x] Phase 0 — Foundation (fatih/color dep, internal/style, IsStdoutTerminal, --color flag + App stylers)
-- [ ] Phase 1 — Progress printer color (run / stderr)
+- [x] Phase 1 — Progress printer color (run / stderr)
 - [ ] Phase 2 — doctor + prereq renderers
 - [ ] Phase 3 — status renderer (two-path tabwriter/manual)
 - [ ] Phase 4 — policy/render renderer
@@ -21,3 +21,9 @@ started: 2026-06-19
   resolved per-stream in a root PersistentPreRunE behind a --color persistent
   flag. No visible output change yet. color_flag.txtar covers flag plumbing +
   invalid-value error. make test + make lint green.
+- Phase 1 (2026-06-19): progress printer takes a styler; ✓ completion glyphs are
+  green and the trailing (duration) is dimmed; openLine/rewrite now measure
+  style.VisibleWidth so the \r pad math ignores escape bytes. run.go wires
+  app.ErrStyle into NewPrinter and colors its inline ⚠ warnings (skew detail
+  dimmed). Plain output byte-identical (existing printer assertions unchanged);
+  added two colored-mode tests. make test + make lint green.

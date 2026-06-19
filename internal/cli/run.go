@@ -92,7 +92,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// convention as git/curl). All announced steps finish before the agent owns
 	// the terminal; the deferred Close terminates a half-drawn \r line on error
 	// paths so the `error:` line starts fresh.
-	prog := progress.NewPrinter(app.Stderr, app.Clock, app.Terminal.IsStderrTerminal())
+	prog := progress.NewPrinter(app.Stderr, app.Clock, app.Terminal.IsStderrTerminal(), app.ErrStyle)
 	defer prog.Close()
 
 	// 5. Cache-aware policy compile: skipped when inputs are unchanged. The input
@@ -211,7 +211,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	}
 	watcher := configwatch.New(config.NewLoader(app.FS, app.Paths), app.WatcherFactory, reload, app.Stderr)
 	if err := watcher.Start(ctx, cfgPath); err != nil {
-		fmt.Fprintf(app.Stderr, "⚠ config hot-reload unavailable: %v\n", err)
+		fmt.Fprintf(app.Stderr, "%s config hot-reload unavailable: %v\n", app.ErrStyle.Warn("⚠"), err)
 	} else {
 		defer func() { _ = watcher.Stop() }()
 	}
@@ -235,7 +235,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 func pluginMarketplaceDirs(app *App, homeDir, projectDir string) []string {
 	detected, warns := pluginmkt.Detect(app.FS, app.Paths)
 	for _, w := range warns {
-		fmt.Fprintf(app.Stderr, "⚠ plugin marketplace: %s\n", w)
+		fmt.Fprintf(app.Stderr, "%s plugin marketplace: %s\n", app.ErrStyle.Warn("⚠"), w)
 	}
 
 	claudeDir := filepath.Join(homeDir, ".claude")
@@ -274,8 +274,9 @@ func withinAny(path string, roots []string) bool {
 func warnVersionSkew(app *App, results []prereq.Result) {
 	for _, r := range results {
 		if r.Skew.Loud() {
-			fmt.Fprintf(app.Stderr, "⚠ %s %s differs from tested %s (%s)\n",
-				r.Tool.Name, r.Version, r.Tool.Tested, r.Skew)
+			fmt.Fprintf(app.Stderr, "%s %s %s differs from tested %s %s\n",
+				app.ErrStyle.Warn("⚠"), r.Tool.Name, r.Version, r.Tool.Tested,
+				app.ErrStyle.Dim("("+r.Skew.String()+")"))
 		}
 	}
 }

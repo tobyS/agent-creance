@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 	"time"
-	"unicode/utf8"
 
+	"github.com/tobyS/agent-creance/internal/style"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
@@ -21,9 +21,15 @@ const indent = "  "
 // Printer renders progress events as human-readable lines on one writer (run
 // wires stderr). In interactive mode (the writer is a terminal) the current
 // step line and the per-manifest lookup counter are rewritten in place with
-// \r and space-padding — no ANSI escapes, the codebase uses none. In
-// non-interactive mode (pipe, CI log) every write is an appended full line and
-// the counter degrades to milestone lines at roughly 25/50/75%.
+// \r and space-padding. In non-interactive mode (pipe, CI log) every write is an
+// appended full line and the counter degrades to milestone lines at roughly
+// 25/50/75%.
+//
+// When the injected styler is enabled the completion glyph is green and the
+// trailing (duration) is dimmed; the in-place math uses style.VisibleWidth, so
+// the SGR escapes (zero on-screen columns) never inflate the \r pad count. With
+// a disabled styler every method emits exactly the same bytes as before color
+// existed.
 //
 // Printer implements Reporter for the compiler-emitted events and adds the
 // step-level methods (StepStart, StepDone, Line) the run command calls
@@ -33,6 +39,7 @@ type Printer struct {
 	w           io.Writer
 	clock       sysdep.Clock
 	interactive bool
+	sty         *style.Styler
 
 	// openWidth is the rune width the current in-place line occupies on
 	// screen (0 = no open line). Rewrites pad with spaces up to this width to
@@ -54,9 +61,10 @@ type Printer struct {
 var _ Reporter = (*Printer)(nil)
 
 // NewPrinter returns a Printer writing to w, timing via clock. interactive
-// selects in-place \r rendering and should reflect whether w is a terminal.
-func NewPrinter(w io.Writer, clock sysdep.Clock, interactive bool) *Printer {
-	return &Printer{w: w, clock: clock, interactive: interactive}
+// selects in-place \r rendering and should reflect whether w is a terminal. sty
+// carries the color decision for the writer's stream; a nil styler renders plain.
+func NewPrinter(w io.Writer, clock sysdep.Clock, interactive bool, sty *style.Styler) *Printer {
+	return &Printer{w: w, clock: clock, interactive: interactive, sty: sty}
 }
 
 // StepStart announces a step ("text…"). Interactive: the line stays open so
@@ -77,7 +85,8 @@ func (p *Printer) StepStart(text string) {
 // open step line in place when nothing intervened (interactive) and appending
 // a line otherwise.
 func (p *Printer) StepDone(text string) {
-	line := fmt.Sprintf("%s %s (%s)", glyphOK, text, formatDuration(p.clock.Since(p.stepStart)))
+	line := fmt.Sprintf("%s %s %s", p.sty.OK(glyphOK), text,
+		p.sty.Dim("("+formatDuration(p.clock.Since(p.stepStart))+")"))
 	if p.interactive && !p.stepDirty && p.openWidth > 0 {
 		p.replaceLine(line)
 	} else {
@@ -154,8 +163,8 @@ func (p *Printer) ManifestDone() {
 	if p.manifestCached {
 		detail = "rules cached"
 	}
-	line := fmt.Sprintf("%s%s %s: %s (%s)", indent, glyphOK, p.manifest.Path, detail,
-		formatDuration(p.clock.Since(p.manifestStart)))
+	line := fmt.Sprintf("%s%s %s: %s %s", indent, p.sty.OK(glyphOK), p.manifest.Path, detail,
+		p.sty.Dim("("+formatDuration(p.clock.Since(p.manifestStart))+")"))
 	if p.counterOpen {
 		p.replaceLine(line)
 	} else {
@@ -187,13 +196,13 @@ func (p *Printer) interrupt() {
 
 func (p *Printer) openLine(s string) {
 	fmt.Fprint(p.w, s)
-	p.openWidth = utf8.RuneCountInString(s)
+	p.openWidth = style.VisibleWidth(s)
 }
 
 // rewrite redraws the open line in place, space-padding to cover residue from
 // a longer previous render.
 func (p *Printer) rewrite(s string) {
-	w := utf8.RuneCountInString(s)
+	w := style.VisibleWidth(s)
 	pad := p.openWidth - w
 	if pad < 0 {
 		pad = 0

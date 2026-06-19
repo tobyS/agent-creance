@@ -6,22 +6,23 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobyS/agent-creance/internal/style"
 	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
 )
 
 func newTestPrinter(interactive bool) (*Printer, *bytes.Buffer, *sysdeptest.FakeClock) {
 	var buf bytes.Buffer
 	clock := sysdeptest.NewFakeClock(time.Unix(0, 0))
-	return NewPrinter(&buf, clock, interactive), &buf, clock
+	return NewPrinter(&buf, clock, interactive, style.Plain()), &buf, clock
 }
 
 // pad returns the spaces a rewrite of prev with next emits to cover residue.
+// It measures visible width (ignoring SGR escapes), mirroring the printer.
 func pad(prev, next string) string {
-	n := utf8.RuneCountInString(prev) - utf8.RuneCountInString(next)
+	n := style.VisibleWidth(prev) - style.VisibleWidth(next)
 	if n < 0 {
 		n = 0
 	}
@@ -226,6 +227,43 @@ func TestFormatDuration(t *testing.T) {
 	for _, c := range cases {
 		require.Equal(t, c.want, formatDuration(c.d), "d=%v", c.d)
 	}
+}
+
+// newColorPrinter builds a printer with color forced on (tests are never a tty).
+func newColorPrinter(interactive bool) (*Printer, *bytes.Buffer, *sysdeptest.FakeClock) {
+	var buf bytes.Buffer
+	clock := sysdeptest.NewFakeClock(time.Unix(0, 0))
+	return NewPrinter(&buf, clock, interactive, style.New(true)), &buf, clock
+}
+
+func TestColorStepDoneColorsGlyphAndDimsDuration(t *testing.T) {
+	sty := style.New(true)
+	p, buf, clock := newColorPrinter(false)
+
+	p.StepStart("Starting egress proxy")
+	clock.Advance(2 * time.Second)
+	p.StepDone("Egress proxy ready on port 8081")
+
+	want := "Starting egress proxy…\n" +
+		sty.OK("✓") + " Egress proxy ready on port 8081 " + sty.Dim("(2s)") + "\n"
+	require.Equal(t, want, buf.String())
+	// The glyph carries a real escape; stripping it recovers the plain line.
+	require.Contains(t, buf.String(), "\x1b[")
+}
+
+func TestColorInteractivePadIgnoresEscapes(t *testing.T) {
+	sty := style.New(true)
+	p, buf, clock := newColorPrinter(true)
+
+	p.StepStart("Compiling egress policy")
+	clock.Advance(400 * time.Millisecond)
+	p.StepDone("Egress policy up to date (cached)")
+
+	open := "Compiling egress policy…"
+	done := sty.OK("✓") + " Egress policy up to date (cached) " + sty.Dim("(400ms)")
+	// pad is computed on the VISIBLE width, so the escape bytes don't inflate it:
+	// the colored done line is visibly shorter than the open line, so it pads.
+	require.Equal(t, open+"\r"+done+pad(open, done)+"\n", buf.String())
 }
 
 func TestOrNop(t *testing.T) {
