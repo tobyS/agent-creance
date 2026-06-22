@@ -67,7 +67,8 @@ func TestDoctorFixCleansRealOrphan(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, sysdep.OSFileSystem{}.MkdirAll(layout.Root, 0o755))
 	lock := map[string]any{
-		"proxy_pid": proxyPID, "port": port, "policy_hash": "h", "agents": []int{deadPID},
+		"proxy_pid": proxyPID, "port": port, "policy_hash": "h",
+		"agents": []map[string]any{{"pid": deadPID, "start": 1}},
 	}
 	data, err := json.Marshal(lock)
 	require.NoError(t, err)

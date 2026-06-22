@@ -2,6 +2,7 @@ package sysdep
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -102,13 +103,23 @@ func (OSProcessManager) StartTime(pid int) (int64, error) {
 	if pid <= 0 {
 		return 0, fmt.Errorf("sysdep: start time pid %d: invalid pid", pid)
 	}
-	// kern.proc.pid returns a kinfo_proc whose kp_proc.p_starttime is the wall-clock
-	// time the process started — stable for its lifetime and freshly assigned when
-	// the PID is later recycled.
-	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	// kern.proc.pid returns the process's kinfo_proc; its very first field is
+	// extern_proc.p_un, a `struct timeval p_starttime` at offset 0 — the wall-clock
+	// time the process started (stable for its lifetime, freshly assigned when the PID
+	// is later recycled). We read the raw bytes and parse that leading timeval rather
+	// than unix.SysctlKinfoProc, whose strict size check fails with EIO when the
+	// running kernel's kinfo_proc differs from x/sys's struct size (newer macOS). The
+	// leading p_starttime offset is ABI-stable; a nonexistent pid yields no bytes,
+	// which we report as an error (the process is gone). macOS is little-endian.
+	raw, err := unix.SysctlRaw("kern.proc.pid", pid)
 	if err != nil {
 		return 0, fmt.Errorf("sysdep: start time pid %d: %w", pid, err)
 	}
-	tv := kp.Proc.P_starttime
-	return tv.Sec*1_000_000 + int64(tv.Usec), nil
+	const tvSize = 12 // int64 sec + int32 usec
+	if len(raw) < tvSize {
+		return 0, fmt.Errorf("sysdep: start time pid %d: no process info (%d bytes)", pid, len(raw))
+	}
+	sec := int64(binary.LittleEndian.Uint64(raw[0:8]))
+	usec := int32(binary.LittleEndian.Uint32(raw[8:12]))
+	return sec*1_000_000 + int64(usec), nil
 }
