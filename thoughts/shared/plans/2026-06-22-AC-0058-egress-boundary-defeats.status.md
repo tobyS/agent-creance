@@ -26,7 +26,18 @@ Plan: `thoughts/shared/plans/2026-06-22-AC-0058-egress-boundary-defeats.md`
   make test / make test-enforcer / make lint green.
 
 ## Phase C — Host normalization & parity (F3, F4)
-- Status: not started
+- Status: done (commit pending)
+- C1: canonicalHost (Go glob.go) / canonical_host (policy.py) — lowercase, strip
+  unambiguous :port (IPv6 left alone), strip single trailing dot — applied at the entry
+  of Decide/decide and HostDisposition/host_disposition. Documented as the matcher
+  contract in policy.go package doc (C2).
+- C3: Go RuleSet.HostDisposition added, mirroring policy.py host_disposition. Corpus
+  `expected` gained an optional host_disposition {passthrough, deny_reason}; both Go and
+  Python replays (and the render-side strict decoder) extended in lockstep. 6 new
+  vectors: trailing-dot deny, port deny, uppercase allow, passthrough disposition,
+  mixed-mode (passthrough+intercept → not passthrough), deny disposition via trailing dot.
+- Tests: Go canonicalHost + HostDisposition tables; Python canonical_host table; corpus
+  replays both languages. make test / make test-enforcer / make lint green; no golden diff.
 
 ## Final verification
 - Status: not started

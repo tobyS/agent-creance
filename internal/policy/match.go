@@ -13,6 +13,9 @@ package policy
 //  3. Otherwise: an allow match is an allow (carrying its mode); no match is the
 //     implicit soft-deny.
 func (rs RuleSet) Decide(req Request) Result {
+	// Canonicalize the request host once, here at the matcher boundary, so trailing-dot /
+	// port / case variants decide identically (AC-0058 / C1). The Python decide matches.
+	req.Host = canonicalHost(req.Host)
 	allowIdx, allowOK := bestMatch(rs.Allow, req, nil)
 	isPassthrough := allowOK && rs.Allow[allowIdx].Mode == ModePassthrough
 

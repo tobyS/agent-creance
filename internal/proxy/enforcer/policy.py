@@ -147,6 +147,9 @@ def decide(rs: RuleSet, req: Request) -> Result:
     3. Otherwise an allow match is an allow (carrying its mode); no match is the
        implicit soft-deny.
     """
+    # Canonicalize the request host once, here at the matcher boundary, so trailing-dot /
+    # port / case variants decide identically (AC-0058 / C1). The Go Decide does the same.
+    req = Request(canonical_host(req.host), req.path, req.method)
     allow_idx, allow_ok = _best_match(rs.allow, req, None)
     is_passthrough = allow_ok and rs.allow[allow_idx].mode == MODE_PASSTHROUGH
 
@@ -220,6 +223,25 @@ def _rule_matches(r: Rule, req: Request):
 
 
 # --- host / path / method matching (internal/policy/glob.go) -------------------
+
+
+def canonical_host(host: str) -> str:
+    """Canonicalize a request host before matching: lowercase, strip a trailing
+    ``:port`` (only the unambiguous ``host:port`` form -- an IPv6 literal's colons are
+    left alone), then strip a single trailing ``.`` (the FQDN root). Applied once at the
+    matcher entry (``decide`` / ``host_disposition``) so ``api.example.com``,
+    ``API.EXAMPLE.COM``, ``api.example.com.`` and ``api.example.com:443`` decide
+    identically and a host-level deny_always cannot be evaded by spelling (AC-0058 / C1).
+    Rule *patterns* are validated at config load, not canonicalized here. Must stay
+    byte-identical to internal/policy/glob.go ``canonicalHost``.
+    """
+    host = host.lower()
+    colon = host.rfind(":")
+    if colon != -1 and host.count(":") == 1 and host[colon + 1:].isdigit():
+        host = host[:colon]
+    if host.endswith("."):
+        host = host[:-1]
+    return host
 
 
 def _match_host(pattern: str, host: str) -> bool:
@@ -389,6 +411,7 @@ class HostDisposition:
 
 
 def host_disposition(rs: RuleSet, host: str) -> HostDisposition:
+    host = canonical_host(host)  # same boundary canonicalization as decide (AC-0058 / C1)
     # Host-level deny (paths is None): the most host-specific matching one wins.
     deny_reason = None
     best_deny_rank = -1

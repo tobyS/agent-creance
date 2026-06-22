@@ -20,9 +20,15 @@
 //
 // Matching semantics (the contract the Python side must reproduce exactly):
 //
-//   - Host: case-insensitive. "*" matches any host; "*.suffix" matches any host
-//     with at least one label before ".suffix" (the bare apex is NOT matched); else
-//     exact equality.
+//   - Host: the request host is canonicalized once at the matcher entry (Decide and
+//     HostDisposition) — lowercased, a trailing ":port" stripped, a single trailing "."
+//     stripped — so api.example.com, API.EXAMPLE.COM, api.example.com. and
+//     api.example.com:443 decide identically and a host-level deny_always cannot be
+//     evaded by spelling (the Python enforcer canonicalizes identically; the corpus
+//     proves it). Matching is then case-insensitive: "*" matches any host; "*.suffix"
+//     matches any host with at least one label before ".suffix" (the bare apex is NOT
+//     matched); else exact equality. Rule patterns are validated at config load, not
+//     canonicalized here.
 //   - Path: prefix-by-default. Pattern and request path are trimmed of leading and
 //     trailing "/" and split into segments. A pattern matches when its segments match
 //     a *prefix* of the request's segments (remaining request segments are "under"
@@ -124,6 +130,62 @@ type Result struct {
 	Decision string       `json:"decision"`
 	Mode     string       `json:"mode"`
 	Matched  *MatchedRule `json:"matched_rule"`
+}
+
+// HostDisposition is what the proxy can decide about a host at CONNECT / TLS
+// ClientHello time, when only the host is known (no path or method). It mirrors the
+// Python enforcer's host_disposition (internal/proxy/enforcer/policy.py) and is driven
+// by the same decision-vector corpus (the host_disposition expectation), so the two
+// CONNECT-stage implementations are provably consistent (AC-0058 / C3).
+//
+//   - Passthrough: tunnel without terminating TLS. True iff the top host-rank tier of
+//     matching allows is entirely passthrough (any intercept in that tier forces TLS
+//     termination so per-request path/method rules can apply — a mixed host resolves to
+//     intercept).
+//   - DenyReason: set ("" when none) when a host-level deny_always (no paths) matches;
+//     the most host-specific one wins. Such a deny is enforced at CONNECT even on a
+//     passthrough host (the tunnel is refused), since it cannot be enforced once tunnelled.
+type HostDisposition struct {
+	Passthrough bool   `json:"passthrough"`
+	DenyReason  string `json:"deny_reason"`
+}
+
+// HostDisposition decides the CONNECT-stage disposition of host. It canonicalizes the
+// host at entry exactly as Decide does, then applies the host-only projection of the
+// decision model. The Decide rule (most-specific-allow) is the canonical one; this is
+// its host-granular approximation for the stage where no path/method is visible yet.
+func (rs RuleSet) HostDisposition(host string) HostDisposition {
+	host = canonicalHost(host)
+
+	denyReason := ""
+	bestDenyRank := -1
+	for _, r := range rs.DenyAlways {
+		if r.Paths == nil && matchHost(r.Host, host) {
+			if rank := hostRank(r.Host); rank > bestDenyRank {
+				bestDenyRank, denyReason = rank, r.Reason
+			}
+		}
+	}
+
+	topRank := -1
+	for _, r := range rs.Allow {
+		if matchHost(r.Host, host) {
+			if hr := hostRank(r.Host); hr > topRank {
+				topRank = hr
+			}
+		}
+	}
+	passthrough := topRank >= 0
+	if passthrough {
+		for _, r := range rs.Allow {
+			if matchHost(r.Host, host) && hostRank(r.Host) == topRank && r.Mode != ModePassthrough {
+				passthrough = false
+				break
+			}
+		}
+	}
+
+	return HostDisposition{Passthrough: passthrough, DenyReason: denyReason}
 }
 
 // FromConfig converts a validated config.Egress into a matcher RuleSet, dereferencing

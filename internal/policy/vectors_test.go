@@ -26,6 +26,9 @@ type expectation struct {
 	Decision string       `json:"decision"`
 	Mode     string       `json:"mode"`
 	Matched  *MatchedRule `json:"matched_rule"`
+	// HostDisposition is optional: present only on vectors that also pin the
+	// CONNECT-stage host-only decision (AC-0058 / C3). A pointer so older vectors omit it.
+	HostDisposition *HostDisposition `json:"host_disposition,omitempty"`
 }
 
 // TestDecisionVectors runs every JSON vector under testdata/decision-vectors/ through
@@ -58,6 +61,12 @@ func TestDecisionVectors(t *testing.T) {
 			require.Equal(t, v.Expected.Decision, got.Decision, "decision")
 			require.Equal(t, v.Expected.Mode, got.Mode, "mode")
 			require.Equal(t, v.Expected.Matched, got.Matched, "matched_rule")
+
+			// Vectors that pin the CONNECT-stage host decision also replay it (C3).
+			if v.Expected.HostDisposition != nil {
+				gotHD := v.Ruleset.HostDisposition(v.Request.Host)
+				require.Equal(t, *v.Expected.HostDisposition, gotHD, "host_disposition")
+			}
 		})
 	}
 

@@ -1,0 +1,16 @@
+{
+  "name": "host_disposition_mixed_mode",
+  "ruleset": {
+    "allow": [
+      {"host": "mixed.example", "mode": "passthrough"},
+      {"host": "mixed.example", "paths": ["/api"], "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "mixed.example", "path": "/api", "method": "GET"},
+  "expected": {
+    "decision": "allow",
+    "mode": "intercept",
+    "matched_rule": {"list": "allow", "index": 1},
+    "host_disposition": {"passthrough": false, "deny_reason": null}
+  }
+}

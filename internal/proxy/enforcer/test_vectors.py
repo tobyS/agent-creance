@@ -21,7 +21,8 @@ _HERE = pathlib.Path(__file__).resolve().parent
 CORPUS_DIR = _HERE.parents[2] / "internal" / "policy" / "testdata" / "decision-vectors"
 
 _VECTOR_KEYS = {"name", "ruleset", "request", "expected"}
-_EXPECTED_KEYS = {"decision", "mode", "matched_rule"}
+_EXPECTED_KEYS = {"decision", "mode", "matched_rule", "host_disposition"}
+_HOSTDISP_KEYS = {"passthrough", "deny_reason"}
 
 
 def _vector_files():
@@ -59,3 +60,12 @@ def test_decision_vector(vector_path):
     assert got.decision == exp["decision"], f"{vector_path.name}: decision"
     assert got.mode == exp["mode"], f"{vector_path.name}: mode"
     assert got_matched == exp["matched_rule"], f"{vector_path.name}: matched_rule"
+
+    # Vectors that pin the CONNECT-stage host decision also replay it (AC-0058 / C3).
+    if "host_disposition" in exp:
+        want = exp["host_disposition"]
+        unknown_hd = set(want) - _HOSTDISP_KEYS
+        assert not unknown_hd, f"{vector_path.name}: unknown host_disposition keys {unknown_hd}"
+        hd = policy.host_disposition(rs, v["request"]["host"])
+        assert hd.passthrough == want["passthrough"], f"{vector_path.name}: host_disposition.passthrough"
+        assert hd.deny_reason == want["deny_reason"], f"{vector_path.name}: host_disposition.deny_reason"

@@ -28,6 +28,10 @@ type vector struct {
 		Decision string              `json:"decision"`
 		Mode     string              `json:"mode"`
 		Matched  *policy.MatchedRule `json:"matched_rule"`
+		// HostDisposition is the optional CONNECT-stage expectation (AC-0058 / C3); it is
+		// not relevant to Explain but must be declared so strict decoding accepts vectors
+		// that carry it.
+		HostDisposition *policy.HostDisposition `json:"host_disposition,omitempty"`
 	} `json:"expected"`
 }
 

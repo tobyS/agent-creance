@@ -2,6 +2,35 @@ package policy
 
 import "strings"
 
+// canonicalHost canonicalizes a request host before matching: lowercase, strip a
+// trailing ":port" (only the unambiguous host:port form — an IPv6 literal's colons are
+// left alone), then strip a single trailing "." (the FQDN root). Applied once at the
+// matcher entry (Decide / HostDisposition) so api.example.com, API.EXAMPLE.COM,
+// api.example.com. and api.example.com:443 decide identically and a host-level
+// deny_always cannot be evaded by spelling (AC-0058 / C1). Rule patterns are validated
+// at config load, not canonicalized here. Must stay byte-identical to policy.py's
+// canonical_host.
+func canonicalHost(host string) string {
+	host = strings.ToLower(host)
+	if i := strings.LastIndex(host, ":"); i != -1 && strings.Count(host, ":") == 1 && isAllDigits(host[i+1:]) {
+		host = host[:i]
+	}
+	return strings.TrimSuffix(host, ".")
+}
+
+// isAllDigits reports whether s is non-empty and all ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // matchHost reports whether host (a request host) satisfies pattern. Comparison is
 // case-insensitive. "*" matches any host; "*.suffix" matches any host ending in
 // ".suffix" with at least one label before it (the bare apex is excluded, since the

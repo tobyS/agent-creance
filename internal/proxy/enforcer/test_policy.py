@@ -30,6 +30,25 @@ def test_match_host(pattern, host, want):
 
 
 @pytest.mark.parametrize(
+    "host,want",
+    [
+        ("api.example.com", "api.example.com"),
+        ("API.EXAMPLE.COM", "api.example.com"),  # lowercased
+        ("api.example.com.", "api.example.com"),  # trailing dot stripped
+        ("api.example.com:443", "api.example.com"),  # port stripped
+        ("api.example.com.:443", "api.example.com"),  # port then dot
+        ("api.example.com:", "api.example.com:"),  # empty port not stripped
+        ("api.example.com:abc", "api.example.com:abc"),  # non-numeric port kept
+        ("::1", "::1"),  # ipv6 literal untouched
+        ("127.0.0.1:8080", "127.0.0.1"),  # ipv4 with port
+    ],
+)
+def test_canonical_host(host, want):
+    """Must stay byte-identical to internal/policy/glob.go canonicalHost (AC-0058 / C1)."""
+    assert policy.canonical_host(host) == want
+
+
+@pytest.mark.parametrize(
     "pattern,path,want",
     [
         ("/repos/org/repo/", "/repos/org/repo/blob/main", True),  # prefix covers subtree

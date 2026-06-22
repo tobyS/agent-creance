@@ -1,0 +1,18 @@
+{
+  "name": "host_disposition_deny_trailing_dot",
+  "ruleset": {
+    "allow": [
+      {"host": "blocked.example", "mode": "passthrough"}
+    ],
+    "deny_always": [
+      {"host": "blocked.example", "mode": "intercept", "reason": "Tunnel blocked."}
+    ]
+  },
+  "request": {"host": "blocked.example.", "path": "/", "method": "GET"},
+  "expected": {
+    "decision": "hard-deny",
+    "mode": "intercept",
+    "matched_rule": {"list": "deny_always", "index": 0},
+    "host_disposition": {"passthrough": true, "deny_reason": "Tunnel blocked."}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "host_uppercase_allow",
+  "ruleset": {
+    "allow": [
+      {"host": "api.example.com", "mode": "intercept"}
+    ]
+  },
+  "request": {"host": "API.EXAMPLE.COM", "path": "/x", "method": "GET"},
+  "expected": {"decision": "allow", "mode": "intercept", "matched_rule": {"list": "allow", "index": 0}}
+}

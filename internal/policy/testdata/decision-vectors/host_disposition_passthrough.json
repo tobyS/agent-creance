@@ -1,0 +1,15 @@
+{
+  "name": "host_disposition_passthrough",
+  "ruleset": {
+    "allow": [
+      {"host": "api.anthropic.com", "mode": "passthrough"}
+    ]
+  },
+  "request": {"host": "api.anthropic.com", "path": "/v1/messages", "method": "POST"},
+  "expected": {
+    "decision": "allow",
+    "mode": "passthrough",
+    "matched_rule": {"list": "allow", "index": 0},
+    "host_disposition": {"passthrough": true, "deny_reason": null}
+  }
+}

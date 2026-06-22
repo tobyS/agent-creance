@@ -1,0 +1,10 @@
+{
+  "name": "host_with_port_deny",
+  "ruleset": {
+    "deny_always": [
+      {"host": "api.example.com", "mode": "intercept", "reason": "Blocked."}
+    ]
+  },
+  "request": {"host": "api.example.com:443", "path": "/x", "method": "GET"},
+  "expected": {"decision": "hard-deny", "mode": "intercept", "matched_rule": {"list": "deny_always", "index": 0}}
+}

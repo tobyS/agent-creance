@@ -32,6 +32,62 @@ func TestMatchHost(t *testing.T) {
 	}
 }
 
+func TestCanonicalHost(t *testing.T) {
+	cases := []struct {
+		name string
+		host string
+		want string
+	}{
+		{"already canonical", "api.example.com", "api.example.com"},
+		{"uppercase", "API.EXAMPLE.COM", "api.example.com"},
+		{"trailing dot", "api.example.com.", "api.example.com"},
+		{"port", "api.example.com:443", "api.example.com"},
+		{"port and dot", "api.example.com.:443", "api.example.com"},
+		{"empty port not stripped", "api.example.com:", "api.example.com:"},
+		{"non-numeric port not stripped", "api.example.com:abc", "api.example.com:abc"},
+		{"ipv6 literal untouched", "::1", "::1"},
+		{"ipv4 with port", "127.0.0.1:8080", "127.0.0.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, canonicalHost(tc.host))
+		})
+	}
+}
+
+// TestHostDisposition exercises the Go CONNECT-stage decision directly (the corpus
+// covers parity with Python; this pins the rule's branches).
+func TestHostDisposition(t *testing.T) {
+	rs := RuleSet{
+		Allow: []Rule{
+			{Host: "pass.example", Mode: ModePassthrough},
+			{Host: "mixed.example", Mode: ModePassthrough},
+			{Host: "mixed.example", Paths: []string{"/x"}, Mode: ModeIntercept},
+			{Host: "icpt.example", Mode: ModeIntercept},
+		},
+		DenyAlways: []Rule{
+			{Host: "pass.example", Mode: ModeIntercept, Reason: "blocked"},
+		},
+	}
+	cases := []struct {
+		name string
+		host string
+		want HostDisposition
+	}{
+		{"clean passthrough", "pass2.example", HostDisposition{Passthrough: false, DenyReason: ""}},
+		{"passthrough with host deny", "pass.example", HostDisposition{Passthrough: true, DenyReason: "blocked"}},
+		{"mixed mode resolves to intercept", "mixed.example", HostDisposition{Passthrough: false, DenyReason: ""}},
+		{"intercept host", "icpt.example", HostDisposition{Passthrough: false, DenyReason: ""}},
+		{"canonicalized host deny via trailing dot", "pass.example.", HostDisposition{Passthrough: true, DenyReason: "blocked"}},
+		{"no match", "unknown.example", HostDisposition{Passthrough: false, DenyReason: ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, rs.HostDisposition(tc.host))
+		})
+	}
+}
+
 func TestMatchPath(t *testing.T) {
 	cases := []struct {
 		name    string
