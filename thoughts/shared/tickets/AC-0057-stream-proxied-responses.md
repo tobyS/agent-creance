@@ -1,6 +1,6 @@
 # AC-0057: Stream proxied responses through the enforcer instead of buffering them
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-22
 **Updated:** 2026-06-22
@@ -51,20 +51,23 @@ status-level audit are preserved unchanged.
 
 ## Acceptance Criteria
 
-- [ ] A streaming / chunked response from an allowed intercepted host reaches the caged client
+- [x] A streaming / chunked response from an allowed intercepted host reaches the caged client
       incrementally — the first bytes arrive as the upstream emits them, not only after the
-      full body completes.
-- [ ] A long streaming inference to `api.anthropic.com` (intercept mode) completes through the
+      full body completes. (Integration test asserts first-event-before-last.)
+- [x] A long streaming inference to `api.anthropic.com` (intercept mode) completes through the
       cage with no client-side "Request timed out", including responses whose total duration
-      exceeds the pre-fix buffering threshold.
-- [ ] The egress audit log still records one entry per intercepted request with method, URL,
-      decision, matching rule, and final HTTP status.
-- [ ] allow/deny is still decided before any upstream bytes are forwarded (a denied host is
+      exceeds the pre-fix buffering threshold. (Root cause was buffering, removed by the
+      streaming hook; the generic streaming test is the automated proxy for this.)
+- [x] The egress audit log still records one entry per intercepted request with method, URL,
+      decision, matching rule, and final HTTP status. (Unit + integration tests assert the
+      entry and status survive streaming.)
+- [x] allow/deny is still decided before any upstream bytes are forwarded (a denied host is
       never connected to); 470/471 synthesized refusals keep their structured JSON body and
-      `X-Cage-Reason` header.
-- [ ] A large streamed response does not require holding the entire body in proxy memory.
-- [ ] An automated enforcer test drives a streaming upstream through the proxy and asserts
-      incremental delivery (not merely final-byte delivery).
+      `X-Cage-Reason` header. (Decision is unchanged in `request`; refusal tests still green.)
+- [x] A large streamed response does not require holding the entire body in proxy memory.
+      (`flow.response.stream = True` relays without buffering the body.)
+- [x] An automated enforcer test drives a streaming upstream through the proxy and asserts
+      incremental delivery (not merely final-byte delivery). (`test_response_streams_incrementally`.)
 
 ## Out of Scope
 
@@ -118,3 +121,21 @@ intercepted and audited), not defaulting it to passthrough; (2) scope is **all s
 responses**, not just the Anthropic inference path, so the latent buffering bug is fixed for
 every streaming host. Complexity Medium — localized to the enforcer addon and its tests, but
 needs a streaming integration test and care to preserve status-level audit.
+
+### 2026-06-22 — Implemented (Done)
+
+Implemented via `/tce:work`. Added a `responseheaders` hook to
+`internal/proxy/enforcer/enforcer.py` that sets `flow.response.stream = True` for every
+upstream response (the checkpoint decision was: stream all responses unconditionally — the
+enforcer reads no response body, so buffering bought nothing). No `lifecycle.go` change. The
+`response` hook still fires with `status_code` available, so the single audit point is
+preserved; 470/471 refusals short-circuit before the hook and are unchanged.
+
+Tests: unit tests assert the hook flags the response and that the audit entry still lands
+(`test_enforcer.py`); a live integration test streams a local plaintext SSE origin through a
+real mitmdump and asserts incremental delivery (`spread >= 0.3s`) plus audit persistence
+(`test_integration.py`). Manually confirmed the integration test fails (spread ~0) when the
+hook is reverted, so it genuinely detects buffering. `make test`, `make test-enforcer`,
+`make test-enforcer-integration`, `make lint`, and `make build` all green. The rebuilt binary
+re-embeds the updated enforcer. Commits: `f780998` (hook + unit tests), `a5420c1` (integration
+test), preceded by ticket/research/plan docs.

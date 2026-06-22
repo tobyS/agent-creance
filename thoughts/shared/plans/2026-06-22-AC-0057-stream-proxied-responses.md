@@ -4,7 +4,7 @@ ticket: AC-0057
 branch: main
 commit: 767b3ca
 topic: "Stream proxied responses through the enforcer instead of buffering them"
-status: ready
+status: complete
 ---
 
 # Implementation Plan: AC-0057 — Stream proxied responses through the enforcer
@@ -193,16 +193,16 @@ in the test which path was taken.
 ## Success criteria (rollup)
 
 #### Automated verification
-- [ ] `make test-enforcer` passes.
-- [ ] `make test-enforcer-integration` passes (incremental delivery + audit).
-- [ ] `make test` passes.
-- [ ] `make lint` clean.
-- [ ] `make build` succeeds.
+- [x] `make test-enforcer` passes. (94 passed)
+- [x] `make test-enforcer-integration` passes (incremental delivery + audit). (12 passed)
+- [x] `make test` passes.
+- [x] `make lint` clean.
+- [x] `make build` succeeds. (binary re-embeds the addon)
 
 #### Manual verification
-- [ ] Reverting the hook makes the integration test fail (it genuinely detects
-      buffering).
-- [ ] `enforcer.py` diff is limited to the new hook.
+- [x] Reverting the hook makes the integration test fail (it genuinely detects
+      buffering). (spread=0.000s when disabled)
+- [x] `enforcer.py` diff is limited to the new hook.
 
 ## References
 
