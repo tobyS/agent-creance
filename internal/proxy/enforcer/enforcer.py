@@ -67,6 +67,18 @@ def _make_response(r: responses.CageResponse) -> http.Response:
     return resp
 
 
+def _safe_url(flow: http.HTTPFlow) -> str:
+    """Best-effort request URL for a refusal body, total even on a malformed flow.
+
+    Used from the hooks' fail-closed handlers, where reading flow.request.pretty_url
+    must never itself raise (that would re-open the fail-open hole this guards).
+    """
+    try:
+        return flow.request.pretty_url
+    except Exception:  # noqa: BLE001 — any failure falls back to a placeholder
+        return "https://unknown/"
+
+
 class Enforcer:
     """The mitmproxy addon. Holds the live RuleSet and the policy file's mtime."""
 
@@ -97,7 +109,7 @@ class Enforcer:
     def configure(self, updated) -> None:
         if "creance_policy" in updated:
             self._policy_path = ctx.options.creance_policy
-            self._load()
+            self._load(initial=True)
         if "creance_audit_log" in updated:
             self._audit_path = ctx.options.creance_audit_log
             if self._audit is not None:
@@ -134,17 +146,29 @@ class Enforcer:
 
     # --- policy loading / hot reload ------------------------------------------
 
-    def _load(self) -> None:
+    def _load(self, initial: bool = False) -> None:
         if not self._policy_path:
             return
         try:
             self._ruleset = policy.load_policy(self._policy_path)
             self._mtime = os.path.getmtime(self._policy_path)
             logger.info("loaded policy from %s", self._policy_path)
-        except FileNotFoundError:
-            logger.warning("policy file not found: %s", self._policy_path)
-        except (OSError, ValueError) as exc:  # malformed JSON, unreadable file
-            logger.error("failed to load policy %s: %s", self._policy_path, exc)
+        except (FileNotFoundError, OSError, ValueError) as exc:  # missing/malformed/unreadable
+            if initial:
+                # A failed *initial* load is fatal: the addon would otherwise run on the
+                # empty (deny-all) ruleset silently. Logging at ERROR during configure
+                # trips mitmproxy's ErrorCheck, which exits the process non-zero so the
+                # Go launcher's readiness wait sees the proxy die and surfaces it, rather
+                # than reporting a healthy proxy that blocks everything (AC-0058 / B2).
+                logger.error("failed to load initial policy %s: %s", self._policy_path, exc)
+            elif isinstance(exc, FileNotFoundError):
+                # The file vanished mid-run; keep the last-good ruleset, retry next tick.
+                logger.warning("policy file not found during reload: %s", self._policy_path)
+            else:
+                # Malformed/unreadable during a hot reload: the assignment above never
+                # completed, so the last-good ruleset stays in force; retry next tick when
+                # a valid write lands (AC-0058 / B3).
+                logger.error("failed to reload policy %s (keeping last-good): %s", self._policy_path, exc)
 
     def _maybe_reload(self) -> None:
         """Reload the policy if the file's mtime changed since the last load."""
@@ -172,62 +196,86 @@ class Enforcer:
         not-allowlisted and path/host-denied ones) are allowed to CONNECT so TLS
         terminates and the ``request`` hook can return the structured refusal body.
         """
-        host = flow.request.host
-        disp = policy.host_disposition(self._ruleset, host)
-        if disp.passthrough and disp.deny_reason is not None:
-            url = f"https://{host}/"
-            r = responses.hard_deny(url, disp.deny_reason)
-            flow.response = _make_response(r)
-            # Host-only: TLS never terminates here, so there is no path/method/status
-            # to record. This is the one place a denied passthrough host is audited
-            # (the request/response hooks never run for it).
-            self._audit_passthrough(host, policy.DECISION_HARD_DENY)
+        try:
+            host = flow.request.host
+            disp = policy.host_disposition(self._ruleset, host)
+            if disp.passthrough and disp.deny_reason is not None:
+                url = f"https://{host}/"
+                r = responses.hard_deny(url, disp.deny_reason)
+                flow.response = _make_response(r)
+                # Host-only: TLS never terminates here, so there is no path/method/status
+                # to record. This is the one place a denied passthrough host is audited
+                # (the request/response hooks never run for it).
+                self._audit_passthrough(host, policy.DECISION_HARD_DENY)
+        except Exception as exc:  # noqa: BLE001 — fail closed on ANY error (AC-0058 / B1)
+            # An unhandled exception here would be logged and the CONNECT allowed to
+            # proceed. Refuse the tunnel instead so a bug cannot leak a denied host.
+            logger.error("enforcer http_connect hook failed; refusing CONNECT: %s", exc)
+            flow.response = _make_response(
+                responses.hard_deny(_safe_url(flow), "internal enforcer error")
+            )
 
     def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         """Tunnel passthrough hosts without terminating TLS (real upstream cert)."""
-        sni = data.client_hello.sni
-        if not sni:
-            return
-        disp = policy.host_disposition(self._ruleset, sni)
-        if disp.passthrough and disp.deny_reason is None:
-            data.ignore_connection = True
-            # Host-only allow: the tunnel is about to be relayed raw (the addon sees
-            # no flow, path, or byte counts for it), so this is where it is audited.
-            self._audit_passthrough(sni, policy.DECISION_ALLOW)
+        try:
+            sni = data.client_hello.sni
+            if not sni:
+                return
+            disp = policy.host_disposition(self._ruleset, sni)
+            if disp.passthrough and disp.deny_reason is None:
+                data.ignore_connection = True
+                # Host-only allow: the tunnel is about to be relayed raw (the addon sees
+                # no flow, path, or byte counts for it), so this is where it is audited.
+                self._audit_passthrough(sni, policy.DECISION_ALLOW)
+        except Exception as exc:  # noqa: BLE001 — fail closed on ANY error (AC-0058 / B1)
+            # Do NOT leave the connection ignored: terminating TLS routes it to the
+            # (hard-closed) request hook, which decides safely. Undo any tunnel decision.
+            data.ignore_connection = False
+            logger.error("enforcer tls_clienthello hook failed; not tunnelling: %s", exc)
 
     def request(self, flow: http.HTTPFlow) -> None:
         """Decide an intercepted (TLS-terminated) request: allow / soft / hard."""
         if flow.response is not None:
             return  # already answered (e.g. at http_connect)
 
-        req = policy.Request(
-            host=flow.request.pretty_host,
-            path=flow.request.path,
-            method=flow.request.method,
-        )
-        result = policy.decide(self._ruleset, req)
-        # Stash the verdict for the response hook (which logs the entry once the
-        # status is known). Done for every intercepted request, incl. allows, and
-        # *before* the allow early-return below. The presence of this key is also how
-        # the response hook tells an intercepted flow from a CONNECT/passthrough one.
-        flow.metadata["creance_audit"] = {
-            "decision": result.decision,
-            "rule": result.matched.to_dict() if result.matched is not None else None,
-        }
+        try:
+            req = policy.Request(
+                host=flow.request.pretty_host,
+                path=flow.request.path,
+                method=flow.request.method,
+            )
+            result = policy.decide(self._ruleset, req)
+            # Stash the verdict for the response hook (which logs the entry once the
+            # status is known). Done for every intercepted request, incl. allows, and
+            # *before* the allow early-return below. The presence of this key is also how
+            # the response hook tells an intercepted flow from a CONNECT/passthrough one.
+            flow.metadata["creance_audit"] = {
+                "decision": result.decision,
+                "rule": result.matched.to_dict() if result.matched is not None else None,
+            }
 
-        if result.decision == policy.DECISION_ALLOW:
-            return  # forward upstream untouched
+            if result.decision == policy.DECISION_ALLOW:
+                return  # forward upstream untouched
 
-        url = flow.request.pretty_url
-        if result.decision == policy.DECISION_SOFT_DENY:
-            r = responses.soft_deny(url, req.host, req.path, req.method)
-        else:  # hard-deny
-            reason = ""
-            if result.matched is not None:
-                reason = self._ruleset.deny_always[result.matched.index].reason
-            r = responses.hard_deny(url, reason)
+            url = flow.request.pretty_url
+            if result.decision == policy.DECISION_SOFT_DENY:
+                r = responses.soft_deny(url, req.host, req.path, req.method)
+            else:  # hard-deny
+                reason = ""
+                if result.matched is not None:
+                    reason = self._ruleset.deny_always[result.matched.index].reason
+                r = responses.hard_deny(url, reason)
 
-        flow.response = _make_response(r)
+            flow.response = _make_response(r)
+        except Exception as exc:  # noqa: BLE001 — fail closed on ANY error (AC-0058 / B1)
+            # mitmproxy logs an exception raised in the request hook and FORWARDS the
+            # flow upstream (no flow.response was set) — a denied egress would leak. Turn
+            # any unexpected error in the decision path into a hard-deny so the proxy
+            # fails closed. The cardinal rule for a fail-closed egress filter.
+            logger.error("enforcer request hook failed; hard-denying: %s", exc)
+            flow.response = _make_response(
+                responses.hard_deny(_safe_url(flow), "internal enforcer error")
+            )
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
         """Stream every upstream response body to the client incrementally.

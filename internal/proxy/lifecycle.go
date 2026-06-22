@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/tobyS/agent-creance/internal/state"
 	"github.com/tobyS/agent-creance/internal/sysdep"
@@ -27,6 +28,16 @@ import (
 // proxyBin is the mitmproxy binary the manager launches. mitmdump is the
 // headless, scriptable flavour (no TUI), which is what a daemon wants.
 const proxyBin = "mitmdump"
+
+// readiness poll bounds for a freshly-spawned proxy: Attach waits up to
+// readyMaxAttempts * readyPollInterval for the proxy to start listening, so a proxy
+// that exits during startup (e.g. the enforcer refusing a corrupt initial policy.json)
+// is surfaced as a hard error rather than reported "ready" the moment Spawn returns a
+// PID (AC-0058 / B2).
+const (
+	readyMaxAttempts  = 100
+	readyPollInterval = 50 * time.Millisecond
+)
 
 // lockState is the on-disk proxy.lock contents: the single source of truth for a
 // project's shared proxy. It is written in place on the locked descriptor (never
@@ -58,13 +69,15 @@ type Manager struct {
 	lock  sysdep.Flock
 	proc  sysdep.ProcessManager
 	ports sysdep.PortAllocator
+	sleep sysdep.Sleeper
 	warn  io.Writer
 }
 
 // NewManager wires a Manager from the OS seams. warn receives the warn-never-kill
-// message (the caller passes app.Stderr); the others are the injected seams.
-func NewManager(fs sysdep.FileSystem, lock sysdep.Flock, proc sysdep.ProcessManager, ports sysdep.PortAllocator, warn io.Writer) *Manager {
-	return &Manager{fs: fs, lock: lock, proc: proc, ports: ports, warn: warn}
+// message (the caller passes app.Stderr); sleep bounds the post-spawn readiness poll;
+// the others are the injected seams.
+func NewManager(fs sysdep.FileSystem, lock sysdep.Flock, proc sysdep.ProcessManager, ports sysdep.PortAllocator, sleep sysdep.Sleeper, warn io.Writer) *Manager {
+	return &Manager{fs: fs, lock: lock, proc: proc, ports: ports, sleep: sleep, warn: warn}
 }
 
 // StartConfig is everything Attach needs to identify or launch a project's proxy.
@@ -139,6 +152,13 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		if err != nil {
 			return Attachment{}, fmt.Errorf("proxy: start mitmproxy: %w", err)
 		}
+		if err := m.waitProxyReady(ctx, pid, port); err != nil {
+			// Don't leave a half-started proxy orphaned: the lock has not been written
+			// yet, so this PID is not yet recorded. Best-effort SIGTERM by PID (a proxy
+			// that already exited is a no-op).
+			_ = m.proc.Signal(pid, syscall.SIGTERM)
+			return Attachment{}, err
+		}
 		att.Port = port
 		att.ProxyPID = pid
 		att.PortChanged = changed
@@ -150,6 +170,27 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		return Attachment{}, err
 	}
 	return att, nil
+}
+
+// waitProxyReady blocks until the freshly-spawned proxy is accepting connections
+// (ready), the process has exited (a hard startup failure — e.g. the enforcer refused
+// to run on a missing or corrupt initial policy.json and exited non-zero), or the
+// bounded poll elapses. Returning an error turns what used to be a silent fail-open
+// start — the proxy reported "ready" the instant Spawn returned a PID, even if it never
+// came up on an empty ruleset — into a visible failure to the launcher (AC-0058 / B2).
+func (m *Manager) waitProxyReady(ctx context.Context, pid, port int) error {
+	for attempt := 0; attempt < readyMaxAttempts; attempt++ {
+		if m.ports.Probe(port) {
+			return nil
+		}
+		if !m.proc.Alive(pid) {
+			return fmt.Errorf("proxy: mitmproxy (pid %d) exited during startup; check the compiled policy and CA setup (try `agent-creance doctor`)", pid)
+		}
+		if err := m.sleep.Sleep(ctx, readyPollInterval); err != nil {
+			return fmt.Errorf("proxy: wait for mitmproxy to listen on port %d: %w", port, err)
+		}
+	}
+	return fmt.Errorf("proxy: mitmproxy did not start listening on port %d within %s", port, time.Duration(readyMaxAttempts)*readyPollInterval)
 }
 
 // Detach removes selfPID from the project's lock under the flock. If it was the

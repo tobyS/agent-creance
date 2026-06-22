@@ -43,6 +43,7 @@ type harness struct {
 	proc  *sysdeptest.FakeProcessManager
 	ports *sysdeptest.FakePortAllocator
 	fs    *sysdeptest.FakeFileSystem
+	sleep *sysdeptest.FakeSleeper
 	warn  *bytes.Buffer
 	lay   state.Layout
 }
@@ -52,13 +53,15 @@ func newHarness() *harness {
 	pm := sysdeptest.NewFakeProcessManager()
 	pa := sysdeptest.NewFakePortAllocator()
 	fs := sysdeptest.NewFakeFileSystem()
+	sl := &sysdeptest.FakeSleeper{}
 	warn := &bytes.Buffer{}
 	return &harness{
-		mgr:   proxy.NewManager(fs, fl, pm, pa, warn),
+		mgr:   proxy.NewManager(fs, fl, pm, pa, sl, warn),
 		flock: fl,
 		proc:  pm,
 		ports: pa,
 		fs:    fs,
+		sleep: sl,
 		warn:  warn,
 		lay:   testLayout(),
 	}
@@ -92,6 +95,8 @@ func TestAttachStartsProxyWhenNone(t *testing.T) {
 	h := newHarness()
 	h.ports.AllocPort = 8080
 	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true   // the spawned proxy is alive...
+	h.ports.Listening[8080] = true // ...and listening, so the readiness wait passes
 
 	att, err := h.mgr.Attach(context.Background(), h.cfg(222))
 	require.NoError(t, err)
@@ -201,9 +206,10 @@ func TestCrashRestartReclaimsPort(t *testing.T) {
 	// Proxy PID dead (absent), but an agent is still attached → crash.
 	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "hash-v1", Agents: []int{222}})
 	h.proc.AlivePIDs[222] = true
-	h.ports.Listening[8080] = false // proxy not listening
-	h.ports.ReclaimOK[8080] = true  // old port reclaimable
+	h.ports.ReclaimOK[8080] = true // old port reclaimable
 	h.proc.SpawnPID = 333
+	h.proc.AlivePIDs[333] = true   // the restarted proxy is alive...
+	h.ports.Listening[8080] = true // ...and listening on the reclaimed port (readiness)
 
 	att, err := h.mgr.Attach(context.Background(), h.cfg(444))
 	require.NoError(t, err)
@@ -230,6 +236,8 @@ func TestCrashRestartReclaimFailWarnsNeverKills(t *testing.T) {
 	h.ports.ReclaimOK[8080] = false // cannot reclaim
 	h.ports.AllocPort = 9090
 	h.proc.SpawnPID = 333
+	h.proc.AlivePIDs[333] = true   // the restarted proxy is alive...
+	h.ports.Listening[9090] = true // ...and listening on the fresh port (readiness)
 
 	att, err := h.mgr.Attach(context.Background(), h.cfg(444))
 	require.NoError(t, err)
@@ -253,6 +261,8 @@ func TestAttachCorruptLockSelfHeals(t *testing.T) {
 	h.flock.Contents[h.lay.ProxyLock()] = []byte("{ this is not json")
 	h.ports.AllocPort = 8080
 	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
 
 	att, err := h.mgr.Attach(context.Background(), h.cfg(222))
 	require.NoError(t, err)
@@ -261,6 +271,43 @@ func TestAttachCorruptLockSelfHeals(t *testing.T) {
 
 	ls := h.readLock(t)
 	assert.Equal(t, []int{222}, ls.Agents)
+}
+
+// TestAttachFailsWhenProxyExitsDuringStartup: the proxy is spawned but exits before it
+// listens (e.g. the enforcer refused a corrupt initial policy.json and exited non-zero).
+// Attach must surface a hard error rather than report the proxy "ready", and best-effort
+// reap the dead PID (AC-0058 / B2).
+func TestAttachFailsWhenProxyExitsDuringStartup(t *testing.T) {
+	h := newHarness()
+	h.ports.AllocPort = 8080
+	h.proc.SpawnPID = 111
+	// 111 absent from AlivePIDs ⇒ the spawned proxy already exited; nothing listening.
+
+	_, err := h.mgr.Attach(context.Background(), h.cfg(222))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exited during startup")
+	require.Len(t, h.proc.Spawned, 1)
+	// Best-effort cleanup of the half-started proxy.
+	require.Len(t, h.proc.Signaled, 1)
+	assert.Equal(t, 111, h.proc.Signaled[0].PID)
+	// Lock released so the next invocation is not wedged.
+	assert.Equal(t, []string{h.lay.ProxyLock()}, h.flock.Released)
+}
+
+// TestAttachFailsWhenProxyNeverListens: the proxy stays alive but never opens the port
+// within the readiness budget. Attach times out with a clear error (the FakeSleeper
+// returns instantly, so the bounded poll does not pay wall-clock time).
+func TestAttachFailsWhenProxyNeverListens(t *testing.T) {
+	h := newHarness()
+	h.ports.AllocPort = 8080
+	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true // alive, but Listening[8080] stays false
+
+	_, err := h.mgr.Attach(context.Background(), h.cfg(222))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "did not start listening")
+	// The readiness poll exhausted its attempts (one Sleep per attempt).
+	assert.Len(t, h.sleep.Sleeps, 100)
 }
 
 func TestAttachMkdirError(t *testing.T) {
@@ -297,6 +344,8 @@ func TestLockPathIsOutOfTree(t *testing.T) {
 	h := newHarness()
 	h.ports.AllocPort = 8080
 	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
 
 	_, err := h.mgr.Attach(context.Background(), h.cfg(222))
 	require.NoError(t, err)

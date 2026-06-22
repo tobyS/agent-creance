@@ -8,6 +8,7 @@ the pure parity/golden suites still run.
 """
 
 import json
+import logging
 import os
 import types
 
@@ -198,6 +199,88 @@ def test_hot_reload_picks_up_new_allow(tmp_path):
 
         after = policy.decide(a._ruleset, policy.Request("flip.example", "/", "GET"))
         assert after.decision == policy.DECISION_ALLOW
+
+
+# --- fail closed (AC-0058 / B1, B2, B3) ---------------------------------------
+
+
+def _raise(*_args, **_kwargs):
+    raise RuntimeError("boom")
+
+
+def test_request_hook_fails_closed_on_exception(addon, monkeypatch):
+    # An exception anywhere in the decision path must hard-deny, never forward upstream.
+    monkeypatch.setattr(policy, "decide", _raise)
+    flow = _https_flow("react.dev", "/learn")
+    addon.request(flow)
+    assert flow.response is not None, "a raising decision must still set a response"
+    assert flow.response.status_code == 471
+    assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
+
+
+def test_http_connect_fails_closed_on_exception(addon, monkeypatch):
+    monkeypatch.setattr(policy, "host_disposition", _raise)
+    flow = _https_flow("api.anthropic.com", "/")
+    addon.http_connect(flow)
+    assert flow.response is not None
+    assert flow.response.status_code == 471
+
+
+def test_tls_clienthello_fails_closed_on_exception(addon, monkeypatch):
+    monkeypatch.setattr(policy, "host_disposition", _raise)
+    ch = _clienthello("api.anthropic.com")  # a passthrough host that would normally tunnel
+    addon.tls_clienthello(ch)
+    # Fail closed = do not tunnel: TLS terminates and the (hard-closed) request hook decides.
+    assert ch.ignore_connection is False
+
+
+def test_initial_load_failure_logs_error(tmp_path, caplog):
+    # A corrupt initial policy.json is fatal: it logs at ERROR (which trips mitmproxy's
+    # ErrorCheck → non-zero exit) and falls back to the empty deny-all ruleset, never a
+    # partial one.
+    path = tmp_path / "policy.json"
+    path.write_text("{ not valid json", encoding="utf-8")
+    a = enforcer.Enforcer()
+    with taddons.context(a) as tctx:
+        with caplog.at_level(logging.ERROR):
+            tctx.configure(a, creance_policy=str(path))
+    assert any("initial policy" in r.getMessage() for r in caplog.records), caplog.text
+    assert a._ruleset.allow == []
+    assert a._ruleset.deny_always == []
+
+
+def test_malformed_reload_keeps_last_good(tmp_path):
+    path = tmp_path / "policy.json"
+    _write_policy(path, {"version": 1, "allow": [{"host": "react.dev", "mode": "intercept"}]})
+
+    a = enforcer.Enforcer()
+    with taddons.context(a) as tctx:
+        tctx.configure(a, creance_policy=str(path))
+        good_mtime = a._mtime
+        assert (
+            policy.decide(a._ruleset, policy.Request("react.dev", "/", "GET")).decision
+            == policy.DECISION_ALLOW
+        )
+
+        # Corrupt the file and bump the mtime so the poll attempts a reload.
+        path.write_text("{ corrupt", encoding="utf-8")
+        os.utime(path, (good_mtime + 10, good_mtime + 10))
+        a._maybe_reload()
+
+        # Last-good ruleset is still in force (the failed assignment never completed).
+        assert (
+            policy.decide(a._ruleset, policy.Request("react.dev", "/", "GET")).decision
+            == policy.DECISION_ALLOW
+        )
+
+        # And it recovers when a valid policy lands.
+        _write_policy(path, {"version": 1, "allow": [{"host": "flip.example", "mode": "intercept"}]})
+        os.utime(path, (good_mtime + 20, good_mtime + 20))
+        a._maybe_reload()
+        assert (
+            policy.decide(a._ruleset, policy.Request("flip.example", "/", "GET")).decision
+            == policy.DECISION_ALLOW
+        )
 
 
 # --- audit logging (AC-0018) --------------------------------------------------

@@ -29,7 +29,7 @@ func newStatusCmd(app *App) *cobra.Command {
 // scans every project, and renders the table to stdout.
 func runStatus(app *App) error {
 	scanner := &status.Scanner{
-		Manager:  proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Stderr),
+		Manager:  proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr),
 		Resolver: state.New(app.Paths),
 		FS:       app.FS,
 	}

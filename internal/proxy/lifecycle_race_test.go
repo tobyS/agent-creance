@@ -33,7 +33,7 @@ func TestConcurrentAttachDetach(t *testing.T) {
 	pa.AllocPort = 8080
 	pa.Listening[8080] = true
 
-	mgr := proxy.NewManager(fs, fl, pm, pa, nil)
+	mgr := proxy.NewManager(fs, fl, pm, pa, &sysdeptest.FakeSleeper{}, nil)
 	lay := testLayout()
 
 	const n = 16

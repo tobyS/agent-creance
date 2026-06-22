@@ -46,7 +46,7 @@ func TestLifecycleStartAttachTeardownRealProxy(t *testing.T) {
 	require.NoError(t, os.WriteFile(lay.PolicyJSON(), []byte(`{"version":1,"rules":[]}`), 0o644))
 	require.NoError(t, os.WriteFile(lay.SessionOverlay(), []byte("once: []\n"), 0o644))
 
-	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, os.Stderr)
+	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, sysdep.OSSleeper{}, os.Stderr)
 
 	cfg := func(pid int) proxy.StartConfig {
 		return proxy.StartConfig{Layout: lay, EnforcerPy: enforcerPy, PolicyHash: "h1", SelfPID: pid}

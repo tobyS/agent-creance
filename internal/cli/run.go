@@ -137,7 +137,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// 9. Start or attach the refcounted proxy. Detach is deferred immediately so
 	//    every exit path decrements; the last agent out kills the proxy and purges
 	//    the session overlay (proxy.Manager owns that logic).
-	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Stderr)
+	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
 	selfPID := os.Getpid()
 	prog.StepStart("Starting egress proxy")
 	att, err := mgr.Attach(ctx, proxy.StartConfig{

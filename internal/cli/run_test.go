@@ -86,6 +86,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	proc.AlivePIDs[proxyPID] = true // so last-out Detach can SIGTERM it
 	ports := sysdeptest.NewFakePortAllocator()
 	ports.AllocPort = allocPort
+	ports.Listening[allocPort] = true      // the spawned proxy listens → Attach readiness wait passes
 	pg := sysdeptest.NewFakeProcessGroup() // Start returns a process that Waits clean
 	watch := sysdeptest.NewFakeFileWatcherFactory()
 
@@ -105,6 +106,7 @@ func newRunFixture(t *testing.T) *runFixture {
 		Flock:          flock,
 		ProcessManager: proc,
 		PortAllocator:  ports,
+		Sleeper:        &sysdeptest.FakeSleeper{},
 		WatcherFactory: watch,
 	}
 	return &runFixture{

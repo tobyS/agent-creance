@@ -66,7 +66,7 @@ func newCheckerHarness() *checkerHarness {
 	listen := &sysdeptest.FakeListenerScanner{}
 
 	inst := setup.NewInstaller(fsys, kc, proc, ports, prober, sleeper, paths)
-	mgr := proxy.NewManager(fsys, flock, proc, ports, nil)
+	mgr := proxy.NewManager(fsys, flock, proc, ports, &sysdeptest.FakeSleeper{}, nil)
 	cmd := sysdeptest.NewFakeCommander().
 		WithTool("agent-safehouse", "/usr/local/bin/agent-safehouse", "agent-safehouse 1.0.0").
 		WithTool("mitmproxy", "/usr/local/bin/mitmproxy", "Mitmproxy: 12.0.0")

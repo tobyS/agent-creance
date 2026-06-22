@@ -45,7 +45,7 @@ func runDoctor(ctx context.Context, app *App, fix bool) error {
 			app.FS, app.Keychain, app.ProcessManager, app.PortAllocator,
 			app.TLSProber, app.Sleeper, app.Paths,
 		),
-		Manager:   proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Stderr),
+		Manager:   proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr),
 		Resolver:  state.New(app.Paths),
 		Listeners: app.Listeners,
 		FSType:    app.FSType,

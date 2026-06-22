@@ -222,7 +222,7 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 	require.NoError(t, err)
 
 	// Start (or attach to) the real proxy; tear it down at the end.
-	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, os.Stderr)
+	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, sysdep.OSSleeper{}, os.Stderr)
 	att, err := mgr.Attach(context.Background(), proxy.StartConfig{
 		Layout: layout, EnforcerPy: enforcerPy, PolicyHash: "verify", SelfPID: os.Getpid(),
 	})
