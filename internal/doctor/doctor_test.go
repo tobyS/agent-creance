@@ -32,10 +32,16 @@ var caCertPath = filepath.Join(checkerHome, ".mitmproxy", "mitmproxy-ca-cert.pem
 
 // lockJSON mirrors proxy's unexported lockState wire format.
 type lockJSON struct {
-	ProxyPID   int    `json:"proxy_pid"`
-	Port       int    `json:"port"`
-	PolicyHash string `json:"policy_hash"`
-	Agents     []int  `json:"agents"`
+	ProxyPID   int            `json:"proxy_pid"`
+	Port       int            `json:"port"`
+	PolicyHash string         `json:"policy_hash"`
+	Agents     []agentRefJSON `json:"agents"`
+}
+
+// agentRefJSON mirrors proxy's unexported agentRef (PID + start-time identity).
+type agentRefJSON struct {
+	PID       int   `json:"pid"`
+	StartTime int64 `json:"start"`
 }
 
 // checkerHarness bundles a Checker and its fakes.
@@ -151,7 +157,7 @@ func TestRun_CAVerifyEnvErrorIsWarning(t *testing.T) {
 
 func TestRun_OrphanActionableThenFixed(t *testing.T) {
 	h := newCheckerHarness().withCA()
-	h.seedLock(t, lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}})
+	h.seedLock(t, lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []agentRefJSON{{PID: 999, StartTime: 999000}}})
 	h.proc.AlivePIDs[111] = true   // proxy alive
 	h.ports.Listening[8080] = true // and listening; 999 dead ⇒ orphan
 

@@ -15,7 +15,7 @@ import (
 func TestCleanTearsDownRunningProxyWithNoLiveAgents(t *testing.T) {
 	h := newHarness()
 	// Proxy up and listening; the only recorded agent (999) is dead.
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}, CanonicalPath: "/home/toby/proj"})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(999), CanonicalPath: "/home/toby/proj"})
 	h.proc.AlivePIDs[111] = true
 	h.ports.Listening[8080] = true
 	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
@@ -59,10 +59,10 @@ func TestCleanIsIdempotentNoOpWhenNothingRunning(t *testing.T) {
 
 func TestCleanRefusesWithLiveAgentsWithoutForce(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222, 333}, CanonicalPath: "/home/toby/proj"})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222, 333), CanonicalPath: "/home/toby/proj"})
 	h.proc.AlivePIDs[111] = true
-	h.proc.AlivePIDs[222] = true
-	h.proc.AlivePIDs[333] = true
+	h.agentAlive(222)
+	h.agentAlive(333)
 	h.ports.Listening[8080] = true
 	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
 
@@ -78,14 +78,35 @@ func TestCleanRefusesWithLiveAgentsWithoutForce(t *testing.T) {
 	assert.True(t, ok, "a refused clean must not purge the overlay")
 	ls := h.readLock(t)
 	assert.Equal(t, 111, ls.ProxyPID)
-	assert.Equal(t, []int{222, 333}, ls.Agents)
+	assert.Equal(t, []int{222, 333}, agentPIDs(ls.Agents))
+}
+
+// TestCleanProceedsWhenOnlyLiveAgentIsRecycledGhost: the lock's only "alive" agent
+// is a recycled-PID ghost (kill -0 succeeds but the process's start time no longer
+// matches). pruneDead drops it, so clean must NOT refuse — it tears the proxy down
+// instead of stranding the operator (AC-0061 / F13).
+func TestCleanProceedsWhenOnlyLiveAgentIsRecycledGhost(t *testing.T) {
+	h := newHarness()
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222), CanonicalPath: "/home/toby/proj"})
+	h.proc.AlivePIDs[111] = true
+	h.proc.AlivePIDs[222] = true               // PID 222 is alive again...
+	h.proc.StartTimes[222] = startFor(222) + 7 // ...but as a different process
+	h.ports.Listening[8080] = true
+	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
+
+	res, err := h.mgr.Clean(h.lay, false)
+	require.NoError(t, err)
+	assert.False(t, res.Refused, "a recycled-PID ghost must not block clean")
+	assert.True(t, res.Cleaned)
+	require.Len(t, h.proc.Signaled, 1)
+	assert.Equal(t, 111, h.proc.Signaled[0].PID)
 }
 
 func TestCleanForceTearsDownDespiteLiveAgents(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}, CanonicalPath: "/home/toby/proj"})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222), CanonicalPath: "/home/toby/proj"})
 	h.proc.AlivePIDs[111] = true
-	h.proc.AlivePIDs[222] = true
+	h.agentAlive(222)
 	h.ports.Listening[8080] = true
 	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
 

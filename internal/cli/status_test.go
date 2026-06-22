@@ -79,13 +79,14 @@ func TestStatusListsProjects(t *testing.T) {
 	f := newStatusFixture(t)
 
 	// A running cage.
-	f.seed(t, "1111111111111111", doctorLockJSON{ProxyPID: 11, Port: 8080, Agents: []int{12}, CanonicalPath: "/code/alpha"})
+	f.seed(t, "1111111111111111", doctorLockJSON{ProxyPID: 11, Port: 8080, Agents: agentEntries(12), CanonicalPath: "/code/alpha"})
 	f.proc.AlivePIDs[11] = true
 	f.proc.AlivePIDs[12] = true
+	f.proc.StartTimes[12] = agentStart(12)
 	f.ports.Listening[8080] = true
 
 	// An orphan (proxy up, no live agents).
-	f.seed(t, "2222222222222222", doctorLockJSON{ProxyPID: 21, Port: 8081, Agents: []int{99}, CanonicalPath: "/code/beta"})
+	f.seed(t, "2222222222222222", doctorLockJSON{ProxyPID: 21, Port: 8081, Agents: agentEntries(99), CanonicalPath: "/code/beta"})
 	f.proc.AlivePIDs[21] = true
 	f.ports.Listening[8081] = true
 

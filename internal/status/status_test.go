@@ -17,11 +17,29 @@ import (
 // lockJSON mirrors the proxy package's unexported lockState wire format so the
 // scanner test can seed proxy.lock contents.
 type lockJSON struct {
-	ProxyPID      int    `json:"proxy_pid"`
-	Port          int    `json:"port"`
-	PolicyHash    string `json:"policy_hash"`
-	Agents        []int  `json:"agents"`
-	CanonicalPath string `json:"canonical_path"`
+	ProxyPID      int            `json:"proxy_pid"`
+	Port          int            `json:"port"`
+	PolicyHash    string         `json:"policy_hash"`
+	Agents        []agentRefJSON `json:"agents"`
+	CanonicalPath string         `json:"canonical_path"`
+}
+
+// agentRefJSON mirrors proxy's unexported agentRef (PID + start-time identity).
+type agentRefJSON struct {
+	PID       int   `json:"pid"`
+	StartTime int64 `json:"start"`
+}
+
+func agentStart(pid int) int64 { return int64(pid)*1000 + 1 }
+
+// agentRefs builds lock agent records; a live-agent test must also set the same
+// StartTimes value on the fake so pruneDead's identity check keeps the agent.
+func agentRefs(pids ...int) []agentRefJSON {
+	out := make([]agentRefJSON, 0, len(pids))
+	for _, p := range pids {
+		out = append(out, agentRefJSON{PID: p, StartTime: agentStart(p)})
+	}
+	return out
 }
 
 type scanHarness struct {
@@ -77,20 +95,22 @@ func TestScanListsRunningOrphanStrandedAndSkipsCleared(t *testing.T) {
 	h := newScanHarness(t)
 
 	// running: proxy alive + listening + a live agent.
-	h.seed(t, "1111111111111111", lockJSON{ProxyPID: 11, Port: 8080, Agents: []int{12}, CanonicalPath: "/code/alpha"})
+	h.seed(t, "1111111111111111", lockJSON{ProxyPID: 11, Port: 8080, Agents: agentRefs(12), CanonicalPath: "/code/alpha"})
 	h.proc.AlivePIDs[11] = true
 	h.proc.AlivePIDs[12] = true
+	h.proc.StartTimes[12] = agentStart(12)
 	h.ports.Listening[8080] = true
 
 	// orphan: proxy alive + listening but its only agent is dead.
-	h.seed(t, "2222222222222222", lockJSON{ProxyPID: 21, Port: 8081, Agents: []int{99}, CanonicalPath: "/code/beta"})
+	h.seed(t, "2222222222222222", lockJSON{ProxyPID: 21, Port: 8081, Agents: agentRefs(99), CanonicalPath: "/code/beta"})
 	h.proc.AlivePIDs[21] = true
 	h.ports.Listening[8081] = true
 
 	// stranded: live agent, proxy not listening.
-	h.seed(t, "3333333333333333", lockJSON{ProxyPID: 31, Port: 8082, Agents: []int{32}, CanonicalPath: "/code/gamma"})
+	h.seed(t, "3333333333333333", lockJSON{ProxyPID: 31, Port: 8082, Agents: agentRefs(32), CanonicalPath: "/code/gamma"})
 	h.proc.AlivePIDs[31] = true
 	h.proc.AlivePIDs[32] = true
+	h.proc.StartTimes[32] = agentStart(32)
 	// 8082 not listening
 
 	// cleared/zeroed lock ⇒ LockPresent false ⇒ skipped.

@@ -18,11 +18,31 @@ const doctorCAPath = runHome + "/.mitmproxy/mitmproxy-ca-cert.pem"
 
 // doctorLockJSON mirrors proxy's unexported lockState wire format for seeding.
 type doctorLockJSON struct {
-	ProxyPID      int    `json:"proxy_pid"`
-	Port          int    `json:"port"`
-	PolicyHash    string `json:"policy_hash"`
-	Agents        []int  `json:"agents"`
-	CanonicalPath string `json:"canonical_path"`
+	ProxyPID      int            `json:"proxy_pid"`
+	Port          int            `json:"port"`
+	PolicyHash    string         `json:"policy_hash"`
+	Agents        []lockAgentRef `json:"agents"`
+	CanonicalPath string         `json:"canonical_path"`
+}
+
+// lockAgentRef mirrors proxy's unexported agentRef (PID + start-time identity).
+type lockAgentRef struct {
+	PID       int   `json:"pid"`
+	StartTime int64 `json:"start"`
+}
+
+// agentStart is the deterministic start time used when seeding an attached agent in
+// a cli-level lock; tests that also mark the PID alive must set the same value in
+// FakeProcessManager.StartTimes so pruneDead's identity check keeps the agent.
+func agentStart(pid int) int64 { return int64(pid)*1000 + 1 }
+
+// agentEntries builds lock agent records for pids, each with its deterministic start.
+func agentEntries(pids ...int) []lockAgentRef {
+	out := make([]lockAgentRef, 0, len(pids))
+	for _, p := range pids {
+		out = append(out, lockAgentRef{PID: p, StartTime: agentStart(p)})
+	}
+	return out
 }
 
 type doctorFixture struct {
@@ -128,7 +148,7 @@ func TestDoctorUntrustedCAExitsNonZero(t *testing.T) {
 
 func TestDoctorOrphanActionableThenFixed(t *testing.T) {
 	f := newDoctorFixture(t)
-	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}})
+	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentEntries(999)})
 	f.proc.AlivePIDs[111] = true   // proxy alive
 	f.ports.Listening[8080] = true // listening; 999 dead ⇒ orphan
 

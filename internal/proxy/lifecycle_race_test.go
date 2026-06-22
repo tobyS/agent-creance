@@ -37,9 +37,11 @@ func TestConcurrentAttachDetach(t *testing.T) {
 	lay := testLayout()
 
 	const n = 16
-	// Mark every worker PID alive so none is pruned mid-flight.
+	// Mark every worker PID alive with a start time that matches what Attach records,
+	// so none is pruned mid-flight (the identity check sees a consistent process).
 	for i := 0; i < n; i++ {
 		pm.AlivePIDs[1+i] = true
+		pm.StartTimes[1+i] = int64(1+i) * 1000
 	}
 
 	var wg sync.WaitGroup

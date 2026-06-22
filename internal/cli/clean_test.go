@@ -61,7 +61,7 @@ func (f *cleanFixture) seedLock(t *testing.T, ls doctorLockJSON) {
 func TestCleanStopsProxyAndIsIdempotent(t *testing.T) {
 	f := newCleanFixture(t)
 	// Running proxy with a dead agent (so clean does not refuse).
-	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: []int{999}, CanonicalPath: runProj})
+	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: agentEntries(999), CanonicalPath: runProj})
 	f.proc.AlivePIDs[111] = true
 	f.ports.Listening[8080] = true
 	f.fs.Files[f.lay.SessionOverlay()] = []byte("once: rules")
@@ -98,10 +98,12 @@ func TestCleanNoLockIsNoOp(t *testing.T) {
 
 func TestCleanRefusesWithLiveAgents(t *testing.T) {
 	f := newCleanFixture(t)
-	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: []int{222, 333}, CanonicalPath: runProj})
+	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: agentEntries(222, 333), CanonicalPath: runProj})
 	f.proc.AlivePIDs[111] = true
 	f.proc.AlivePIDs[222] = true
+	f.proc.StartTimes[222] = agentStart(222)
 	f.proc.AlivePIDs[333] = true
+	f.proc.StartTimes[333] = agentStart(333)
 	f.ports.Listening[8080] = true
 
 	err := runClean(f.app, false)
@@ -119,9 +121,10 @@ func TestCleanRefusesWithLiveAgents(t *testing.T) {
 
 func TestCleanForceOverridesLiveAgents(t *testing.T) {
 	f := newCleanFixture(t)
-	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: []int{222}, CanonicalPath: runProj})
+	f.seedLock(t, doctorLockJSON{ProxyPID: 111, Port: 8080, Agents: agentEntries(222), CanonicalPath: runProj})
 	f.proc.AlivePIDs[111] = true
 	f.proc.AlivePIDs[222] = true
+	f.proc.StartTimes[222] = agentStart(222)
 	f.ports.Listening[8080] = true
 
 	if err := runClean(f.app, true); err != nil {

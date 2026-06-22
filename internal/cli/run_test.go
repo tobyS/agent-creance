@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"syscall"
 	"testing"
@@ -83,7 +84,8 @@ func newRunFixture(t *testing.T) *runFixture {
 	flock := sysdeptest.NewFakeFlock()
 	proc := sysdeptest.NewFakeProcessManager()
 	proc.SpawnPID = proxyPID
-	proc.AlivePIDs[proxyPID] = true // so last-out Detach can SIGTERM it
+	proc.AlivePIDs[proxyPID] = true       // so last-out Detach can SIGTERM it
+	proc.StartTimes[os.Getpid()] = 123456 // Attach records its own (os.Getpid) start time
 	ports := sysdeptest.NewFakePortAllocator()
 	ports.AllocPort = allocPort
 	ports.Listening[allocPort] = true      // the spawned proxy listens → Attach readiness wait passes
@@ -420,10 +422,16 @@ func lockAgents(t *testing.T, fl *sysdeptest.FakeFlock, path string) []int {
 		return nil
 	}
 	var ls struct {
-		Agents []int `json:"agents"`
+		Agents []struct {
+			PID int `json:"pid"`
+		} `json:"agents"`
 	}
 	if err := json.Unmarshal(data, &ls); err != nil {
 		t.Fatalf("unmarshal lock: %v", err)
 	}
-	return ls.Agents
+	out := make([]int, 0, len(ls.Agents))
+	for _, a := range ls.Agents {
+		out = append(out, a.PID)
+	}
+	return out
 }

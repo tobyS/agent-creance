@@ -14,10 +14,10 @@ import (
 // lockJSON mirrors the proxy manager's on-disk lock wire format so this test can seed
 // proxy.lock with a single attached agent for the teardown to remove.
 type lockJSON struct {
-	ProxyPID   int    `json:"proxy_pid"`
-	Port       int    `json:"port"`
-	PolicyHash string `json:"policy_hash"`
-	Agents     []int  `json:"agents"`
+	ProxyPID   int            `json:"proxy_pid"`
+	Port       int            `json:"port"`
+	PolicyHash string         `json:"policy_hash"`
+	Agents     []lockAgentRef `json:"agents"`
 }
 
 // TestOnceRulePurgedOnLastExit ties AC-0030's overlay writer to AC-0020's purge end
@@ -40,7 +40,7 @@ func TestOnceRulePurgedOnLastExit(t *testing.T) {
 	// lock so selfPID is the only attached agent, then Detach it.
 	const proxyPID, selfPID = 4242, 777
 	flock := sysdeptest.NewFakeFlock()
-	lock, err := json.Marshal(lockJSON{ProxyPID: proxyPID, Port: 9000, PolicyHash: "h", Agents: []int{selfPID}})
+	lock, err := json.Marshal(lockJSON{ProxyPID: proxyPID, Port: 9000, PolicyHash: "h", Agents: agentEntries(selfPID)})
 	require.NoError(t, err)
 	flock.Contents[f.layout.ProxyLock()] = lock
 	proc := sysdeptest.NewFakeProcessManager()

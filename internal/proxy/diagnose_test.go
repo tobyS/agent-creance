@@ -23,9 +23,9 @@ func TestInspectNoLock(t *testing.T) {
 
 func TestInspectHealthyWithAgents(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}, CanonicalPath: "/home/toby/proj"})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222), CanonicalPath: "/home/toby/proj"})
 	h.proc.AlivePIDs[111] = true // proxy alive
-	h.proc.AlivePIDs[222] = true // agent alive
+	h.agentAlive(222)            // agent alive (PID + matching start time)
 	h.ports.Listening[8080] = true
 
 	diag, err := h.mgr.Inspect(h.lay)
@@ -41,7 +41,7 @@ func TestInspectHealthyWithAgents(t *testing.T) {
 func TestInspectOrphan(t *testing.T) {
 	h := newHarness()
 	// Proxy up and listening, but the only attached agent (999) is dead.
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(999)})
 	h.proc.AlivePIDs[111] = true
 	h.ports.Listening[8080] = true // 999 absent ⇒ dead
 
@@ -57,10 +57,10 @@ func TestInspectStranded(t *testing.T) {
 	h := newHarness()
 	// A live agent is attached, but the proxy is not listening on the recorded port
 	// (port changed / proxy gone) — the stranded condition.
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222)})
 	h.proc.AlivePIDs[111] = true    // PID alive...
 	h.ports.Listening[8080] = false // ...but not listening
-	h.proc.AlivePIDs[222] = true
+	h.agentAlive(222)
 
 	diag, err := h.mgr.Inspect(h.lay)
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestInspectStranded(t *testing.T) {
 
 func TestCleanOrphanTearsDown(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(999)})
 	h.proc.AlivePIDs[111] = true
 	h.ports.Listening[8080] = true // 999 dead ⇒ orphan
 	h.fs.Files[h.lay.SessionOverlay()] = []byte("once: rules")
@@ -98,9 +98,9 @@ func TestCleanOrphanTearsDown(t *testing.T) {
 
 func TestCleanOrphanNoOpWithLiveAgents(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{222}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(222)})
 	h.proc.AlivePIDs[111] = true
-	h.proc.AlivePIDs[222] = true // live agent ⇒ not an orphan
+	h.agentAlive(222) // live agent ⇒ not an orphan
 	h.ports.Listening[8080] = true
 
 	res, err := h.mgr.CleanOrphan(h.lay)
@@ -111,7 +111,7 @@ func TestCleanOrphanNoOpWithLiveAgents(t *testing.T) {
 
 func TestCleanOrphanNoOpWhenProxyDown(t *testing.T) {
 	h := newHarness()
-	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: []int{999}})
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "h", Agents: agentRefs(999)})
 	// proxy PID not alive ⇒ not "up" ⇒ nothing to tear down.
 	h.ports.Listening[8080] = false
 

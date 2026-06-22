@@ -51,14 +51,28 @@ type lockState struct {
 	Port int `json:"port"`
 	// PolicyHash is the compiled-policy hash the running proxy was started with.
 	PolicyHash string `json:"policy_hash"`
-	// Agents are the PIDs of attached agent-creance invocations.
-	Agents []int `json:"agents"`
+	// Agents are the attached agent-creance invocations, each recorded as a PID plus
+	// its process start time (the second identity factor, AC-0061): a recycled PID
+	// alone can masquerade as a live attached agent and pin the proxy, so pruneDead
+	// also checks the live process's start time against the recorded one. An old lock
+	// whose agents were bare PIDs (a previous binary) fails to unmarshal into this
+	// shape and is treated as a cold start by readLock (accepted; no migration).
+	Agents []agentRef `json:"agents"`
 	// CanonicalPath is the project directory this lock belongs to, recorded so
 	// `status` (AC-0032) can show a readable path: the state-dir hash is one-way,
 	// so the project directory cannot be recovered from it. Older locks written
 	// before this field existed unmarshal with it empty; status falls back to the
 	// hash.
 	CanonicalPath string `json:"canonical_path"`
+}
+
+// agentRef identifies one attached agent in the lock: its PID and the PID's process
+// start time (unix micros, from ProcessManager.StartTime). The start time is the
+// second identity factor — when the PID is recycled into a different process the
+// start time differs, so the stale entry is pruned instead of pinning the proxy.
+type agentRef struct {
+	PID       int   `json:"pid"`
+	StartTime int64 `json:"start"`
 }
 
 // Manager owns the flock-guarded proxy lifecycle for projects. Construct it with
@@ -146,7 +160,7 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		if changed && len(alive) > 0 {
 			// Warn-never-kill: a restart on a new port strands agents whose frozen
 			// Seatbelt profile only allows the old port. Warn, do NOT signal them.
-			m.warnPortChanged(port, cur.Port, alive)
+			m.warnPortChanged(port, cur.Port, pids(alive))
 		}
 		pid, err := m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg)...)
 		if err != nil {
@@ -164,7 +178,15 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		att.PortChanged = changed
 	}
 
-	agents := addPID(alive, cfg.SelfPID)
+	// Record ourselves with our start time read from the same oracle pruneDead uses,
+	// so a later prune compares like with like. A process can always read its own
+	// kinfo_proc; a failure here means a broken environment, so fail the attach
+	// rather than store a bogus identity that would prune us on the next run.
+	selfStart, err := m.proc.StartTime(cfg.SelfPID)
+	if err != nil {
+		return Attachment{}, fmt.Errorf("proxy: read own start time (pid %d): %w", cfg.SelfPID, err)
+	}
+	agents := addRef(alive, agentRef{PID: cfg.SelfPID, StartTime: selfStart})
 	next := lockState{ProxyPID: att.ProxyPID, Port: att.Port, PolicyHash: cfg.PolicyHash, Agents: agents, CanonicalPath: cfg.Layout.Canonical}
 	if err := writeLock(lf, next); err != nil {
 		return Attachment{}, err
@@ -207,7 +229,7 @@ func (m *Manager) Detach(layout state.Layout, selfPID int) error {
 	if err != nil {
 		return err
 	}
-	agents := removePID(cur.Agents, selfPID)
+	agents := removeRef(cur.Agents, selfPID)
 
 	if len(agents) == 0 {
 		// Last agent out: tear the proxy down and purge the session overlay.
@@ -284,7 +306,7 @@ func (m *Manager) Inspect(layout state.Layout) (Diagnosis, error) {
 		Port:          cur.Port,
 		CanonicalPath: cur.CanonicalPath,
 		ProxyUp:       up,
-		LiveAgents:    live,
+		LiveAgents:    pids(live),
 		Orphan:        up && len(live) == 0,
 		Stranded:      !up && len(live) > 0,
 	}, nil
@@ -366,7 +388,7 @@ func (m *Manager) Clean(layout state.Layout, force bool) (CleanResult, error) {
 	}
 	live := m.pruneDead(cur.Agents)
 	if len(live) > 0 && !force {
-		return CleanResult{Refused: true, LiveAgents: live}, nil
+		return CleanResult{Refused: true, LiveAgents: pids(live)}, nil
 	}
 
 	var res CleanResult
@@ -386,13 +408,22 @@ func (m *Manager) Clean(layout state.Layout, force bool) (CleanResult, error) {
 	return res, nil
 }
 
-// pruneDead returns the subset of pids that are still alive, preserving order.
-func (m *Manager) pruneDead(pids []int) []int {
-	var alive []int
-	for _, pid := range pids {
-		if m.proc.Alive(pid) {
-			alive = append(alive, pid)
+// pruneDead returns the subset of refs that are still the original attached agent,
+// preserving order. An entry survives only when its PID is alive AND the live
+// process's start time matches the one recorded at attach: a recycled PID (alive,
+// but a different process now) or an unreadable start time (the process is gone)
+// is treated as dead, so it can no longer pin the proxy or block clean (AC-0061).
+func (m *Manager) pruneDead(refs []agentRef) []agentRef {
+	var alive []agentRef
+	for _, ref := range refs {
+		if !m.proc.Alive(ref.PID) {
+			continue
 		}
+		st, err := m.proc.StartTime(ref.PID)
+		if err != nil || st != ref.StartTime {
+			continue
+		}
+		alive = append(alive, ref)
 	}
 	return alive
 }
@@ -474,32 +505,36 @@ func writeLock(lf sysdep.LockedFile, ls lockState) error {
 	return nil
 }
 
-// addPID appends pid unless already present, preserving order.
-func addPID(pids []int, pid int) []int {
-	if containsPID(pids, pid) {
-		return pids
+// addRef appends ref unless an entry with the same PID is already present,
+// preserving order (idempotent on PID, like the agents array it maintains).
+func addRef(refs []agentRef, ref agentRef) []agentRef {
+	for _, r := range refs {
+		if r.PID == ref.PID {
+			return refs
+		}
 	}
-	return append(pids, pid)
+	return append(refs, ref)
 }
 
-// removePID returns pids without pid, preserving order.
-func removePID(pids []int, pid int) []int {
-	var out []int
-	for _, p := range pids {
-		if p != pid {
-			out = append(out, p)
+// removeRef returns refs without any entry for pid, preserving order.
+func removeRef(refs []agentRef, pid int) []agentRef {
+	var out []agentRef
+	for _, r := range refs {
+		if r.PID != pid {
+			out = append(out, r)
 		}
 	}
 	return out
 }
 
-func containsPID(pids []int, pid int) bool {
-	for _, p := range pids {
-		if p == pid {
-			return true
-		}
+// pids projects an agentRef slice to its PIDs, for display (Diagnosis/CleanResult)
+// and the warn-never-kill message — the lock's identity factor is internal.
+func pids(refs []agentRef) []int {
+	out := make([]int, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.PID)
 	}
-	return false
+	return out
 }
 
 // formatPIDs renders a PID slice as a comma-separated list for the warning.
