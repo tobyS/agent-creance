@@ -1,6 +1,6 @@
 # AC-0061: Proxy-refcount integrity — tear down on signal and survive PID recycling
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-22
 **Updated:** 2026-06-22
@@ -60,22 +60,22 @@ the operator. Agents got no second identity factor where the proxy did.
 ## Acceptance Criteria
 
 ### F5 — teardown on signal
-- [ ] A SIGINT/SIGTERM delivered to the wrapper at any point in the run — including
+- [x] A SIGINT/SIGTERM delivered to the wrapper at any point in the run — including
       after `cage.Run` returns, during watcher/proxy teardown — results in this
       agent's PID being removed from the lock and the proxy killed iff it was the last
       agent.
-- [ ] No leaked proxy / stale agent PID remains after such a signal (verified without
+- [x] No leaked proxy / stale agent PID remains after such a signal (verified without
       relying on the next run's prune to clean up).
-- [ ] The teardown remains idempotent and does not double-decrement or kill a proxy
+- [x] The teardown remains idempotent and does not double-decrement or kill a proxy
       another agent is still using.
 
 ### F13 — recycled-PID resistance
-- [ ] Each attached agent is recorded with a second identity factor (start token /
+- [x] Each attached agent is recorded with a second identity factor (start token /
       start time) in the lock alongside its PID.
-- [ ] `pruneDead` treats an agent entry as dead when the PID is gone **or** the live
+- [x] `pruneDead` treats an agent entry as dead when the PID is gone **or** the live
       process at that PID does not match the recorded identity factor (a recycled
       PID), so a reused PID no longer pins the proxy.
-- [ ] `clean` (without `--force`) no longer refuses on a recycled-PID ghost; last-out
+- [x] `clean` (without `--force`) no longer refuses on a recycled-PID ghost; last-out
       teardown proceeds once the only "alive" entries are recycled ghosts.
 
 ## Testing Protocol
@@ -143,7 +143,8 @@ handler spanning the whole run vs. re-arming around teardown) likewise.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-22-AC-0061-proxy-refcount-integrity.md`
+- Plan: `thoughts/shared/plans/2026-06-22-AC-0061-proxy-refcount-integrity.md`
 
 ## Notes & Updates
 
@@ -158,3 +159,20 @@ handler spanning the whole run vs. re-arming around teardown) likewise.
 - F5's severity was refined during the review: the common Ctrl-C path *does* tear
   down correctly (verified); the residual is the narrow post-`Run` window, so this is
   defense-in-depth rather than a routine leak.
+
+- **Done 2026-06-22.** Implemented in three phases (checkpoint decisions: process
+  start time as F13's second factor; read-error ⇒ prune; span-the-whole-run signal
+  subscription for F5; accept cold-start for old locks):
+  1. Added a `ProcessManager.StartTime(pid)` sysdep seam (`OSProcessManager` reads the
+     leading `p_starttime` timeval from the raw `kern.proc.pid` kinfo_proc bytes —
+     `SysctlKinfoProc`'s strict size check fails with EIO on a current macOS, caught by
+     the real-proxy integration test) plus a `FakeProcessManager` `StartTimes` oracle.
+  2. Changed the lock `Agents` from `[]int` to `[]agentRef{PID, StartTime}`; `Attach`
+     records its own start time; `pruneDead` prunes when the PID is gone OR the live
+     start time doesn't match OR is unreadable. `Diagnosis`/`CleanResult.LiveAgents`
+     stay `[]int`, so `status`/`doctor`/`clean` are externally unchanged.
+  3. `runRun` keeps its own `SIGINT`/`SIGTERM` subscription spanning the whole run so
+     a signal in the post-`cage.Run` window can't skip the deferred `Detach`.
+- Gate: `make test` (race) + `make lint` + `make build` green; proxy/cli/sysdep
+  integration tests pass. The `verify` battery's `kc-read`/`kc-write` vectors fail in
+  this environment (no keychain credential set up) — unrelated to this ticket.
