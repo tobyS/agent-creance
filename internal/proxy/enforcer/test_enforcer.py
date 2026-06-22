@@ -274,6 +274,37 @@ def test_passthrough_denied_logs_host_only(addon, audit_path):
         assert absent not in e
 
 
+# --- response streaming (AC-0057) ---------------------------------------------
+
+
+def test_responseheaders_marks_response_for_streaming(addon):
+    # The responseheaders hook must flag every upstream response for incremental
+    # streaming so long SSE bodies are not buffered (which would time out the client).
+    flow = _https_flow("react.dev", "/learn")
+    addon.request(flow)
+    assert flow.response is None  # allow forwards untouched
+    flow.response = tutils.tresp(content=b"data")
+    assert flow.response.stream is False  # mitmproxy default: buffered
+    addon.responseheaders(flow)
+    assert flow.response.stream is True
+
+
+def test_response_still_audits_after_streaming(addon, audit_path):
+    # Streaming the body must not break the single audit point: the response hook
+    # still fires with status_code available.
+    flow = _https_flow("react.dev", "/learn")
+    addon.request(flow)
+    flow.response = tutils.tresp(content=b"data")
+    addon.responseheaders(flow)
+    addon.response(flow)
+
+    entries = _read_audit(audit_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["decision"] == "allow"
+    assert e["status"] == 200
+
+
 def test_audit_disabled_when_option_empty(tmp_path):
     # No creance_audit_log -> the addon writes nothing and creates no file.
     path = tmp_path / "policy.json"

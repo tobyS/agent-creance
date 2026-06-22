@@ -229,6 +229,26 @@ class Enforcer:
 
         flow.response = _make_response(r)
 
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        """Stream every upstream response body to the client incrementally.
+
+        mitmproxy buffers response bodies by default so addons can inspect or modify
+        them; this enforcer inspects no response body (the allow/deny decision is
+        request-side, and the audit reads only the status code), so the default
+        buffering merely adds latency and breaks long Server-Sent-Events responses --
+        the caged client sees no bytes until the upstream stream closes, so a long
+        Claude inference times out. Setting ``stream`` relays each chunk as it arrives.
+
+        ``stream`` must be set *here*, in the responseheaders hook (after the status
+        line and headers are read, before the body): setting it in ``response`` is too
+        late, mitmproxy has already buffered the body. The ``response`` hook still fires
+        afterwards (once the body has fully streamed) with ``status_code`` intact, so
+        the single audit entry is unaffected. Refusals synthesized in ``request``
+        short-circuit before upstream is contacted, so this hook never runs for them.
+        """
+        if flow.response is not None:
+            flow.response.stream = True
+
     def response(self, flow: http.HTTPFlow) -> None:
         """Audit an intercepted request once its response status is known.
 
