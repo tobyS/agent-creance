@@ -23,8 +23,10 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -347,3 +349,105 @@ def test_audit_passthrough_logs_host_only(egress):
     # Host-only: TLS was never terminated, so no path/method/status is recorded.
     for absent in ("method", "path", "url", "status"):
         assert absent not in entry
+
+
+# --- response streaming (AC-0057) ---------------------------------------------
+
+
+class _StreamingHandler(BaseHTTPRequestHandler):
+    # HTTP/1.0 => the body is close-delimited (no Content-Length / chunked framing
+    # needed); the connection closes when do_GET returns, signalling end of body.
+    # The handler emits text/event-stream events with a delay between each, flushing
+    # after every write, so a streaming proxy relays them incrementally while a
+    # buffering proxy would hold them all until the connection closes.
+    protocol_version = "HTTP/1.0"
+    events = 4
+    delay = 0.3
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for i in range(self.events):
+            try:
+                self.wfile.write(f"data: chunk{i}\n\n".encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            time.sleep(self.delay)
+
+    def log_message(self, *args):  # silence the default stderr access log
+        pass
+
+
+@contextmanager
+def _streaming_origin():
+    """A local plaintext-HTTP origin that streams SSE events with delays. Plain HTTP
+    (no TLS) so the proxy need not verify an upstream cert; the cage's streaming
+    behaviour is transport-agnostic."""
+    srv = HTTPServer(("127.0.0.1", 0), _StreamingHandler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield srv.server_address[1]
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        thread.join(timeout=5)
+
+
+def _curl_stream(proxy, url, timeout=20):
+    """Drive ``curl -N`` through the proxy, returning [(elapsed, line), ...] for each
+    non-empty body line as it arrives (elapsed is seconds since the first line)."""
+    proc = subprocess.Popen(
+        [
+            _CURL, "-sS", "-N", "--no-buffer",
+            "-x", f"http://127.0.0.1:{proxy.port}",
+            "--max-time", str(timeout),
+            url,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    lines = []
+    start = None
+    for raw in proc.stdout:
+        line = raw.strip()
+        if not line:
+            continue
+        now = time.monotonic()
+        if start is None:
+            start = now
+        lines.append((now - start, line))
+    proc.wait(timeout=5)
+    return lines
+
+
+def test_response_streams_incrementally():
+    # A streaming SSE origin behind the proxy: the client must receive the early
+    # events well before the stream closes. If the enforcer buffered the body (the
+    # pre-fix behaviour), every event would arrive together at the end. Uses a local
+    # plaintext origin, so it needs no external egress.
+    with _streaming_origin() as origin_port:
+        policy_obj = {
+            "version": 1,
+            "allow": [{"host": "127.0.0.1", "mode": "intercept"}],
+        }
+        with running_proxy(policy_obj) as p:
+            lines = _curl_stream(p, f"http://127.0.0.1:{origin_port}/")
+            entry = _wait_for_audit(
+                p.audit_path, lambda e: e.get("decision") == "allow" and "url" in e
+            )
+
+    data = [(t, line) for t, line in lines if line.startswith("data:")]
+    assert len(data) == _StreamingHandler.events, f"unexpected events: {lines}"
+    spread = data[-1][0] - data[0][0]
+    # Buffered delivery => spread ~0 (all events flushed at once); streamed delivery
+    # => ~ (events-1) * delay (~0.9s here). 0.3s sits safely between the two regimes.
+    assert spread >= 0.3, f"events arrived together (spread={spread:.3f}s); not streamed"
+
+    # The audit must still fire for the streamed response, with its status.
+    assert entry is not None, "no allow audit entry appeared for the streamed response"
+    assert entry["status"] == 200
