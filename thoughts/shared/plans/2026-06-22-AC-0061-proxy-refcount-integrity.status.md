@@ -4,7 +4,7 @@ Plan: `thoughts/shared/plans/2026-06-22-AC-0061-proxy-refcount-integrity.md`
 
 - [x] Phase 1 — StartTime sysdep seam
 - [x] Phase 2 — Lock schema + pruneDead identity check
-- [ ] Phase 3 — Span-the-whole-run signal subscription (F5)
+- [x] Phase 3 — Span-the-whole-run signal subscription (F5)
 - [ ] Phase 4 — Verify, build, close ticket
 
 ## Log
@@ -18,3 +18,9 @@ Plan: `thoughts/shared/plans/2026-06-22-AC-0061-proxy-refcount-integrity.md`
   so status/doctor/clean are externally unchanged. Updated all lock test mirrors
   (proxy, status, doctor, cli) and added recycled-PID + own-start-time-unreadable
   cases. `make test` (race) + `make lint` green.
+- Phase 3 done: `runRun` installs its own process-level `signal.Notify(SIGINT,SIGTERM)`
+  before the Detach defer (so `signal.Stop` runs after Detach by LIFO), keeping default
+  disposition suppressed across the post-`Run` teardown window. New `run_test.go` test
+  drives a gated cage in a goroutine, injects a signal into the wrapper channel while
+  the agent runs, and asserts teardown (Detach) still completes. `make test` (race) +
+  `make lint` green.

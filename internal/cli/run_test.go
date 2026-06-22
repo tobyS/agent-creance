@@ -174,6 +174,73 @@ func TestRunHappyPath(t *testing.T) {
 	}
 }
 
+// TestRunWrapperKeepsSignalSubscriptionThroughTeardown asserts the F5 fix
+// (AC-0061): runRun installs its OWN process-level SIGINT/SIGTERM subscription that
+// spans the whole run — including the post-cage.Run teardown window — so a signal in
+// that window can no longer revert to the Go default disposition (terminate) and
+// skip the deferred proxy Detach. Against fakes a signal cannot actually terminate
+// the process, so this verifies the mechanism: the wrapper subscribes to both
+// signals (separately from cage.Run), the subscription is live while the agent runs,
+// and the deferred Detach completes afterwards.
+func TestRunWrapperKeepsSignalSubscriptionThroughTeardown(t *testing.T) {
+	f := newRunFixture(t)
+	// Gate the cage so the "agent" stays running until we release it — this is the
+	// window during which the wrapper's signal subscription must already be active.
+	gate := make(chan struct{})
+	f.pg.Proc = &sysdeptest.FakeProcess{WaitGate: gate}
+
+	done := make(chan error, 1)
+	go func() { done <- runRun(context.Background(), f.app, ".") }()
+
+	// Wait until both the wrapper (registered before the cage launches) and cage.Run
+	// have subscribed. Before the fix only cage.Run subscribed (one channel).
+	deadline := time.Now().Add(2 * time.Second)
+	for len(f.pg.NotifyChans()) < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	chans := f.pg.NotifyChans()
+	if len(chans) < 2 {
+		close(gate)
+		<-done
+		t.Fatalf("want 2 signal subscriptions (wrapper + cage), got %d", len(chans))
+	}
+	if notified := f.pg.Notified(); !coversIntTerm(notified[0]) {
+		t.Errorf("wrapper subscription (first) must cover SIGINT and SIGTERM, got %v", notified[0])
+	}
+
+	// Deliver a signal into the wrapper's own channel (index 0) while the agent is
+	// still running: it must be absorbed (the wrapper keeps default disposition
+	// suppressed) rather than disrupting the run.
+	chans[0] <- syscall.SIGINT
+
+	// Let the agent exit; teardown (the deferred Detach) then runs.
+	close(gate)
+	if err := <-done; err != nil {
+		t.Fatalf("runRun: %v\nstderr: %s", err, f.err)
+	}
+
+	// Teardown completed: proxy SIGTERM'd on last-out and the lock has no agents.
+	if !signaled(f.proc, proxyPID, syscall.SIGTERM) {
+		t.Errorf("proxy was not SIGTERM'd on teardown: %+v", f.proc.Signaled)
+	}
+	if agents := lockAgents(t, f.flock, f.lay.ProxyLock()); len(agents) != 0 {
+		t.Errorf("final lock agents = %v, want empty (last out)", agents)
+	}
+}
+
+func coversIntTerm(sigs []os.Signal) bool {
+	var hasInt, hasTerm bool
+	for _, s := range sigs {
+		switch s {
+		case syscall.SIGINT:
+			hasInt = true
+		case syscall.SIGTERM:
+			hasTerm = true
+		}
+	}
+	return hasInt && hasTerm
+}
+
 // TestRunProgressOutput asserts the step announcements on stderr (AC-0041):
 // every major step is announced with a duration, a first compile reports its
 // rule counts, and a cached re-run reports "up to date". The fixture's stderr

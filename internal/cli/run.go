@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -133,6 +135,21 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	if err != nil {
 		return fmt.Errorf("extract enforcer: %w", err)
 	}
+
+	// Keep our own SIGINT/SIGTERM subscription for the rest of the run, including the
+	// post-cage.Run teardown window. During the agent's life cage.Run forwards these
+	// to the agent group; this subscription does nothing actionable, but a live
+	// signal.Notify keeps the Go default disposition (terminate) suppressed — so a
+	// signal arriving after cage.Run has called its own signal.Stop, while the
+	// deferred Detach is still pending, can no longer kill the wrapper before the
+	// proxy refcount is decremented (AC-0061 / F5). Registered before the Detach
+	// defer below so, by LIFO, signal.Stop runs after Detach. The buffered channel is
+	// intentionally left undrained: an unread Notify channel still suppresses the
+	// default action (further signals are dropped, which is fine). signal.Ignore must
+	// NOT be used here — it would undo cage.Run's Notify and break signal forwarding.
+	sigCh := make(chan os.Signal, 1)
+	app.ProcessGroup.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 
 	// 9. Start or attach the refcounted proxy. Detach is deferred immediately so
 	//    every exit path decrements; the last agent out kills the proxy and purges
