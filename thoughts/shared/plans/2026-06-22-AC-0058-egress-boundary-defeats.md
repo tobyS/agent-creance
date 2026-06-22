@@ -120,12 +120,12 @@ refcount/lock changes (AC-0061's scope).
 ### A.5 Success criteria (Phase A)
 
 #### Automated
-- [ ] `make test` green (new profile + config + compile tests pass).
-- [ ] `make lint` green.
-- [ ] `make golden` produces no unexpected `.sb` diff.
+- [x] `make test` green (new profile + config + compile tests pass).
+- [x] `make lint` green.
+- [x] `make golden` produces no unexpected `.sb` diff.
 
 #### Manual
-- [ ] A `.agent-creance.yaml` with `host_services: ["x\n(allow network*):3306"]` is
+- [x] A `.agent-creance.yaml` with `host_services: ["x\n(allow network*):3306"]` is
       rejected at load with a clear error (and, if forced past parse, renders no live
       SBPL form).
 
@@ -192,12 +192,12 @@ refcount/lock changes (AC-0061's scope).
 ### B.5 Success criteria (Phase B)
 
 #### Automated
-- [ ] `make test-enforcer` green (B1/B2/B3 pytest cases).
-- [ ] `make test` green (lifecycle readiness tests).
-- [ ] `make lint` green.
+- [x] `make test-enforcer` green (B1/B2/B3 pytest cases).
+- [x] `make test` green (lifecycle readiness tests).
+- [x] `make lint` green.
 
 #### Manual
-- [ ] Pointing the launcher at a corrupt `policy.json` produces a visible startup failure
+- [x] Pointing the launcher at a corrupt `policy.json` produces a visible startup failure
       (non-zero), not a silent run on an empty ruleset.
 
 ---
@@ -252,22 +252,22 @@ refcount/lock changes (AC-0061's scope).
 ### C.5 Success criteria (Phase C)
 
 #### Automated
-- [ ] `make test` green (Go canonicalization, `HostDisposition`, corpus replay).
-- [ ] `make test-enforcer` green (Python canonicalization + `host_disposition` replay).
-- [ ] `make lint` green.
-- [ ] A corpus vector for `host_disposition` fails if either language's replay is removed.
+- [x] `make test` green (Go canonicalization, `HostDisposition`, corpus replay).
+- [x] `make test-enforcer` green (Python canonicalization + `host_disposition` replay).
+- [x] `make lint` green.
+- [x] A corpus vector for `host_disposition` fails if either language's replay is removed.
 
 #### Manual
-- [ ] A host-level `deny_always` blocks `host`, `HOST`, `host.`, and `host:443`
+- [x] A host-level `deny_always` blocks `host`, `HOST`, `host.`, and `host:443`
       identically (reason via an enforcer/integration check or a targeted vector).
 
 ---
 
 ## Final verification (end of ticket)
 
-- [ ] `make test`, `make test-enforcer`, `make lint` all green.
-- [ ] `make build` so `bin/agent-creance` reflects the final commit.
-- [ ] Ticket acceptance criteria A/B/C all checked; set `**Status:** Done`, bump
+- [x] `make test`, `make test-enforcer`, `make lint` all green.
+- [x] `make build` so `bin/agent-creance` reflects the final commit.
+- [x] Ticket acceptance criteria A/B/C all checked; set `**Status:** Done`, bump
       `**Updated:**`, append a dated note.
 
 ## Testing Strategy

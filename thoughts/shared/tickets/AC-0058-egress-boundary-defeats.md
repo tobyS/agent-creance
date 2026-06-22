@@ -1,6 +1,6 @@
 # AC-0058: Close three critical egress-boundary defeats (SBPL injection, enforcer fail-open, host-deny bypass)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Extra Large
 **Created:** 2026-06-22
 **Updated:** 2026-06-22
@@ -92,35 +92,35 @@ All three boundary defeats are closed and pinned by tests:
 ## Acceptance Criteria
 
 ### A — SBPL injection
-- [ ] A `host_services` label containing a newline, carriage return, or other
+- [x] A `host_services` label containing a newline, carriage return, or other
       control character is rejected at config-parse time with a clear error (or
       defensively sanitized at render so it cannot produce a non-comment line) —
       decide and document which, with both layers preferred for a security boundary.
-- [ ] `RenderNetworkSB`, `RenderProxyFragment`, `RenderCAReadFragment`,
+- [x] `RenderNetworkSB`, `RenderProxyFragment`, `RenderCAReadFragment`,
       `RenderConfigReadOnlyFragment`, and any other SBPL renderer cannot emit a line
       that is not a comment or an intended rule, for any input — verified by tests
       feeding `"`, `\`, `\n`, `\r`, `)`, `(`, and `;;` in labels and paths.
-- [ ] Host and HTTP-method values in egress rules are validated (plausible
+- [x] Host and HTTP-method values in egress rules are validated (plausible
       hostname/glob; uppercase known method) so malformed input is caught at config
       load rather than silently never-matching (F18).
 
 ### B — Enforcer fail-closed
-- [ ] An exception raised anywhere in the per-request decision path results in a
+- [x] An exception raised anywhere in the per-request decision path results in a
       hard-deny response (the request is **not** forwarded upstream).
-- [ ] A failed **initial** `policy.json` load is surfaced as a hard, visible startup
+- [x] A failed **initial** `policy.json` load is surfaced as a hard, visible startup
       failure to the Go launcher (distinct from a hot-reload failure), rather than
       the addon running on an empty ruleset.
-- [ ] A malformed or mid-write `policy.json` encountered during hot-reload keeps the
+- [x] A malformed or mid-write `policy.json` encountered during hot-reload keeps the
       previous good ruleset in force and recovers on the next valid write.
 
 ### C — Host normalization & parity
-- [ ] The request host is canonicalized (lowercase, strip trailing `.`, strip port)
+- [x] The request host is canonicalized (lowercase, strip trailing `.`, strip port)
       once at the enforcer boundary before `decide` and `host_disposition`; a
       host-level `deny_always` blocks `host.`, `HOST`, and `host:443` identically.
-- [ ] The Go matcher applies the same canonicalization (or the contract is
+- [x] The Go matcher applies the same canonicalization (or the contract is
       documented as "the enforcer canonicalizes; the matcher assumes canonical
       input") so Go and Python cannot diverge on these inputs.
-- [ ] `host_disposition` has a Go counterpart and is exercised by the shared
+- [x] `host_disposition` has a Go counterpart and is exercised by the shared
       decision-vector corpus, including a mixed-mode (passthrough + intercept on the
       same host) adversarial vector.
 
@@ -169,16 +169,16 @@ matchers) are settled in Acceptance Criteria above.
 
 ## Questions for Research/Planning
 
-- [ ] A — exact validation surface for labels (charset allowlist vs control-char
+- [x] A — exact validation surface for labels (charset allowlist vs control-char
       denylist) and whether to also sanitize at render; confirm no current valid
       label (containing spaces, `/`, `:`?) is broken by it.
-- [ ] A/F18 — what host/method validation the compiler already applies to
+- [x] A/F18 — what host/method validation the compiler already applies to
       *generator-emitted* rules vs hand-authored rules; ensure the passthrough+paths
       rejection and new host/method checks cover both paths.
-- [ ] B — how mitmproxy surfaces a hook exception in the installed version (confirm
+- [x] B — how mitmproxy surfaces a hook exception in the installed version (confirm
       "logs and forwards" for the `request` hook), and the cleanest launcher channel
       for a hard initial-load failure (exit code, stderr marker the Go side reads).
-- [ ] C — confirm `flow.request.host`/`pretty_host`/SNI can each carry a trailing dot
+- [x] C — confirm `flow.request.host`/`pretty_host`/SNI can each carry a trailing dot
       or port in the target mitmproxy version; choose the canonicalization point;
       reconcile `host_disposition`'s "all-allows-in-top-tier" rule with `Decide`'s
       "most-specific-allow" rule (which becomes the canonical one).
@@ -201,7 +201,8 @@ matchers) are settled in Acceptance Criteria above.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-22-AC-0058-egress-boundary-defeats.md`
+- Plan: `thoughts/shared/plans/2026-06-22-AC-0058-egress-boundary-defeats.md`
 
 ## Notes & Updates
 
@@ -218,3 +219,20 @@ matchers) are settled in Acceptance Criteria above.
   work-streams A/B/C.
 - F1, F2, F3 were verified directly against the source during the review; F18 was
   review-reported and should be confirmed during research.
+- **Done (2026-06-22).** Implemented as three phases:
+  - A (F1/F15/F18): `parseHostService` rejects control-char labels and `RenderNetworkSB`
+    sanitizes the label at render; `config.ValidateHost`/`ValidateMethods` (uppercase +
+    known-verb allowlist) validate hand-authored *and* generator-emitted egress rules;
+    adversarial profile injection + `%q`-escaping-pin tests added.
+  - B (F2/F6): the enforcer's request / http_connect / tls_clienthello hooks fail closed
+    on any exception (hard-deny / no-tunnel); an initial policy.json load failure logs
+    ERROR (→ mitmproxy ErrorCheck → non-zero exit) and the Go Manager gained a Sleeper
+    seam + post-spawn readiness wait that surfaces it; malformed-reload-keeps-last-good
+    pinned by pytest.
+  - C (F3/F4): the request host is canonicalized (lowercase, strip :port, strip trailing
+    dot) at the matcher entry in both languages; a Go `HostDisposition` mirrors the Python
+    CONNECT-stage decision and the shared corpus now drives it (6 new vectors incl. a
+    mixed-mode adversarial case).
+  - Gate: `make test`, `make test-enforcer`, `make lint` green; `bin/agent-creance` rebuilt.
+  - Decisions taken at the checkpoint: known-verb method allowlist; full Go readiness
+    wait; canonicalization inside the matcher entry points (corpus-provable parity).

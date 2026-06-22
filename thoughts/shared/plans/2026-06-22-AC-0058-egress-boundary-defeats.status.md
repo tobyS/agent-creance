@@ -40,4 +40,6 @@ Plan: `thoughts/shared/plans/2026-06-22-AC-0058-egress-boundary-defeats.md`
   replays both languages. make test / make test-enforcer / make lint green; no golden diff.
 
 ## Final verification
-- Status: not started
+- Status: done
+- make test / make test-enforcer / make lint all green; make build rebuilt
+  bin/agent-creance. All A/B/C acceptance criteria checked; ticket set to Done.
