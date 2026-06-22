@@ -72,6 +72,36 @@ func TestCompile_MultiManifestMonorepo(t *testing.T) {
 	require.Equal(t, "generated:package_json:apps/web/package.json:vue", allow["vuejs.org"].Source)
 }
 
+// TestCompile_GeneratorRuleValidation: a generator that emits a rule with a malformed
+// host or a non-uppercase method fails compilation. Generator output bypasses the config
+// loader's validation, so the compiler applies the same host/method checks (AC-0058 / F18).
+func TestCompile_GeneratorRuleValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rule policy.Rule
+		want string
+	}{
+		{"bad host", policy.Rule{Host: "http://evil/x"}, "invalid host"},
+		{"control-char host", policy.Rule{Host: "evil\ncom"}, "invalid host"},
+		{"lowercase method", policy.Rule{Host: "react.dev", Methods: []string{"get"}}, "non-uppercase method"},
+		{"unknown method", policy.Rule{Host: "react.dev", Methods: []string{"FOOBAR"}}, "unknown method"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{
+				projDir + "/.agent-creance.yaml": "network:\n  egress:\n    generators:\n      - package_json\n",
+				projDir + "/package.json":        `{"root":true}`,
+			}
+			runner := &contentRunner{byBody: map[string][]generator.Rule{
+				`{"root":true}`: {{Rule: tc.rule, Source: "generated:package_json:x"}},
+			}}
+			c, _ := fixture(t, files, runner)
+			_, err := c.Compile(context.Background(), projDir)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
 // TestCompile_BareFormResolvesToRoot: the bare-string form still reads the root manifest
 // and emits the bare (path-free) source label.
 func TestCompile_BareFormResolvesToRoot(t *testing.T) {

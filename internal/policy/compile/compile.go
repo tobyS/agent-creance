@@ -526,6 +526,16 @@ func (c *Compiler) runGenerators(ctx context.Context, manifests []manifestInput)
 			if r.Mode == "" {
 				r.Mode = policy.ModeIntercept
 			}
+			// Generator-emitted rules bypass the config loader's validation, so apply the
+			// same host/method checks here — a hostile or malformed generated rule (e.g.
+			// from a cloned repo's manifest) is caught at compile time rather than silently
+			// never-matching (AC-0058 / F18).
+			if err := config.ValidateHost(r.Host); err != nil {
+				return nil, fmt.Errorf("compile: generator %q produced an invalid host %q: %w", m.gen.Type, r.Host, err)
+			}
+			if err := config.ValidateMethods(r.Methods); err != nil {
+				return nil, fmt.Errorf("compile: generator %q produced a rule that %w", m.gen.Type, err)
+			}
 			out = append(out, r)
 		}
 	}

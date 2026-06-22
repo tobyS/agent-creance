@@ -88,11 +88,27 @@ func RenderNetworkSB(services []config.HostService) string {
 		b.WriteString(allowRule(svc.Port))
 		if svc.Label != "" {
 			b.WriteString("  ;; ")
-			b.WriteString(svc.Label)
+			b.WriteString(sanitizeLabel(svc.Label))
 		}
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// sanitizeLabel neutralizes a host-service label before it is written into network.sb
+// after a ";; " comment marker. Config parsing already rejects control characters
+// (internal/config.parseHostService), but this render-side pass is defense in depth: a
+// control character — most dangerously a newline — would terminate the comment line and
+// let the remainder render as a live SBPL form after the (deny network*) baseline,
+// re-opening egress (last-match-wins). Any control char is replaced with a space so the
+// label can only ever extend its own comment (AC-0058 / F1).
+func sanitizeLabel(label string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, label)
 }
 
 // RenderProxyFragment renders the launch-time proxy-port allow line for the live,

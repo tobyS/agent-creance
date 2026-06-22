@@ -24,6 +24,8 @@ func validateRules(rules []Rule, list string, verr *ValidationError) {
 		ref := ruleRef(i, r)
 		if r.Host == "" {
 			verr.add("egress %s rule %s is missing a host", list, ref)
+		} else {
+			validateRuleHostMethods(r, list, ref, verr)
 		}
 		switch r.Mode {
 		case ModeIntercept:
@@ -103,6 +105,15 @@ func parseHostService(s string) (HostService, error) {
 	if label == "" {
 		return HostService{}, fmt.Errorf("host_services entry %q has an empty label", s)
 	}
+	// The label is written into the generated network.sb after a ";; " comment marker
+	// (internal/profile.RenderNetworkSB). A control character — most dangerously a
+	// newline — would terminate the comment line and let the rest of the label render as
+	// a live SBPL form *after* the (deny network*) baseline, re-opening egress
+	// (last-match-wins). Reject any control char here; the renderer also sanitizes
+	// defensively (AC-0058).
+	if i := strings.IndexFunc(label, isControlRune); i >= 0 {
+		return HostService{}, fmt.Errorf("host_services entry %q has a control character in its label", s)
+	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		return HostService{}, fmt.Errorf("host_services entry %q has a non-numeric port %q", s, portStr)
@@ -111,4 +122,79 @@ func parseHostService(s string) (HostService, error) {
 		return HostService{}, fmt.Errorf("host_services entry %q has port %d out of range 1-65535", s, port)
 	}
 	return HostService{Label: label, Port: port}, nil
+}
+
+// knownMethods is the set of HTTP methods an egress rule may name. The enforcer's
+// method match is case-sensitive, so a lowercase or unknown verb silently never
+// matches (F18); validation rejects it at load instead. Extend this set if a new verb
+// is needed.
+var knownMethods = map[string]bool{
+	"GET": true, "HEAD": true, "POST": true, "PUT": true, "PATCH": true,
+	"DELETE": true, "OPTIONS": true, "CONNECT": true, "TRACE": true,
+}
+
+// isControlRune reports whether r is an ASCII control character (C0 or DEL). Used to
+// keep untrusted config strings from injecting line breaks into generated artifacts.
+func isControlRune(r rune) bool { return r < 0x20 || r == 0x7f }
+
+// ValidateHost checks that an egress-rule host is a plausible hostname or glob: no
+// control characters or whitespace, no scheme or path, and either `*`, a `*.suffix`
+// wildcard, or a dotted hostname of label characters. It is exported so the policy
+// compiler can apply the same check to generator-emitted rules, which bypass the
+// config loader's validation (AC-0058 / F18).
+func ValidateHost(host string) error {
+	if strings.IndexFunc(host, isControlRune) >= 0 {
+		return fmt.Errorf("contains a control character")
+	}
+	if strings.ContainsAny(host, " \t/") || strings.Contains(host, "://") {
+		return fmt.Errorf("is not a bare hostname (no scheme, path, or whitespace)")
+	}
+	body := host
+	if body == "*" {
+		return nil
+	}
+	body = strings.TrimPrefix(body, "*.")
+	if body == "" {
+		return fmt.Errorf("has an empty hostname")
+	}
+	for _, label := range strings.Split(body, ".") {
+		if label == "" {
+			return fmt.Errorf("has an empty label")
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+				return fmt.Errorf("has an invalid character %q", r)
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateMethods checks that every HTTP method in an egress rule is uppercase and a
+// known verb. Exported for the policy compiler to reuse on generator rules (F18).
+func ValidateMethods(methods []string) error {
+	for _, m := range methods {
+		if m == "" {
+			return fmt.Errorf("has an empty method")
+		}
+		if !knownMethods[m] {
+			if strings.ToUpper(m) == m {
+				return fmt.Errorf("has an unknown method %q", m)
+			}
+			return fmt.Errorf("has a non-uppercase method %q (the enforcer match is case-sensitive)", m)
+		}
+	}
+	return nil
+}
+
+// validateRuleHostMethods records host and method problems for one rule onto verr.
+func validateRuleHostMethods(r Rule, list, ref string, verr *ValidationError) {
+	if err := ValidateHost(r.Host); err != nil {
+		verr.add("egress %s rule %s has an invalid host %q: %v", list, ref, r.Host, err)
+	}
+	if r.Methods != nil {
+		if err := ValidateMethods(*r.Methods); err != nil {
+			verr.add("egress %s rule %s %v", list, ref, err)
+		}
+	}
 }

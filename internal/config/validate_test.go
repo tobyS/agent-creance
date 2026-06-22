@@ -115,6 +115,46 @@ func TestValidate(t *testing.T) {
 			wantErr:      true,
 			wantContains: "not in label:port form",
 		},
+		{
+			name:         "host_services label with a newline is rejected",
+			yaml:         "network:\n  host_services:\n    - \"x\\n(allow network*):3306\"\n",
+			wantErr:      true,
+			wantContains: "control character in its label",
+		},
+		{
+			name:         "lowercase method is rejected",
+			yaml:         "network:\n  egress:\n    allow:\n      - host: api.github.com\n        methods: [get]\n",
+			wantErr:      true,
+			wantContains: "non-uppercase method",
+		},
+		{
+			name:         "unknown method is rejected",
+			yaml:         "network:\n  egress:\n    allow:\n      - host: api.github.com\n        methods: [FOOBAR]\n",
+			wantErr:      true,
+			wantContains: `unknown method "FOOBAR"`,
+		},
+		{
+			name:         "host with a scheme is rejected",
+			yaml:         "network:\n  egress:\n    allow:\n      - host: http://x/y\n",
+			wantErr:      true,
+			wantContains: "invalid host",
+		},
+		{
+			name:         "host that is only whitespace is rejected",
+			yaml:         "network:\n  egress:\n    allow:\n      - host: \" \"\n",
+			wantErr:      true,
+			wantContains: "invalid host",
+		},
+		{
+			name:    "wildcard suffix host is valid",
+			yaml:    "network:\n  egress:\n    allow:\n      - host: \"*.example.com\"\n        methods: [GET, POST]\n",
+			wantErr: false,
+		},
+		{
+			name:    "star host is valid",
+			yaml:    "network:\n  egress:\n    allow:\n      - host: \"*\"\n",
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range cases {

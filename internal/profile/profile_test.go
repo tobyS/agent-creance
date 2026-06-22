@@ -80,6 +80,71 @@ func TestRenderNetworkSB_NoForbiddenLiterals(t *testing.T) {
 	assertNoForbiddenLiterals(t, got)
 }
 
+// TestRenderNetworkSB_LabelInjection feeds hostile labels (control chars and SBPL
+// metacharacters) directly to the renderer, bypassing config validation, and asserts
+// the label can never produce a line that is not its own trailing comment. This is the
+// render-side defense behind AC-0058 / F1: each service must still emit exactly one
+// allow line, and no injected (allow|deny) form may appear after the deny baseline.
+func TestRenderNetworkSB_LabelInjection(t *testing.T) {
+	hostile := []string{
+		"x\n(allow network*)",
+		"x\r(allow network*)",
+		"a\tb",
+		"x\x00y",
+		`weird " \ ;; ( ) label`,
+	}
+	for _, label := range hostile {
+		got := RenderNetworkSB([]config.HostService{{Label: label, Port: 3306}})
+
+		// No control characters survive into the rendered fragment (newlines separate
+		// lines and are produced only by the renderer itself, never by a label).
+		for _, r := range got {
+			if (r < 0x20 && r != '\n') || r == 0x7f {
+				t.Errorf("label %q left a control character %q in the output:\n%s", label, r, got)
+			}
+		}
+		// Every line is a comment, the deny baseline, or a single localhost allow line —
+		// the label can only ever extend its own trailing comment, never start a new SBPL
+		// form. (A substring like "(allow network*)" inside a ;; comment is inert.)
+		allowLines := 0
+		for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+			trimmed := strings.TrimLeft(line, " ")
+			switch {
+			case strings.HasPrefix(trimmed, ";;"):
+			case trimmed == DenyBaseline:
+			case strings.HasPrefix(trimmed, `(allow network-outbound (remote tcp "localhost:`):
+				allowLines++
+			default:
+				t.Errorf("label %q produced an unexpected line %q:\n%s", label, line, got)
+			}
+		}
+		if allowLines != 1 {
+			t.Errorf("label %q produced %d allow lines, want 1:\n%s", label, allowLines, got)
+		}
+	}
+}
+
+// TestPathRenderers_QuoteEscaping pins the %q escaping on the path-bearing renderers so
+// a refactor to %s (which would re-open the SBPL-injection class for paths) fails the
+// build (AC-0058 / F15).
+func TestPathRenderers_QuoteEscaping(t *testing.T) {
+	cfg, err := RenderConfigReadOnlyFragment([]string{`/tmp/a"b`})
+	if err != nil {
+		t.Fatalf("RenderConfigReadOnlyFragment: %v", err)
+	}
+	if !strings.Contains(cfg, `(literal "/tmp/a\"b")`) {
+		t.Errorf("config-ro fragment must %%q-escape the embedded quote:\n%s", cfg)
+	}
+
+	ca, err := RenderCAReadFragment(`/tmp/c"a/cert.pem`)
+	if err != nil {
+		t.Fatalf("RenderCAReadFragment: %v", err)
+	}
+	if !strings.Contains(ca, `\"`) {
+		t.Errorf("ca fragment must %%q-escape the embedded quote:\n%s", ca)
+	}
+}
+
 func TestRenderProxyFragment(t *testing.T) {
 	tests := []struct {
 		name    string
