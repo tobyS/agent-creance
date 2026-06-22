@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // ProcessManager manages standalone host processes BY PID — distinct from
@@ -35,6 +37,14 @@ type ProcessManager interface {
 	// Signal sends sig to a single pid via kill(pid, sig). A process that is
 	// already gone (ESRCH) is not an error. Used to SIGTERM the proxy on last-out.
 	Signal(pid int, sig os.Signal) error
+	// StartTime returns pid's process start time as unix microseconds — a stable
+	// per-process identity that changes when a PID is recycled into a different
+	// process. It is the second identity factor for attached agents (the proxy
+	// already gets one via a port probe): pruneDead compares the live process's
+	// start time against the value recorded in the lock at attach. A non-nil error
+	// means the start time could not be read (e.g. the process is gone), which
+	// callers treat as "not the recorded process".
+	StartTime(pid int) (int64, error)
 }
 
 // OSProcessManager is the production ProcessManager.
@@ -86,4 +96,19 @@ func (OSProcessManager) Signal(pid int, sig os.Signal) error {
 		return fmt.Errorf("sysdep: signal pid %d: %w", pid, err)
 	}
 	return nil
+}
+
+func (OSProcessManager) StartTime(pid int) (int64, error) {
+	if pid <= 0 {
+		return 0, fmt.Errorf("sysdep: start time pid %d: invalid pid", pid)
+	}
+	// kern.proc.pid returns a kinfo_proc whose kp_proc.p_starttime is the wall-clock
+	// time the process started — stable for its lifetime and freshly assigned when
+	// the PID is later recycled.
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil {
+		return 0, fmt.Errorf("sysdep: start time pid %d: %w", pid, err)
+	}
+	tv := kp.Proc.P_starttime
+	return tv.Sec*1_000_000 + int64(tv.Usec), nil
 }

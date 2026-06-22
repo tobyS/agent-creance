@@ -59,3 +59,29 @@ func TestOSProcessManagerSignalGoneIsNotError(t *testing.T) {
 		t.Errorf("Signal(dead pid) = %v, want nil", err)
 	}
 }
+
+func TestOSProcessManagerStartTime(t *testing.T) {
+	var pm OSProcessManager
+	// Our own start time is readable, non-zero, and stable across reads.
+	st1, err := pm.StartTime(os.Getpid())
+	if err != nil {
+		t.Fatalf("StartTime(self): %v", err)
+	}
+	if st1 <= 0 {
+		t.Fatalf("StartTime(self) = %d, want > 0", st1)
+	}
+	st2, err := pm.StartTime(os.Getpid())
+	if err != nil {
+		t.Fatalf("StartTime(self) again: %v", err)
+	}
+	if st1 != st2 {
+		t.Errorf("StartTime(self) not stable: %d != %d", st1, st2)
+	}
+	// An invalid or absent PID errors rather than returning a bogus identity.
+	if _, err := pm.StartTime(0); err == nil {
+		t.Error("StartTime(0) = nil error, want error")
+	}
+	if _, err := pm.StartTime(1 << 30); err == nil {
+		t.Error("StartTime(huge pid) = nil error, want error")
+	}
+}

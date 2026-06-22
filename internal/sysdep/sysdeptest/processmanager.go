@@ -2,6 +2,7 @@ package sysdeptest
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 
@@ -10,8 +11,11 @@ import (
 
 // FakeProcessManager is a scripted ProcessManager. Spawn returns SpawnPID (and
 // records the command); Alive consults the AlivePIDs oracle (absent key ⇒ dead);
-// Signal records the (pid, sig) pair. This lets the proxy lifecycle be tested
-// without spawning or signalling real processes.
+// Signal records the (pid, sig) pair; StartTime consults the StartTimes oracle
+// (absent key ⇒ error). This lets the proxy lifecycle be tested without spawning
+// or signalling real processes — and lets a test model a recycled PID by marking a
+// PID alive while giving it a StartTime that differs from the one recorded in the
+// lock.
 type FakeProcessManager struct {
 	// SpawnPID is the PID returned by Spawn when SpawnErr is nil.
 	SpawnPID int
@@ -21,6 +25,12 @@ type FakeProcessManager struct {
 	AlivePIDs map[int]bool
 	// SignalErr, if set, is returned by Signal.
 	SignalErr error
+	// StartTimes is the start-time oracle: StartTime(pid) returns StartTimes[pid].
+	// An absent key yields an error (the process is "gone"). A value differing from
+	// the start time recorded in the lock models a recycled PID.
+	StartTimes map[int]int64
+	// StartTimeErr, if set, is returned by StartTime regardless of pid.
+	StartTimeErr error
 	// Spawned records each Spawn call, in order.
 	Spawned []StartedCommand
 	// Signaled records each Signal call, in order.
@@ -39,7 +49,7 @@ var _ sysdep.ProcessManager = (*FakeProcessManager)(nil)
 
 // NewFakeProcessManager returns an empty, ready-to-use fake.
 func NewFakeProcessManager() *FakeProcessManager {
-	return &FakeProcessManager{AlivePIDs: map[int]bool{}}
+	return &FakeProcessManager{AlivePIDs: map[int]bool{}, StartTimes: map[int]int64{}}
 }
 
 func (f *FakeProcessManager) Spawn(_ context.Context, name string, args ...string) (int, error) {
@@ -63,4 +73,17 @@ func (f *FakeProcessManager) Signal(pid int, sig os.Signal) error {
 	defer f.mu.Unlock()
 	f.Signaled = append(f.Signaled, SignaledPID{PID: pid, Sig: sig})
 	return f.SignalErr
+}
+
+func (f *FakeProcessManager) StartTime(pid int) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.StartTimeErr != nil {
+		return 0, f.StartTimeErr
+	}
+	st, ok := f.StartTimes[pid]
+	if !ok {
+		return 0, fmt.Errorf("fake: no start time for pid %d", pid)
+	}
+	return st, nil
 }
