@@ -148,7 +148,11 @@ func TestExtractC4StaysUnderEnforcerRoot(t *testing.T) {
 		}
 	}
 	for p := range fs.Dirs {
-		if p != testEnforcerRoot && !strings.HasPrefix(p, prefix) {
+		// MkdirAll faithfully records the enforcer root's ancestors (e.g. /cache),
+		// just as os.MkdirAll creates them; those are expected. Only a dir that is
+		// neither the root, under it, nor an ancestor of it would be an escape.
+		ancestor := strings.HasPrefix(testEnforcerRoot, p+string(filepath.Separator))
+		if p != testEnforcerRoot && !strings.HasPrefix(p, prefix) && !ancestor {
 			t.Errorf("created dir outside enforcer root: %q", p)
 		}
 	}

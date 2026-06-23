@@ -55,6 +55,9 @@ func TestLookupCacheMissFetchesOnceAndWritesCache(t *testing.T) {
 	require.Equal(t, []string{npmURL}, http.Calls)
 
 	// Cache file written atomically (parent dir created, perm 0o644, fetched_at = now).
+	// Under the strict FakeFileSystem, omitting writeCache's MkdirAll before
+	// WriteFile would make this Lookup fail with fs.ErrNotExist — so this case also
+	// guards the MkdirAll-before-WriteFile ordering.
 	require.True(t, fsys.Dirs[npmDir], "cache dir created")
 	require.Equal(t, fs.FileMode(0o644), fsys.Perms[npmPath])
 	require.NotContains(t, fsys.Files, npmPath+".tmp", "temp file renamed away")

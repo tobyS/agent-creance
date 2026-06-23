@@ -8,6 +8,9 @@ import (
 
 func TestFakeFileSystemWriteThenRead(t *testing.T) {
 	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/p", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	if err := f.WriteFile("/p/policy.json", []byte("x"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -32,6 +35,9 @@ func TestFakeFileSystemReadMissingIsNotExist(t *testing.T) {
 
 func TestFakeFileSystemStatReportsFileAndDir(t *testing.T) {
 	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/p", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	if err := f.WriteFile("/p/a", []byte("hello"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -76,6 +82,9 @@ func TestFakeFileSystemWriteErrIsScripted(t *testing.T) {
 
 func TestFakeFileSystemRemoveDeletes(t *testing.T) {
 	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/p", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	if err := f.WriteFile("/p/x", []byte("y"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -89,6 +98,9 @@ func TestFakeFileSystemRemoveDeletes(t *testing.T) {
 
 func TestFakeFileSystemRenameMovesEntry(t *testing.T) {
 	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/p", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 	if err := f.WriteFile("/p/tmp", []byte("v"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -108,6 +120,40 @@ func TestFakeFileSystemRenameMissingIsNotExist(t *testing.T) {
 	f := NewFakeFileSystem()
 	if err := f.Rename("/absent", "/dest"); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Rename(absent) error = %v, want fs.ErrNotExist", err)
+	}
+}
+
+func TestFakeFileSystemWriteMissingParentIsNotExist(t *testing.T) {
+	f := NewFakeFileSystem()
+	// No MkdirAll of /p first: WriteFile must fail like os.WriteFile does.
+	if err := f.WriteFile("/p/policy.json", []byte("x"), 0o600); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("WriteFile(missing parent) error = %v, want fs.ErrNotExist", err)
+	}
+	if _, ok := f.Files["/p/policy.json"]; ok {
+		t.Errorf("failed WriteFile should not have stored content")
+	}
+}
+
+func TestFakeFileSystemMkdirAllCreatesParents(t *testing.T) {
+	f := NewFakeFileSystem()
+	if err := f.MkdirAll("/a/b/c", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, dir := range []string{"/a", "/a/b", "/a/b/c"} {
+		fi, err := f.Stat(dir)
+		if err != nil {
+			t.Fatalf("Stat(%q): %v", dir, err)
+		}
+		if !fi.IsDir() {
+			t.Errorf("Stat(%q).IsDir() = false, want true", dir)
+		}
+	}
+}
+
+func TestFakeFileSystemRemoveMissingIsNotExist(t *testing.T) {
+	f := NewFakeFileSystem()
+	if err := f.Remove("/absent"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Remove(absent) error = %v, want fs.ErrNotExist", err)
 	}
 }
 

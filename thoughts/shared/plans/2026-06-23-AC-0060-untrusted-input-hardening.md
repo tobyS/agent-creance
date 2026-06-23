@@ -104,10 +104,14 @@ readers don't reintroduce leniency.
 
 ### Success criteria
 
-- [ ] `make test` green (whole module) — especially `internal/sysdep/sysdeptest`,
+- [x] `make test` green (whole module) — especially `internal/sysdep/sysdeptest`,
       `internal/cage`, `internal/gitremote`, `internal/generator/registry`.
-- [ ] The three new fake assertions exist and pass.
-- [ ] `make lint` green.
+- [x] The three new fake assertions exist and pass.
+- [x] `make lint` green.
+
+> Note: tightening also surfaced two call sites beyond the research audit, both
+> test-fidelity (not prod bugs): `cli/init_test.go` (seed project root as a dir)
+> and `proxy/extract_test.go` (allow the enforcer root's MkdirAll-created ancestors).
 
 ---
 

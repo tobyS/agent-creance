@@ -80,6 +80,7 @@ func TestParseConfig(t *testing.T) {
 
 func TestDetect_ReadsGitConfig(t *testing.T) {
 	fsys := sysdeptest.NewFakeFileSystem()
+	require.NoError(t, fsys.MkdirAll(filepath.Join("/proj", ".git"), 0o755))
 	require.NoError(t, fsys.WriteFile(filepath.Join("/proj", ".git", "config"),
 		[]byte("[remote \"origin\"]\n\turl = git@github.com:tobyS/agent-creance.git\n"), 0o644))
 

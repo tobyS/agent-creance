@@ -80,15 +80,31 @@ func (f *FakeFileSystem) ReadFile(name string) ([]byte, error) {
 	return nil, fs.ErrNotExist
 }
 
+// WriteFile mirrors os.WriteFile: it fails with fs.ErrNotExist when the parent
+// directory does not exist, so a caller that forgot to MkdirAll first is caught
+// in tests rather than in production.
 func (f *FakeFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err, ok := f.WriteErrs[name]; ok {
 		return err
 	}
+	if parent := filepath.Dir(name); !f.dirExists(parent) {
+		return &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
 	f.Files[name] = append([]byte(nil), data...)
 	f.Perms[name] = perm
 	return nil
+}
+
+// dirExists reports whether dir is a recorded directory, treating the filesystem
+// roots ("/" and ".") as always present — mirroring os, where the root always
+// exists. Caller must hold f.mu.
+func (f *FakeFileSystem) dirExists(dir string) bool {
+	if dir == "/" || dir == "." || dir == "" {
+		return true
+	}
+	return f.Dirs[dir]
 }
 
 func (f *FakeFileSystem) Stat(name string) (fs.FileInfo, error) {
@@ -152,25 +168,37 @@ func (f *FakeFileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
+// MkdirAll mirrors os.MkdirAll: it records name and every missing ancestor up to
+// the root, so a subsequent WriteFile into a nested path succeeds.
 func (f *FakeFileSystem) MkdirAll(name string, perm fs.FileMode) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err, ok := f.MkdirErrs[name]; ok {
 		return err
 	}
-	f.Dirs[name] = true
+	for dir := name; dir != "/" && dir != "." && dir != ""; dir = filepath.Dir(dir) {
+		f.Dirs[dir] = true
+	}
 	f.Perms[name] = perm
 	return nil
 }
 
+// Remove mirrors os.Remove: removing a path that is in none of the maps returns
+// fs.ErrNotExist (callers that want a no-op on a missing path use
+// sysdep.RemoveIfPresent).
 func (f *FakeFileSystem) Remove(name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err, ok := f.RemoveErrs[name]; ok {
 		return err
 	}
+	_, isFile := f.Files[name]
+	if !isFile && !f.Dirs[name] && !f.Symlinks[name] {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrNotExist}
+	}
 	delete(f.Files, name)
 	delete(f.Dirs, name)
+	delete(f.Symlinks, name)
 	delete(f.Perms, name)
 	return nil
 }

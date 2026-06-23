@@ -233,6 +233,13 @@ func (b *Builder) Prepare(in Inputs) error {
 		return fmt.Errorf("cage: create %q: %w", claudeDir, err)
 	}
 
+	// The five profile fragments below all live directly under Layout.Root;
+	// create it up front rather than relying on an earlier caller (proxy.Attach /
+	// compile) having done so.
+	if err := b.fs.MkdirAll(in.Layout.Root, 0o700); err != nil {
+		return fmt.Errorf("cage: create %q: %w", in.Layout.Root, err)
+	}
+
 	frag, err := profile.RenderProxyFragment(in.ProxyPort)
 	if err != nil {
 		return fmt.Errorf("cage: render proxy fragment: %w", err)

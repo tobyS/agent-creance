@@ -147,6 +147,7 @@ type initFixture struct {
 // the bootstrap tests override term.Interactive and the stdin reader.
 func newInitFixture() *initFixture {
 	fs := sysdeptest.NewFakeFileSystem()
+	fs.Dirs[initDir] = true                                       // project root exists (cwd)
 	fs.Files[skillPath] = []byte("# skill")                       // skill present (StatusOK half)
 	fs.Files[setupCAPath] = []byte("-----BEGIN CERTIFICATE-----") // CA PEM → EnsureCA fast path
 
