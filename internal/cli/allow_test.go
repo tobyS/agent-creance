@@ -43,6 +43,7 @@ func newMutateFixture(t *testing.T) *mutateFixture {
 		Paths:  paths,
 		Clock:  sysdeptest.NewFakeClock(time.Unix(0, 0)),
 		HTTP:   sysdeptest.NewFakeHTTPGetter(),
+		Flock:  sysdeptest.NewFakeFlock(),
 	}
 	layout, err := state.New(paths).Resolve(mutProjDir)
 	require.NoError(t, err)

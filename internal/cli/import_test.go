@@ -41,6 +41,7 @@ func newImportFixture(existing string) *importFixture {
 		Clock:    sysdeptest.NewFakeClock(time.Unix(0, 0)),
 		HTTP:     sysdeptest.NewFakeHTTPGetter(),
 		Terminal: term,
+		Flock:    sysdeptest.NewFakeFlock(),
 	}
 	return &importFixture{app: app, fs: fs, term: term, out: out}
 }

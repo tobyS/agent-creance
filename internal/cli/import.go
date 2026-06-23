@@ -53,53 +53,59 @@ func runImport(ctx context.Context, app *App, dir, file string, yes bool) error 
 	}
 
 	dest := filepath.Join(dir, configFile)
-	data, err := app.FS.ReadFile(dest)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("read %s: %w", dest, err)
-		}
-		data = nil // no project config yet — the merge synthesizes one
-	}
-
-	out, changed, err := applyFragment(data, frag)
-	if err != nil {
-		return err
-	}
-	if note := ignoredSectionsNote(frag); note != "" {
-		fmt.Fprintln(app.Stdout, note)
-	}
-	if !changed {
-		fmt.Fprintf(app.Stdout, "Nothing to import — %s already contains these entries.\n", configFile)
-		return nil
-	}
-
-	fmt.Fprintf(app.Stdout, "\nResulting %s:\n\n%s\n", configFile, string(out))
-	if !yes {
-		if !app.Terminal.IsInteractive() {
-			fmt.Fprintln(app.Stdout, "Not writing: re-run with --yes to apply these changes non-interactively.")
-			return nil
-		}
-		ok, err := confirm(app, fmt.Sprintf("Write these changes to %s?", configFile))
+	// Hold the config lock across read → preview → confirm → write so the merge the
+	// engineer reviews is exactly what gets written and no concurrent allow/deny run
+	// clobbers it (AC-0059 F9). import is interactive and rarely concurrent, so holding
+	// the lock through the prompt is an acceptable trade for that consistency.
+	return withConfigLock(app, dest, func() error {
+		data, err := app.FS.ReadFile(dest)
 		if err != nil {
-			return fmt.Errorf("read confirmation: %w", err)
+			if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("read %s: %w", dest, err)
+			}
+			data = nil // no project config yet — the merge synthesizes one
 		}
-		if !ok {
-			fmt.Fprintln(app.Stdout, "Import cancelled; no changes written.")
+
+		out, changed, err := applyFragment(data, frag)
+		if err != nil {
+			return err
+		}
+		if note := ignoredSectionsNote(frag); note != "" {
+			fmt.Fprintln(app.Stdout, note)
+		}
+		if !changed {
+			fmt.Fprintf(app.Stdout, "Nothing to import — %s already contains these entries.\n", configFile)
 			return nil
 		}
-	}
 
-	if err := app.FS.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(dest), err)
-	}
-	if err := writeFileAtomic(app.FS, dest, out, configFilePerm); err != nil {
-		return fmt.Errorf("write %s: %w", dest, err)
-	}
-	if err := recompile(ctx, app, dir); err != nil {
-		return fmt.Errorf("imported config into %s, but recompiling the policy failed: %w", configFile, err)
-	}
-	fmt.Fprintf(app.Stdout, "%s Imported config into %s; policy recompiled\n", app.OutStyle.OK("✓"), configFile)
-	return nil
+		fmt.Fprintf(app.Stdout, "\nResulting %s:\n\n%s\n", configFile, string(out))
+		if !yes {
+			if !app.Terminal.IsInteractive() {
+				fmt.Fprintln(app.Stdout, "Not writing: re-run with --yes to apply these changes non-interactively.")
+				return nil
+			}
+			ok, err := confirm(app, fmt.Sprintf("Write these changes to %s?", configFile))
+			if err != nil {
+				return fmt.Errorf("read confirmation: %w", err)
+			}
+			if !ok {
+				fmt.Fprintln(app.Stdout, "Import cancelled; no changes written.")
+				return nil
+			}
+		}
+
+		if err := app.FS.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(dest), err)
+		}
+		if err := writeFileAtomic(app.FS, dest, out, configFilePerm); err != nil {
+			return fmt.Errorf("write %s: %w", dest, err)
+		}
+		if err := recompile(ctx, app, dir); err != nil {
+			return fmt.Errorf("imported config into %s, but recompiling the policy failed: %w", configFile, err)
+		}
+		fmt.Fprintf(app.Stdout, "%s Imported config into %s; policy recompiled\n", app.OutStyle.OK("✓"), configFile)
+		return nil
+	})
 }
 
 // applyFragment splices the fragment's egress allow/deny rules and host_services

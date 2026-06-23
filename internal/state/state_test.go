@@ -382,6 +382,112 @@ func TestLayoutForRootTakesHashFromBaseAndDerivesPaths(t *testing.T) {
 	}
 }
 
+func TestConfigLocksRootHonoursXDGThenFallsBackToHome(t *testing.T) {
+	cases := []struct {
+		name string
+		xdg  string
+		home string
+		want string
+	}{
+		{"xdg set", "/xdg/cache", "/home/u", "/xdg/cache/agent-creance/config-locks"},
+		{"xdg empty -> home/.cache", "", "/home/u", "/home/u/.cache/agent-creance/config-locks"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := sysdeptest.NewFakePathResolver()
+			fake.HomeDir = tc.home
+			if tc.xdg != "" {
+				fake.Env["XDG_CACHE_HOME"] = tc.xdg
+			}
+			got, err := New(fake).ConfigLocksRoot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("ConfigLocksRoot = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfigLocksRootErrorsWhenCacheRootUnknown(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeErr = errors.New("boom") // and XDG_CACHE_HOME unset
+	if _, err := New(fake).ConfigLocksRoot(); err == nil {
+		t.Error("want error when cache root cannot be determined, got nil")
+	}
+}
+
+func TestConfigLockIsStablePerTargetAndUnderConfigLocksRoot(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeDir = "/home/u"
+	r := New(fake)
+
+	root, err := r.ConfigLocksRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a1, err := r.ConfigLock("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("ConfigLock: %v", err)
+	}
+	// Same target → same lock (so two runs serialise on one file).
+	a2, err := r.ConfigLock("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a1 != a2 {
+		t.Errorf("same target gave different locks: %q != %q", a1, a2)
+	}
+	// Distinct targets → distinct locks (so unrelated edits never contend).
+	b, err := r.ConfigLock("/home/u/.config/agent-creance.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a1 == b {
+		t.Errorf("distinct targets shared a lock: %q", a1)
+	}
+	for _, p := range []string{a1, b} {
+		if filepath.Dir(p) != root {
+			t.Errorf("lock %q not under ConfigLocksRoot %q", p, root)
+		}
+		if filepath.Ext(p) != ".lock" {
+			t.Errorf("lock %q does not end in .lock", p)
+		}
+	}
+}
+
+func TestConfigLockMadeAbsoluteFromCwd(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeDir = "/home/u"
+	fake.Cwd = "/proj"
+	r := New(fake)
+
+	// A relative target is made absolute against the cwd, so it maps to the same
+	// lock as the equivalent absolute path.
+	rel, err := r.ConfigLock(".agent-creance.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs, err := r.ConfigLock("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel != abs {
+		t.Errorf("relative and absolute target gave different locks: %q != %q", rel, abs)
+	}
+}
+
+func TestConfigLockErrorsWhenAbsFails(t *testing.T) {
+	fake := sysdeptest.NewFakePathResolver()
+	fake.HomeDir = "/home/u"
+	fake.AbsErr = errors.New("boom")
+	if _, err := New(fake).ConfigLock("rel.yaml"); err == nil {
+		t.Error("want error when Abs fails, got nil")
+	}
+}
+
 func TestResolveErrors(t *testing.T) {
 	sentinel := errors.New("boom")
 

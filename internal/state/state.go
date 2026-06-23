@@ -34,6 +34,7 @@ const (
 	registriesSubdir   = "registries"
 	generatorsSubdir   = "generators"
 	enforcerSubdir     = "enforcer"
+	configLocksSubdir  = "config-locks"
 	policyJSONName     = "policy.json"
 	networkSBName      = "network.sb"
 	proxyProfileSBName = "proxy.sb"
@@ -193,6 +194,38 @@ func (r *Resolver) EnforcerRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(cache, appCacheSubdir, enforcerSubdir), nil
+}
+
+// ConfigLocksRoot returns <cache>/agent-creance/config-locks — the cross-project
+// home of the advisory lock files that serialize config mutations (allow/deny/import,
+// AC-0059 F9). Like RegistriesRoot/GeneratorsRoot/EnforcerRoot it is a sibling of
+// projects/<hash>/ and intentionally not per-project: the lock is keyed by the target
+// config file, so two different projects mutating the shared global config
+// (~/.config/agent-creance.yaml) contend on the same lock. The caller creates the
+// directory and acquires the lock through the sysdep.Flock seam.
+func (r *Resolver) ConfigLocksRoot() (string, error) {
+	cache, err := r.cacheRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, appCacheSubdir, configLocksSubdir), nil
+}
+
+// ConfigLock returns the advisory lock path that serializes mutations of the config
+// file at target. The target's absolute path is hashed (the same scheme projects use)
+// so the same file always maps to the same lock regardless of the caller's working
+// directory, and distinct targets never contend. target need not exist yet (a mutation
+// may create the config), so it is made absolute rather than symlink-resolved.
+func (r *Resolver) ConfigLock(target string) (string, error) {
+	abs, err := r.paths.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("state: absolute path for %q: %w", target, err)
+	}
+	root, err := r.ConfigLocksRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, hashPath(abs)+".lock"), nil
 }
 
 // cacheRoot returns the base cache directory, honouring XDG_CACHE_HOME when set and

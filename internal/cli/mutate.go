@@ -95,36 +95,65 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 // reported without writing or recompiling. The recompile forces a policy.json rewrite
 // (the edit changed the compiler's input hash) so a running proxy hot-reloads.
 func applyAndRecompile(ctx context.Context, app *App, dir, path, fileLabel, subject, verb string, apply func(src []byte) (out []byte, changed bool, err error)) error {
-	data, err := app.FS.ReadFile(path)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("read %s: %w", path, err)
+	return withConfigLock(app, path, func() error {
+		// Read fresh under the lock: config.AppendRule re-validates against exactly these
+		// bytes, so a rule appended by a concurrent run that already released the lock is
+		// seen here and preserved rather than clobbered.
+		data, err := app.FS.ReadFile(path)
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("read %s: %w", path, err)
+			}
+			data = nil // absent target (e.g. first --once, or no global yet) — create it
 		}
-		data = nil // absent target (e.g. first --once, or no global yet) — create it
-	}
 
-	out, changed, err := apply(data)
+		out, changed, err := apply(data)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			fmt.Fprintf(app.Stdout, "%s is already %s in %s; nothing to do\n", subject, verb, fileLabel)
+			return nil
+		}
+
+		if err := app.FS.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+		}
+		if err := writeFileAtomic(app.FS, path, out, configFilePerm); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+
+		if err := recompile(ctx, app, dir); err != nil {
+			return fmt.Errorf("%s %s in %s, but recompiling the policy failed: %w", verb, subject, fileLabel, err)
+		}
+
+		fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, subject, fileLabel)
+		return nil
+	})
+}
+
+// withConfigLock serializes a config read-modify-write against concurrent
+// allow/deny/import runs (and a developer's editor) by holding an exclusive advisory
+// lock for the duration of fn. The lock is a separate file in the out-of-tree cache
+// (state.ConfigLock), keyed by the target path — deliberately not the config file
+// itself, because the config is replaced via temp+rename and a rename swaps the inode
+// out from under an flock, silently breaking exclusion. fn still writes the config
+// atomically; the lock only guarantees no two mutations interleave and lose a rule
+// (the dangerous case being a dropped deny_always, AC-0059 F9).
+func withConfigLock(app *App, target string, fn func() error) error {
+	lockPath, err := state.New(app.Paths).ConfigLock(target)
 	if err != nil {
 		return err
 	}
-	if !changed {
-		fmt.Fprintf(app.Stdout, "%s is already %s in %s; nothing to do\n", subject, verb, fileLabel)
-		return nil
+	if err := app.FS.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(lockPath), err)
 	}
-
-	if err := app.FS.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+	lf, err := app.Flock.Acquire(lockPath)
+	if err != nil {
+		return fmt.Errorf("lock %s: %w", lockPath, err)
 	}
-	if err := writeFileAtomic(app.FS, path, out, configFilePerm); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	if err := recompile(ctx, app, dir); err != nil {
-		return fmt.Errorf("%s %s in %s, but recompiling the policy failed: %w", verb, subject, fileLabel, err)
-	}
-
-	fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, subject, fileLabel)
-	return nil
+	defer func() { _ = lf.Release() }()
+	return fn()
 }
 
 // recompile rebuilds the project's policy.json. The compiler is idempotent and the
