@@ -20,14 +20,28 @@ func TestValidateInclude(t *testing.T) {
 		require.NoError(t, l.ValidateInclude(validProjectConfig, "./base.yaml"))
 	})
 
-	t.Run("absolute path", func(t *testing.T) {
-		l, _ := newLoader(map[string]string{"/shared/frag.yaml": goodFragment})
-		require.NoError(t, l.ValidateInclude(validProjectConfig, "/shared/frag.yaml"))
+	t.Run("absolute path inside the project subtree", func(t *testing.T) {
+		l, _ := newLoader(map[string]string{"/proj/shared/frag.yaml": goodFragment})
+		require.NoError(t, l.ValidateInclude(validProjectConfig, "/proj/shared/frag.yaml"))
 	})
 
-	t.Run("home-relative path", func(t *testing.T) {
+	t.Run("absolute path outside scope rejected", func(t *testing.T) {
+		// AC-0059 (F8): an absolute include outside the project subtree and ~/.config
+		// is rejected before it is read, so `include` never commits a leak surface.
+		l, _ := newLoader(map[string]string{"/shared/frag.yaml": goodFragment})
+		err := l.ValidateInclude(validProjectConfig, "/shared/frag.yaml")
+		require.ErrorIs(t, err, ErrIncludeOutOfScope)
+	})
+
+	t.Run("home-relative path outside scope rejected", func(t *testing.T) {
 		l, _ := newLoader(map[string]string{testHome + "/baseline.yaml": goodFragment})
-		require.NoError(t, l.ValidateInclude(validProjectConfig, "~/baseline.yaml"))
+		err := l.ValidateInclude(validProjectConfig, "~/baseline.yaml")
+		require.ErrorIs(t, err, ErrIncludeOutOfScope)
+	})
+
+	t.Run("path under the global config dir allowed", func(t *testing.T) {
+		l, _ := newLoader(map[string]string{testHome + "/.config/baseline.yaml": goodFragment})
+		require.NoError(t, l.ValidateInclude(validProjectConfig, "~/.config/baseline.yaml"))
 	})
 
 	t.Run("missing target errors naming the resolved path", func(t *testing.T) {

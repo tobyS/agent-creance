@@ -178,7 +178,10 @@ func (l *Loader) collectFiles(path, home string, optional bool, seen map[string]
 
 	stack = append(stack, canon)
 	for _, inc := range cfg.Include {
-		incPath := l.resolveIncludePath(abs, home, inc)
+		incPath, err := l.resolveIncludePath(abs, home, inc)
+		if err != nil {
+			return fmt.Errorf("config: %s: %w", path, err)
+		}
 		if err := l.collectFiles(incPath, home, false /*required*/, seen, out, stack, depth+1); err != nil {
 			return err
 		}
@@ -234,7 +237,10 @@ func (l *Loader) resolve(path, home string, optional bool, stack []string, depth
 	stack = append(stack, canon)
 	acc := Config{}
 	for _, inc := range cfg.Include {
-		incPath := l.resolveIncludePath(abs, home, inc)
+		incPath, err := l.resolveIncludePath(abs, home, inc)
+		if err != nil {
+			return nil, fmt.Errorf("config: %s: %w", path, err)
+		}
 		resolved, err := l.resolve(incPath, home, false /*required*/, stack, depth+1)
 		if err != nil {
 			return nil, err
@@ -264,7 +270,10 @@ func (l *Loader) ValidateInclude(declaringPath, inc string) error {
 	if err != nil {
 		return fmt.Errorf("config: resolve path %s: %w", declaringPath, err)
 	}
-	incPath := l.resolveIncludePath(abs, home, inc)
+	incPath, err := l.resolveIncludePath(abs, home, inc)
+	if err != nil {
+		return err
+	}
 
 	data, err := l.fs.ReadFile(incPath)
 	if err != nil {
@@ -282,15 +291,46 @@ func (l *Loader) ValidateInclude(declaringPath, inc string) error {
 // resolveIncludePath turns an include: entry into a path to read. A leading ~/ expands
 // against the home directory; an absolute path is used verbatim; a relative path is
 // resolved against the directory of the file that declared the include.
-func (l *Loader) resolveIncludePath(declaringAbs, home, inc string) string {
+//
+// The resolved path is then confined (AC-0059, F8): it must lie within the declaring
+// file's own directory subtree or within the global config dir (~/.config). An
+// absolute, ~/, or ..-escaping include that lands outside both is rejected with
+// ErrIncludeOutOfScope so a cloned, untrusted .agent-creance.yaml cannot read
+// arbitrary user files. The implicit global config file is loaded as a root path (not
+// through here), so it is unaffected; only includes it *declares* pass through this
+// check, and they are allowed via the ~/.config grant. The error names the include and
+// its resolved path — never the file's contents — so an out-of-scope target is rejected
+// before it is ever read or parsed.
+func (l *Loader) resolveIncludePath(declaringAbs, home, inc string) (string, error) {
+	var resolved string
 	switch {
 	case strings.HasPrefix(inc, "~/"):
-		return filepath.Join(home, inc[len("~/"):])
+		resolved = filepath.Join(home, inc[len("~/"):])
 	case filepath.IsAbs(inc):
-		return inc
+		resolved = inc
 	default:
-		return filepath.Join(filepath.Dir(declaringAbs), inc)
+		resolved = filepath.Join(filepath.Dir(declaringAbs), inc)
 	}
+
+	declaringDir := filepath.Dir(declaringAbs)
+	globalDir := filepath.Join(home, ".config")
+	if pathWithin(declaringDir, resolved) || pathWithin(globalDir, resolved) {
+		return resolved, nil
+	}
+	return "", fmt.Errorf("%w: %q resolves to %q (allowed: under %s or %s)",
+		ErrIncludeOutOfScope, inc, resolved, declaringDir, globalDir)
+}
+
+// pathWithin reports whether target is dir itself or lies below it. Both paths are
+// expected to be absolute and cleaned (filepath.Join/Dir produce cleaned paths); the
+// check is lexical, which is sufficient here because the include scope is decided
+// before any read so there is no on-disk symlink to resolve yet.
+func pathWithin(dir, target string) bool {
+	rel, err := filepath.Rel(dir, target)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 // renderCycle formats the resolution stack plus the revisited node as a readable

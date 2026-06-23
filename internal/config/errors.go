@@ -20,6 +20,12 @@ var (
 	// ErrMaxIncludeDepth is returned when an include: chain nests deeper than
 	// maxIncludeDepth, guarding against pathological (acyclic) chains.
 	ErrMaxIncludeDepth = errors.New("config: include depth limit exceeded")
+	// ErrIncludeOutOfScope is returned when an include: path resolves outside the
+	// allowed scope: the declaring file's directory subtree or the global config
+	// dir (~/.config). It stops a cloned, untrusted project's config from pulling in
+	// arbitrary user-readable files (~/.ssh, ~/.aws, /etc/...) — an unintended
+	// read-and-leak surface for a confinement tool (AC-0059, F8).
+	ErrIncludeOutOfScope = errors.New("config: include path out of scope")
 )
 
 // ValidationError aggregates one or more human-readable problems with a config

@@ -205,15 +205,16 @@ func TestIncludeAddedReconcilesWatchedDirs(t *testing.T) {
 		projectPath: "network:\n  egress:\n    allow:\n      - host: react.dev\n",
 	}, reloadResult{changed: true, summary: "ok"})
 
-	// Simulate the user's edit: the project now includes a fragment in a new dir.
-	h.fsys.Files[projectPath] = []byte("include:\n  - /other/frag.yaml\n")
-	h.fsys.Files["/other/frag.yaml"] = []byte("network:\n  egress:\n    allow:\n      - host: x.example\n")
+	// Simulate the user's edit: the project now includes a fragment in a new
+	// (in-scope) subdir — include paths are confined to the project subtree (F8).
+	h.fsys.Files[projectPath] = []byte("include:\n  - other/frag.yaml\n")
+	h.fsys.Files["/proj/other/frag.yaml"] = []byte("network:\n  egress:\n    allow:\n      - host: x.example\n")
 
 	h.send(projectPath, sysdep.FileWrite)
 
 	require.Eventually(t, func() bool {
 		for _, d := range h.fw.Added() {
-			if d == "/other" {
+			if d == "/proj/other" {
 				return true
 			}
 		}

@@ -342,19 +342,116 @@ func TestResolveFiles_DiamondDeduped(t *testing.T) {
 	}
 }
 
-func TestResolveFiles_AbsoluteAndHomeIncludes(t *testing.T) {
+func TestResolveFiles_AbsoluteAndHomeIncludesRejected(t *testing.T) {
+	// AC-0059 (F8): an absolute include and a ~/ include that land outside the project
+	// subtree and ~/.config are out of scope — a confinement tool must not let a cloned
+	// repo's config pull in arbitrary user-readable files. (Previously honored.)
 	l, _ := newLoader(map[string]string{
-		"/proj/.agent-creance.yaml": "include:\n  - /etc/ac/abs.yaml\n  - ~/frag.yaml\n",
+		"/proj/.agent-creance.yaml": "include:\n  - /etc/ac/abs.yaml\n",
 		"/etc/ac/abs.yaml":          "network:\n  egress:\n    allow:\n      - host: abs.example\n",
+	})
+	_, err := l.ResolveFiles("/proj/.agent-creance.yaml")
+	if !errors.Is(err, ErrIncludeOutOfScope) {
+		t.Fatalf("err = %v, want ErrIncludeOutOfScope", err)
+	}
+}
+
+func TestLoad_IncludeRelativeInScopeStillWorks(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - sub/team.yaml\n",
+		"/proj/sub/team.yaml":       "network:\n  egress:\n    allow:\n      - host: team.example\n",
+	})
+	cfg, err := l.Load("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if hosts := allowHosts(cfg); !reflect.DeepEqual(hosts, []string{"team.example"}) {
+		t.Errorf("allow hosts = %v, want [team.example] (in-scope relative include)", hosts)
+	}
+}
+
+func TestLoad_IncludeParentEscapeRejected(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - ../outside.yaml\n",
+		"/outside.yaml":             "network:\n  egress:\n    allow:\n      - host: outside.example\n",
+	})
+	_, err := l.Load("/proj/.agent-creance.yaml")
+	if !errors.Is(err, ErrIncludeOutOfScope) {
+		t.Fatalf("err = %v, want ErrIncludeOutOfScope for ..-escape", err)
+	}
+}
+
+func TestLoad_IncludeAbsoluteEscapeRejected(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - /etc/secret.yaml\n",
+	})
+	_, err := l.Load("/proj/.agent-creance.yaml")
+	if !errors.Is(err, ErrIncludeOutOfScope) {
+		t.Fatalf("err = %v, want ErrIncludeOutOfScope for absolute escape", err)
+	}
+}
+
+func TestLoad_IncludeHomeEscapeRejected(t *testing.T) {
+	// ~/frag.yaml expands to /home/toby/frag.yaml — in the home dir but outside both
+	// the project subtree and ~/.config, so it is rejected.
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - ~/frag.yaml\n",
 		testHome + "/frag.yaml":     "network:\n  egress:\n    allow:\n      - host: home.example\n",
 	})
-	got, err := l.ResolveFiles("/proj/.agent-creance.yaml")
-	if err != nil {
-		t.Fatalf("ResolveFiles: %v", err)
+	_, err := l.Load("/proj/.agent-creance.yaml")
+	if !errors.Is(err, ErrIncludeOutOfScope) {
+		t.Fatalf("err = %v, want ErrIncludeOutOfScope for ~/ escape", err)
 	}
-	want := []string{"/proj/.agent-creance.yaml", "/etc/ac/abs.yaml", testHome + "/frag.yaml"}
-	if !sortedEqual(got, want) {
-		t.Errorf("files = %v, want %v", got, want)
+}
+
+func TestLoad_IncludeIntoGlobalConfigDirAllowed(t *testing.T) {
+	// A project file may deliberately include a file under ~/.config (the global
+	// config dir) — that grant keeps shared cross-project config working.
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml":                     "include:\n  - ~/.config/agent-creance-shared.yaml\n",
+		testHome + "/.config/agent-creance-shared.yaml": "network:\n  egress:\n    allow:\n      - host: shared.example\n",
+	})
+	cfg, err := l.Load("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if hosts := allowHosts(cfg); !reflect.DeepEqual(hosts, []string{"shared.example"}) {
+		t.Errorf("allow hosts = %v, want [shared.example] (~/.config include allowed)", hosts)
+	}
+}
+
+func TestLoad_ImplicitGlobalAndItsIncludeUnaffected(t *testing.T) {
+	// The implicit global is loaded as a root (not via resolveIncludePath), and an
+	// include it declares resolves under ~/.config — both must still load.
+	l, _ := newLoader(map[string]string{
+		globalPath:                     "include:\n  - net.yaml\n",
+		testHome + "/.config/net.yaml": "network:\n  egress:\n    allow:\n      - host: global.example\n",
+		"/proj/.agent-creance.yaml":    "network:\n  egress:\n    allow:\n      - host: proj.example\n",
+	})
+	cfg, err := l.Load("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"global.example", "proj.example"}
+	if hosts := allowHosts(cfg); !reflect.DeepEqual(hosts, want) {
+		t.Errorf("allow hosts = %v, want %v (global include under ~/.config honored)", hosts, want)
+	}
+}
+
+func TestLoad_OutOfScopeIncludeErrorHasNoFileContents(t *testing.T) {
+	// The out-of-scope target is rejected before it is read, so its contents can never
+	// surface in the error (which would otherwise be a read-and-leak surface).
+	const secret = "TOP-SECRET-PRIVATE-KEY-MATERIAL"
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "include:\n  - /etc/secret.yaml\n",
+		"/etc/secret.yaml":          secret,
+	})
+	_, err := l.Load("/proj/.agent-creance.yaml")
+	if !errors.Is(err, ErrIncludeOutOfScope) {
+		t.Fatalf("err = %v, want ErrIncludeOutOfScope", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Errorf("error leaked file contents: %v", err)
 	}
 }
 
