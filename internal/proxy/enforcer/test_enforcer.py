@@ -286,9 +286,9 @@ def test_malformed_reload_keeps_last_good(tmp_path):
 # --- audit logging (AC-0018) --------------------------------------------------
 
 
-def test_intercept_allow_logs_entry_and_scrubs_url(addon, audit_path):
+def test_intercept_allow_logs_entry_and_strips_query(addon, audit_path):
     # An allowed request with a token in the query string: the response hook logs a
-    # full entry, and the sensitive value must not reach the log.
+    # full entry, and the whole query (so the token) must not reach the log.
     flow = _https_flow("react.dev", "/learn?api_key=SEKRET")
     addon.request(flow)
     assert flow.response is None  # allow forwards untouched
@@ -302,7 +302,7 @@ def test_intercept_allow_logs_entry_and_scrubs_url(addon, audit_path):
     assert e["method"] == "GET"
     assert e["status"] == 200
     assert e["rule"] == {"list": "allow", "index": 0}
-    assert "api_key=REDACTED" in e["url"]
+    assert e["url"] == "https://react.dev/learn"  # query dropped entirely
     assert "SEKRET" not in audit_path.read_text(encoding="utf-8")
 
 

@@ -1,5 +1,5 @@
-"""Tests for the egress audit writer: entry schema goldens, URL scrubbing, the 0600
-mode, and rotation (count preserved across the flip).
+"""Tests for the egress audit writer: entry schema goldens, URL query stripping, the
+0600 mode, and rotation (count preserved across the flip).
 
 The schema goldens mirror the Go ``-update`` convention (pass ``--update`` to
 regenerate ``testdata/egress_*.jsonl.golden``). The writer tests use ``tmp_path`` and
@@ -56,7 +56,7 @@ def test_soft_deny_entry_has_null_rule():
     assert json.loads(audit.encode(entry))["rule"] is None
 
 
-# --- URL scrubbing -------------------------------------------------------------
+# --- URL query stripping -------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -64,29 +64,35 @@ def test_soft_deny_entry_has_null_rule():
     [
         # No query: returned unchanged.
         ("https://h.test/a/b", "https://h.test/a/b"),
-        # Sensitive value redacted, name kept.
-        ("https://h.test/p?api_key=abc123", "https://h.test/p?api_key=REDACTED"),
-        # Benign params survive; only the sensitive one is scrubbed.
-        ("https://h.test/p?q=go&token=xyz", "https://h.test/p?q=go&token=REDACTED"),
-        # Case-insensitive parameter name.
-        ("https://h.test/p?API_KEY=abc", "https://h.test/p?API_KEY=REDACTED"),
-        # Multiple sensitive params.
+        # A previously-denylisted name is dropped with the whole query.
+        ("https://h.test/p?api_key=abc123", "https://h.test/p"),
+        # A credential under a name no denylist covered: also gone.
+        ("https://h.test/p?session=abc123", "https://h.test/p"),
+        ("https://h.test/p?jwt=ey.crafted.token", "https://h.test/p"),
+        # AWS-style signed URL: signature and all its companions dropped.
         (
-            "https://h.test/p?access_token=a&secret=b&page=2",
-            "https://h.test/p?access_token=REDACTED&secret=REDACTED&page=2",
+            "https://h.test/o?X-Amz-Signature=deadbeef&X-Amz-Credential=AKIA",
+            "https://h.test/o",
         ),
+        # Uppercase / mixed-case names are not special — everything goes.
+        ("https://h.test/p?REFRESH_TOKEN=zzz", "https://h.test/p"),
+        # Benign params are dropped too (the path keeps the debugging value).
+        ("https://h.test/p?q=go&page=2", "https://h.test/p"),
+        # Fragment is dropped as well.
+        ("https://h.test/p?token=x#frag", "https://h.test/p"),
     ],
 )
-def test_scrub_url(url, expected):
-    assert audit.scrub_url(url) == expected
+def test_strip_query(url, expected):
+    assert audit.strip_query(url) == expected
 
 
-def test_request_entry_scrubs_url():
+def test_request_entry_strips_query():
     entry = audit.request_entry(
-        _TS, "GET", "https://h.test/p?token=TOPSECRET", "allow", None, 200
+        _TS, "GET", "https://h.test/p?session=TOPSECRET&jwt=ey.secret", "allow", None, 200
     )
     assert "TOPSECRET" not in json.dumps(entry)
-    assert entry["url"] == "https://h.test/p?token=REDACTED"
+    assert "ey.secret" not in json.dumps(entry)
+    assert entry["url"] == "https://h.test/p"
 
 
 # --- writer: mode + append -----------------------------------------------------

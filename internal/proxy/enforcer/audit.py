@@ -14,17 +14,18 @@ Two entry shapes, matching what the proxy can actually see:
     termination the proxy sees only the CONNECT/SNI host -- no path, method, status,
     and (for an ignored connection) no byte counts at all.
 
-Redaction: the listed fields carry no headers, and sensitive query-string tokens are
-scrubbed out of the logged URL (the value replaced with ``REDACTED``, the parameter
-kept so the audit still shows a token was present), so the audit trail is not itself
-a credential leak.
+Redaction: the listed fields carry no headers at all, and the logged URL has its
+query string stripped entirely (scheme/host/path kept for debugging). A query is
+where credentials ride -- bearer tokens, signed-URL signatures, session ids -- under
+arbitrary parameter names a denylist can't anticipate, so dropping the whole query is
+the safe shape and keeps the audit trail from being itself a credential leak.
 
 Rotation: a write that would push ``egress.jsonl`` past ``DEFAULT_MAX_BYTES`` rotates
 first -- the current file is renamed to ``egress.jsonl.1`` (atomically replacing any
 prior backup) and a fresh current file is started -- capping disk at ~2x the
 threshold per project and never splitting or dropping an entry.
 
-This module imports no mitmproxy: the builders and ``scrub_url`` are pure (golden/
+This module imports no mitmproxy: the builders and ``strip_query`` are pure (golden/
 table tested), and ``AuditLog`` is plain filesystem I/O, so the suite runs without
 mitmproxy installed (mirrors policy.py / responses.py). enforcer.py is the glue that
 calls ``write`` from the request/response/connect hooks.
@@ -36,7 +37,7 @@ import json
 import os
 from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 # Rotate when a write would push the current file past this many bytes. Caps disk at
 # roughly 2x this per project (current + one .1 backup). Injectable so tests can set
@@ -47,51 +48,25 @@ DEFAULT_MAX_BYTES = 500 * 1024 * 1024
 # one logical stream, so this name is part of that contract.
 ROTATED_SUFFIX = ".1"
 
-# Sentinel substituted for a sensitive value (kept so the audit shows a token was
-# present without recording it).
-REDACTED = "REDACTED"
-
-# Query-string parameter names whose VALUE is scrubbed from the logged URL. Matched
-# case-insensitively (HTTP/URL params are not reliably cased). Lowercase here.
-REDACT_QUERY_PARAMS = frozenset(
-    {
-        "token",
-        "access_token",
-        "api_key",
-        "apikey",
-        "key",
-        "secret",
-        "client_secret",
-        "password",
-        "code",
-        "sig",
-        "signature",
-        "auth",
-    }
-)
-
-
 def now_iso() -> str:
     """Current UTC timestamp, ISO 8601. Hooks call this; the pure builders take the
     timestamp as an argument so golden tests stay deterministic."""
     return datetime.now(timezone.utc).isoformat()
 
 
-def scrub_url(url: str) -> str:
-    """Return ``url`` with sensitive query-parameter values replaced by ``REDACTED``.
+def strip_query(url: str) -> str:
+    """Return ``url`` with its query string and fragment removed.
 
-    Only the value is replaced; the parameter name is kept so the audit shows a token
-    was present. Parameter order and everything outside the query string are
-    preserved. A URL with no query is returned unchanged.
+    The query is where credentials ride -- bearer tokens, signed-URL signatures,
+    session ids -- under arbitrary parameter names, so it is dropped entirely rather
+    than scrubbed against a denylist that can't anticipate every name. The scheme,
+    host, and path are kept for debugging value. A URL with no query or fragment is
+    returned unchanged.
     """
     parts = urlsplit(url)
-    if not parts.query:
+    if not parts.query and not parts.fragment:
         return url
-    pairs = parse_qsl(parts.query, keep_blank_values=True)
-    scrubbed = [
-        (k, REDACTED if k.lower() in REDACT_QUERY_PARAMS else v) for k, v in pairs
-    ]
-    return urlunsplit(parts._replace(query=urlencode(scrubbed)))
+    return urlunsplit(parts._replace(query="", fragment=""))
 
 
 def request_entry(
@@ -103,11 +78,12 @@ def request_entry(
     status: int,
 ) -> dict:
     """A full entry for an intercepted (TLS-terminated) request. ``rule`` is the
-    matched rule as ``{"list","index"}`` or None (soft-deny). ``url`` is scrubbed."""
+    matched rule as ``{"list","index"}`` or None (soft-deny). ``url`` has its query
+    string stripped (see ``strip_query``)."""
     return {
         "ts": ts,
         "method": method,
-        "url": scrub_url(url),
+        "url": strip_query(url),
         "decision": decision,
         "rule": rule,
         "status": status,

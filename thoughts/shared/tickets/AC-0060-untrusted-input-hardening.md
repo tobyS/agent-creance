@@ -1,6 +1,6 @@
 # AC-0060: Untrusted-input hardening — audit-log credential leak and hostile-manifest allowlisting
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-22
 **Updated:** 2026-06-23
@@ -82,31 +82,33 @@ real filesystem-ordering behavior.
 ## Acceptance Criteria
 
 ### F7 — audit redaction
-- [ ] A credential carried under an arbitrary query-param name does not appear in the
+- [x] A credential carried under an arbitrary query-param name does not appear in the
       logged audit URL (allowlist, broadened substring redaction, or query stripped —
-      chosen and documented).
-- [ ] `docs/design.md` is updated so the "headers filtered before logging" statement
+      chosen and documented). → query stripped entirely (`strip_query`).
+- [x] `docs/design.md` is updated so the "headers filtered before logging" statement
       matches the implementation (no headers logged; query-param handling described).
 
 ### F11 — registry URL safety
-- [ ] Package names are validated against the registry name charset and/or
+- [x] Package names are validated against the registry name charset and/or
       `url.PathEscape`d per segment before URL construction, for **both** Packagist
-      and npm.
-- [ ] A package name containing URL-significant characters cannot alter the host,
-      path, or query of the outbound registry request.
+      and npm. → both: per-registry `validate()` + `url.PathEscape` per segment.
+- [x] A package name containing URL-significant characters cannot alter the host,
+      path, or query of the outbound registry request. → adversarial `Lookup` tests
+      assert `http.Calls` stays empty.
 
 ### F12 — homepage scoping
-- [ ] A bare-host homepage on a known shared-apex host is not emitted as a host-wide
+- [x] A bare-host homepage on a known shared-apex host is not emitted as a host-wide
       allow (path-scoped, dropped, or lower-trust-flagged — chosen and documented),
-      with the known-shared-host set as data, not per-call code.
-- [ ] Subdomain-isolated and path-carrying homepages keep their current, correct
+      with the known-shared-host set as data, not per-call code. → dropped;
+      `sharedApexHosts` table in `sharedapex.go`.
+- [x] Subdomain-isolated and path-carrying homepages keep their current, correct
       scoping.
 
 ### F14 — fake fidelity
-- [ ] `FakeFileSystem.WriteFile` fails on a missing parent dir; `MkdirAll` creates
+- [x] `FakeFileSystem.WriteFile` fails on a missing parent dir; `MkdirAll` creates
       parents; `Remove` returns an `os.ErrNotExist`-equivalent on a missing path (or
       the divergence is documented and the callers audited).
-- [ ] Existing tests are updated for the stricter fake and continue to pass.
+- [x] Existing tests are updated for the stricter fake and continue to pass.
 
 ## Testing Protocol
 
@@ -192,3 +194,17 @@ for the enforcer.
 - F7, F11, F12 were review-reported; F11/F12 in particular should be confirmed
   against real registry metadata during research before settling the exact charset
   and shared-apex policy.
+
+### 2026-06-23
+
+- Implemented in four phases (research + plan under `thoughts/shared/`). Checkpoint
+  decisions: **F7** drop the query string entirely (`strip_query`, denylist removed);
+  **F11** validate registry names against a per-registry charset **and** `PathEscape`
+  each segment; **F12** drop the rule for a bare-host homepage on a curated
+  shared-apex host (`sharedApexHosts`); **F14** tighten `FakeFileSystem` and fix the
+  `cage.Prepare` root-creation ordering it surfaced.
+- The stricter fake also surfaced two call sites beyond the research audit, both
+  test-fidelity (not prod bugs): `cli/init_test` (project root) and `proxy/extract_test`
+  (enforcer-root ancestors). Fixed.
+- Gate green: `make test` (race), `make test-enforcer` (117 passed), `make lint`,
+  `make build`. Status → Done.

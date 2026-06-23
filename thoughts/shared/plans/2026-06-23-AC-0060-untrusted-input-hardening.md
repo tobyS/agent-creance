@@ -266,20 +266,20 @@ readers don't reintroduce leniency.
 
 ### Success criteria
 
-- [ ] `make test-enforcer` green; new pytest cases prove no credential under any
+- [x] `make test-enforcer` green; new pytest cases prove no credential under any
       param name survives into the logged URL.
-- [ ] The regenerated golden has no query string; diff reviewed.
-- [ ] `docs/design.md:506` matches the implementation (no headers, query stripped).
+- [x] The regenerated golden has no query string; diff reviewed.
+- [x] `docs/design.md:506` matches the implementation (no headers, query stripped).
 
 ---
 
 ## Final verification (all phases)
 
-- [ ] `make test` green (race).
-- [ ] `make test-enforcer` green.
-- [ ] `make lint` green.
-- [ ] `make build` — `bin/agent-creance` reflects the final commit.
-- [ ] Acceptance criteria F7/F11/F12/F14 in the ticket all satisfied.
+- [x] `make test` green (race).
+- [x] `make test-enforcer` green (117 passed).
+- [x] `make lint` green.
+- [x] `make build` — `bin/agent-creance` reflects the final commit.
+- [x] Acceptance criteria F7/F11/F12/F14 in the ticket all satisfied.
 
 ## Testing strategy
 
