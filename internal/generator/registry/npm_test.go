@@ -18,6 +18,20 @@ func TestNPMSourceURL(t *testing.T) {
 	}
 }
 
+func TestNPMValidate(t *testing.T) {
+	valid := []string{"left-pad", "@types/node", "lodash.merge", "foo_bar", "a", "React"}
+	for _, pkg := range valid {
+		require.NoError(t, npmSource{}.validate(pkg), "valid %q", pkg)
+	}
+	invalid := []string{
+		"", "left-pad?x", "left pad", ".hidden", "_priv", "a/b",
+		"@/x", "@scope/", "@scope/a/b", "evil%2f..", "foo#frag", "foo@1",
+	}
+	for _, pkg := range invalid {
+		require.Error(t, npmSource{}.validate(pkg), "invalid %q", pkg)
+	}
+}
+
 func TestNPMParse(t *testing.T) {
 	cases := []struct {
 		name     string

@@ -3,6 +3,9 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
+	"strings"
 )
 
 // packagistSource fetches from Packagist's p2 metadata endpoint
@@ -14,8 +17,30 @@ type packagistSource struct{}
 
 func (packagistSource) name() string { return "packagist" }
 
+// packagistSegment matches one Packagist name segment (vendor or package):
+// alphanumerics separated by single ".", "-", or "_" runs, per Packagist's
+// documented charset. It deliberately excludes URL-significant characters
+// (?, #, @, :, %, /), so a name that passes cannot reshape the request URL.
+var packagistSegment = regexp.MustCompile(`^[a-zA-Z0-9]([._-]?[a-zA-Z0-9]+)*$`)
+
+// validate enforces the Packagist "vendor/package" shape: exactly two segments,
+// each matching the registry name charset.
+func (packagistSource) validate(pkg string) error {
+	vendor, name, ok := strings.Cut(pkg, "/")
+	if !ok || strings.Contains(name, "/") {
+		return fmt.Errorf("registry: invalid packagist package name %q (want vendor/package)", pkg)
+	}
+	if !packagistSegment.MatchString(vendor) || !packagistSegment.MatchString(name) {
+		return fmt.Errorf("registry: invalid packagist package name %q", pkg)
+	}
+	return nil
+}
+
 func (packagistSource) url(pkg string) string {
-	return "https://repo.packagist.org/p2/" + pkg + ".json"
+	// PathEscape each segment as defence in depth; for a validated name this is a
+	// no-op, but it ensures even a future loosening of validate cannot inject.
+	vendor, name, _ := strings.Cut(pkg, "/")
+	return "https://repo.packagist.org/p2/" + url.PathEscape(vendor) + "/" + url.PathEscape(name) + ".json"
 }
 
 type packagistDoc struct {

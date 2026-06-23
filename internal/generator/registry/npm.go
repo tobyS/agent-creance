@@ -3,6 +3,9 @@ package registry
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -16,18 +19,47 @@ type npmSource struct{}
 
 func (npmSource) name() string { return "npm" }
 
+// npmSegment matches one npm name segment (an unscoped name, or a scope/name
+// within a scoped package): starts with an alphanumeric (so never "."/"_"), then
+// alphanumerics or "._~-". It excludes URL-significant characters (?, #, @, :, %,
+// /), so a name that passes cannot reshape the request URL. Legacy mixed-case
+// names are tolerated.
+var npmSegment = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._~-]*$`)
+
+// validate enforces the npm name charset for both unscoped ("name") and scoped
+// ("@scope/name") packages.
+func (npmSource) validate(pkg string) error {
+	if scoped, ok := strings.CutPrefix(pkg, "@"); ok {
+		scope, name, ok := strings.Cut(scoped, "/")
+		if !ok || strings.Contains(name, "/") {
+			return fmt.Errorf("registry: invalid npm package name %q (want @scope/name)", pkg)
+		}
+		if !npmSegment.MatchString(scope) || !npmSegment.MatchString(name) {
+			return fmt.Errorf("registry: invalid npm package name %q", pkg)
+		}
+		return nil
+	}
+	if !npmSegment.MatchString(pkg) {
+		return fmt.Errorf("registry: invalid npm package name %q", pkg)
+	}
+	return nil
+}
+
 func (npmSource) url(pkg string) string {
 	return "https://registry.npmjs.org/" + npmPackagePath(pkg) + "/latest"
 }
 
 // npmPackagePath renders pkg for the registry URL path. A scoped name
-// (@scope/name) must have its single slash percent-encoded; unscoped names need
-// no escaping (npm names are lowercase + [-._]).
+// (@scope/name) keeps its single slash percent-encoded as the lowercase "%2f"
+// the registry serves; each segment is PathEscaped as defence in depth (a no-op
+// for a validated name).
 func npmPackagePath(pkg string) string {
-	if strings.HasPrefix(pkg, "@") {
-		return strings.Replace(pkg, "/", "%2f", 1)
+	if scoped, ok := strings.CutPrefix(pkg, "@"); ok {
+		if scope, name, ok := strings.Cut(scoped, "/"); ok {
+			return url.PathEscape("@"+scope) + "%2f" + url.PathEscape(name)
+		}
 	}
-	return pkg
+	return url.PathEscape(pkg)
 }
 
 // npmVersionDoc is the slice of the /latest version document we care about.

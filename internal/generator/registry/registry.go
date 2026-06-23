@@ -68,6 +68,11 @@ type Metadata struct {
 type source interface {
 	// name is the cache directory segment for this registry ("npm"/"packagist").
 	name() string
+	// validate rejects a package name that does not conform to this registry's
+	// real name charset, so a hostile manifest key cannot reshape the outbound
+	// URL. Called before url(); url() additionally PathEscapes each segment as a
+	// defence in depth.
+	validate(pkg string) error
 	// url is the metadata endpoint for pkg.
 	url(pkg string) string
 	// parse extracts Metadata from a 2xx response body.
@@ -203,6 +208,9 @@ func (c *Client) readFreshCache(path string) (Metadata, bool, error) {
 
 // fetch performs the single network GET and parses the response.
 func (c *Client) fetch(ctx context.Context, pkg string) (Metadata, error) {
+	if err := c.src.validate(pkg); err != nil {
+		return Metadata{}, err
+	}
 	headers := map[string]string{
 		"User-Agent": userAgent,
 		"Accept":     "application/json",

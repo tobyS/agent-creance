@@ -167,9 +167,9 @@ readers don't reintroduce leniency.
 
 ### Success criteria
 
-- [ ] `make test` green; new adversarial cases prove `http.Calls` stays empty for hostile names.
-- [ ] Existing `left-pad` / `@types/node` / `monolog/monolog` URL tests still pass unchanged.
-- [ ] `make lint` green.
+- [x] `make test` green; new adversarial cases prove `http.Calls` stays empty for hostile names.
+- [x] Existing `left-pad` / `@types/node` / `monolog/monolog` URL tests still pass unchanged.
+- [x] `make lint` green.
 
 ---
 

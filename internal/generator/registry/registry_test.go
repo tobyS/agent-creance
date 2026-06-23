@@ -175,6 +175,35 @@ func TestLookupRejectsPathTraversal(t *testing.T) {
 	require.Empty(t, http.Calls, "invalid names never reach the network")
 }
 
+func TestLookupRejectsHostileNamesBeforeNetwork(t *testing.T) {
+	c, _, _, http := newNPMTest()
+	// These pass the cache-path traversal guard but carry URL-significant chars;
+	// the npm charset validator must reject them before any HTTP request.
+	for _, pkg := range []string{
+		"left-pad?x=evil", "left-pad#frag", "left pad", ".hidden",
+		"@scope/name?x=1", "@/name", "evil%2e%2e",
+	} {
+		_, err := c.Lookup(context.Background(), pkg)
+		require.Error(t, err, "pkg %q", pkg)
+	}
+	require.Empty(t, http.Calls, "hostile names never reach the network")
+}
+
+func TestPackagistLookupRejectsHostileNamesBeforeNetwork(t *testing.T) {
+	fsys := sysdeptest.NewFakeFileSystem()
+	clk := sysdeptest.NewFakeClock(baseTime)
+	http := sysdeptest.NewFakeHTTPGetter()
+	c := NewPackagist(fsys, clk, http, testRoot)
+	for _, pkg := range []string{
+		"vendor/pkg?x=https:evil", "vendor/pkg#frag", "vendor/pkg@1",
+		"monolog", "a/b/c", "Vendor/Pkg space",
+	} {
+		_, err := c.Lookup(context.Background(), pkg)
+		require.Error(t, err, "pkg %q", pkg)
+	}
+	require.Empty(t, http.Calls, "hostile names never reach the network")
+}
+
 func TestInvalidateRemovesPresentEntry(t *testing.T) {
 	c, fsys, _, _ := newNPMTest()
 	seedCache(t, fsys, npmPath, baseTime, Metadata{Homepage: "https://cached/"})

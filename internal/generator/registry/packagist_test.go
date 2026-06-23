@@ -14,6 +14,20 @@ func TestPackagistSourceURL(t *testing.T) {
 		packagistSource{}.url("monolog/monolog"))
 }
 
+func TestPackagistValidate(t *testing.T) {
+	valid := []string{"monolog/monolog", "symfony/console", "phpunit/php-code-coverage", "a/b", "Foo/Bar"}
+	for _, pkg := range valid {
+		require.NoError(t, packagistSource{}.validate(pkg), "valid %q", pkg)
+	}
+	invalid := []string{
+		"", "monolog", "a/b/c", "vendor/pkg?x", "vendor/pkg@1", "vendor/pkg#f",
+		"vendor/.pkg", "/abs", "vendor/", "/", "ven dor/pkg",
+	}
+	for _, pkg := range invalid {
+		require.Error(t, packagistSource{}.validate(pkg), "invalid %q", pkg)
+	}
+}
+
 func TestPackagistParse(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join("testdata", "packagist-monolog.json"))
 	require.NoError(t, err)
