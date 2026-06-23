@@ -6,7 +6,7 @@ Plan: `thoughts/shared/plans/2026-06-23-AC-0060-untrusted-input-hardening.md`
 
 - [x] Phase 1 — F14: FakeFileSystem fidelity + cage.Prepare
 - [x] Phase 2 — F11: registry name charset validation + escaping
-- [ ] Phase 3 — F12: shared-apex homepage drop
+- [x] Phase 3 — F12: shared-apex homepage drop
 - [ ] Phase 4 — F7: drop audit query string + reconcile docs
 
 ## Log
@@ -26,3 +26,8 @@ Plan: `thoughts/shared/plans/2026-06-23-AC-0060-untrusted-input-hardening.md`
   segment as defence in depth (existing left-pad/@types/node/monolog URLs
   unchanged). Adversarial Lookup tests prove hostile names never reach the
   network. make test + lint green.
+- 2026-06-23: Phase 3 done. Added sharedapex.go (curated map of path-multiplexed
+  shared apexes + isSharedApex predicate, mirroring the forge-table data pattern);
+  homepageRule now drops a bare-host homepage on a shared-apex host (path-carrying
+  and dedicated bare hosts unchanged). Updated docs/design.md homepage scoping.
+  Generator goldens unchanged. make test + lint green.

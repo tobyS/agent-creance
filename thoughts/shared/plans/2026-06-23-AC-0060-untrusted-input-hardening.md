@@ -218,10 +218,10 @@ readers don't reintroduce leniency.
 
 ### Success criteria
 
-- [ ] `make test` green; new homepage cases pass.
-- [ ] Existing homepage/generator golden tests unchanged (or regenerated + reviewed if a fixture is added).
-- [ ] `docs/design.md` homepage section reflects shared-apex handling.
-- [ ] `make lint` green.
+- [x] `make test` green; new homepage cases pass.
+- [x] Existing homepage/generator golden tests unchanged (no fixture used a shared-apex bare-host homepage; kept the coverage at the focused homepageRule unit level).
+- [x] `docs/design.md` homepage section reflects shared-apex handling.
+- [x] `make lint` green.
 
 ---
 

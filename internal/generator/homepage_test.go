@@ -39,6 +39,22 @@ func TestHomepageRule(t *testing.T) {
 			Rule{Rule: policy.Rule{Host: "example.com", Paths: []string{"/Docs/"}}, Source: "src"},
 			true,
 		},
+		{
+			// F12: a bare host on a known shared apex has no path to scope to and a
+			// host-wide allow would cover every co-tenant, so no rule is emitted.
+			"bare host on shared apex -> dropped",
+			"https://sourceforge.net/",
+			Rule{},
+			false,
+		},
+		{
+			// A path-carrying homepage on the same shared apex is still scoped (the
+			// path branch wins), so it keeps its correct, narrow rule.
+			"path-carrying on shared apex -> path-scoped",
+			"https://sourceforge.net/projects/coollib/",
+			Rule{Rule: policy.Rule{Host: "sourceforge.net", Paths: []string{"/projects/coollib/"}}, Source: "src"},
+			true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
