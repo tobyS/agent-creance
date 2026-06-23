@@ -1,6 +1,6 @@
 # AC-0059: Host-side integrity — confine config includes, make policy writes atomic, verify CA trust soundly
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Large
 **Created:** 2026-06-22
 **Updated:** 2026-06-23
@@ -188,3 +188,19 @@ testscript for CLI, fakes for unit, real tools only under the `integration` tag.
 - Status → In Progress. Research and plan committed. Checkpoint decisions: F8
   confine-and-reject (declaring file's subtree + `~/.config/`), F9 out-of-tree
   per-target advisory lock.
+- Status → Done. All three implemented and verified:
+  - **F8** — `resolveIncludePath` now confines includes to the declaring file's
+    subtree + `~/.config`, rejecting absolute/`~`/`..` escapes with
+    `ErrIncludeOutOfScope` before any read; documented in `docs/design.md`.
+    (Lexical check; symlink-target confinement explicitly out of scope, backed by
+    the in-cage config-write deny.)
+  - **F9** — `allow`/`deny`/`import` wrap their read-modify-write in
+    `withConfigLock` (new out-of-tree `state.ConfigLock`, keyed by target hash),
+    re-reading under the lock; atomic temp+rename unchanged. `-race` test proves a
+    concurrent allow+deny both land.
+  - **F10** — `OSTLSProber` audited sound; `curlProbeArgs` extracted for a static
+    "no `-k`/`--cacert`/`--proxy-insecure`" assertion; integration test proves a
+    fresh untrusted CA → `ProbeUntrusted` (and trusted → trusted) against real
+    mitmproxy/curl.
+  - Gate: `make test` + `make lint` green; F10 integration tests pass (need real
+    mitmproxy/curl, run under `make test-integration`); `make build` green.

@@ -70,18 +70,31 @@ type OSTLSProber struct{}
 
 var _ TLSProber = (*OSTLSProber)(nil)
 
-func (OSTLSProber) ProbeViaProxy(ctx context.Context, proxyURL, targetURL string) (ProbeOutcome, error) {
-	// -sS quiet but still report errors; -o /dev/null discard the body; --proxy
-	// routes the HTTPS request through the throwaway proxy (curl CONNECT-tunnels
-	// and validates the re-signed leaf against the system trust store). We never
-	// pass --cacert / -k: trust must come from the system store, or the probe is
-	// meaningless. --retry-connrefused absorbs the proxy's startup race in the curl
-	// subprocess, so the caller needs no readiness sleep.
-	cmd := exec.CommandContext(ctx, "curl",
+// curlProbeArgs builds the curl argv for the trust probe. It is a pure function so
+// the load-bearing soundness property — that the probe validates the re-signed leaf
+// against the system trust store ONLY — can be asserted by a unit test without
+// running curl: the argv deliberately carries no -k/--insecure (would accept any
+// cert), no --cacert (would trust an extra bundle instead of the system store), and
+// no --proxy-insecure. If any of those crept in, the whole CA verification (and the
+// same check in doctor) would pass spuriously even when the CA is not trusted
+// (AC-0059 F10).
+//
+// -sS is quiet but still reports errors; -o /dev/null discards the body; --proxy
+// routes the HTTPS request through the throwaway proxy (curl CONNECT-tunnels and
+// validates the re-signed leaf against the system trust store). --retry-connrefused
+// absorbs the proxy's startup race in the curl subprocess, so the caller needs no
+// readiness sleep.
+func curlProbeArgs(proxyURL, targetURL string) []string {
+	return []string{
 		"-sS", "-o", "/dev/null",
 		"--proxy", proxyURL,
 		"--retry", "5", "--retry-connrefused", "--retry-delay", "1",
-		targetURL)
+		targetURL,
+	}
+}
+
+func (OSTLSProber) ProbeViaProxy(ctx context.Context, proxyURL, targetURL string) (ProbeOutcome, error) {
+	cmd := exec.CommandContext(ctx, "curl", curlProbeArgs(proxyURL, targetURL)...)
 	err := cmd.Run()
 	if err == nil {
 		return ProbeTrusted, nil
