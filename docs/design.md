@@ -371,13 +371,13 @@ agent-creance requires the following tools, which are not installed:
 Install both and run `agent-creance setup`.
 ```
 
-The prerequisite check runs on every command (it's cheap — `exec.LookPath` plus a `--version` invocation). When both are missing, both are listed; the user installs once rather than running, failing, installing one, running, failing again.
+The prerequisite check runs on the commands that actually exec the tools — `run` and `doctor` (it's cheap — `exec.LookPath` plus a `--version` invocation). Commands that never touch Safehouse or mitmproxy (`allow`, `deny`, `policy`, `status`, `init`, `import`, `include`) don't run it, since there is nothing to gate. When both are missing, both are listed; the user installs once rather than running, failing, installing one, running, failing again.
 
-**Tested-against versions are compiled into the binary** as constants, bumped per agent-creance release. On `run`, `setup`, and `doctor`, agent-creance parses the installed versions and compares against these constants:
+**Tested-against versions are compiled into the binary** as constants, bumped per agent-creance release. On `run` and `doctor`, agent-creance parses the installed versions and compares against these constants:
 
 - **Exact match** — silent.
-- **Patch-level mismatch** (e.g. tested 1.4.2, installed 1.4.5) — silent on `run` and `setup` (bugfixes don't usually change behavior); `doctor` always reports it.
-- **Minor or major mismatch** — warned loudly on `run`, `setup`, and `doctor`. Single-line yellow warning per command:
+- **Patch-level mismatch** (e.g. tested 1.4.2, installed 1.4.5) — silent on `run` (bugfixes don't usually change behavior); `doctor` always reports it.
+- **Minor or major mismatch** — warned loudly on `run` (a single-line yellow warning) and surfaced by `doctor` in its full compatibility report:
 
   ```
   ⚠ agent-safehouse 2.0.1 installed, but agent-creance was tested against 1.4.2.
