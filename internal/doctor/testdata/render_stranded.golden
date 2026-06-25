@@ -10,6 +10,9 @@ Version compatibility:
 CA trust:
   ✓ trusted
 
+Credential:
+  ✓ reachable
+
 Proxy (this project):
   ⚠ 2 attached agent(s) but proxy not reachable on recorded port 8080; relaunch them
 

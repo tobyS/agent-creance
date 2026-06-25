@@ -1,6 +1,6 @@
 # AC-0062: doctor surfaces host credential preconditions (locked keychain, file-fallback, missing)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Low
 **Created:** 2026-06-25
 **Updated:** 2026-06-25
@@ -47,25 +47,26 @@ Claude credential reachable, and if not, why" without starting a caged session.
 
 ## Acceptance Criteria
 
-- [ ] doctor runs `cred.Detect` as part of its diagnostics and includes a credential
+- [x] doctor runs `cred.Detect` as part of its diagnostics and includes a credential
       finding in its report and rendered output.
-- [ ] `StatusOK` → an OK/healthy finding (credential reachable).
-- [ ] `StatusLocked` → a Problem finding carrying the cred package's locked-keychain
+- [x] `StatusOK` → an OK/healthy finding (credential reachable).
+- [x] `StatusLocked` → a Problem finding carrying the cred package's locked-keychain
       message (`cred.Result.Message()`), not a re-worded copy.
-- [ ] `StatusFileFallback` → a Problem finding carrying the cred package's
+- [x] `StatusFileFallback` → a Problem finding carrying the cred package's
       file-fallback message.
-- [ ] `StatusMissing` → a finding carrying the cred package's not-logged-in message.
-- [ ] doctor and run show the **same** wording for the same condition (both source it
+- [x] `StatusMissing` → a finding carrying the cred package's not-logged-in message
+      (mapped to a non-actionable Warn — see Notes).
+- [x] doctor and run show the **same** wording for the same condition (both source it
       from `cred.Result.Message()`), so the two paths can't drift.
-- [ ] An unexpected `cred.Detect` error degrades to a Warn finding and never aborts the
+- [x] An unexpected `cred.Detect` error degrades to a Warn finding and never aborts the
       other doctor checks (matches doctor's status-as-data convention,
       `internal/doctor/doctor.go:34-38`).
-- [ ] doctor's overall verdict reflects a credential Problem the same way other Problem
+- [x] doctor's overall verdict reflects a credential Problem the same way other Problem
       findings do.
-- [ ] `doctor --fix` does not attempt to auto-fix credentials (login and keychain
+- [x] `doctor --fix` does not attempt to auto-fix credentials (login and keychain
       unlock are interactive user actions) — this is intentional and documented, not a
       silent no-op.
-- [ ] The credential check is unit-testable through the `sysdep` fakes (no real
+- [x] The credential check is unit-testable through the `sysdep` fakes (no real
       keychain / logged-in session), and golden/output tests cover each status.
 
 ## Out of Scope
@@ -85,15 +86,18 @@ None — well-understood, scoped by the 2026-06-23 review.
 
 ## Questions for Research/Planning
 
-- [ ] The doctor `Checker` struct (`internal/doctor/doctor.go:23-32`) has `Paths` but
+- [x] The doctor `Checker` struct (`internal/doctor/doctor.go:23-32`) has `Paths` but
       not `Keychain` or `FileSystem` seams; `cred.Detect` needs both. Plan how to wire
-      them in from the App via `internal/cli/doctor.go`.
-- [ ] Decide the severity mapping in doctor's report vocabulary (StatusOK → OK;
+      them in from the App via `internal/cli/doctor.go`. → Added `Keychain`/`FS` fields to
+      `Checker`, wired from `app.Keychain`/`app.FS` (already present on the App).
+- [x] Decide the severity mapping in doctor's report vocabulary (StatusOK → OK;
       Locked/FileFallback → Problem; Missing → Problem or Warn?) and how it folds into
-      doctor's overall verdict and exit status.
-- [ ] Decide where the credential finding sits in the report ordering and its render
+      doctor's overall verdict and exit status. → OK→OK, Locked/FileFallback→Problem
+      (actionable), **Missing→Warn** (non-actionable), unexpected error→Warn.
+- [x] Decide where the credential finding sits in the report ordering and its render
       shape (likely a new report section + golden files, mirroring the existing CA /
-      Proxy sections).
+      Proxy sections). → New `Credential:` section rendered immediately after `CA trust:`,
+      `{State, Detail}` shape like `CASection`; golden files regenerated.
 
 ## References
 
@@ -107,9 +111,27 @@ None — well-understood, scoped by the 2026-06-23 review.
 
 ## Implementation Plan
 
-[Filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-25-AC-0062-doctor-credential-preconditions.md`
+- Plan: `thoughts/shared/plans/2026-06-25-AC-0062-doctor-credential-preconditions.md`
 
 ## Notes & Updates
+
+### 2026-06-25 — Implemented (Done)
+Added a `Credential:` section to `doctor` that calls `cred.Detect` (mirroring the
+`checkCA` pattern), sourcing every non-OK message from `cred.Result.Message()` so the
+`run` and `doctor` paths can't drift. Wired `Keychain`/`FS` seams onto `doctor.Checker`;
+renamed `caGlyph`→`stateGlyph` (now shared by CA and Credential). Each status is covered
+by fakes-based unit tests; render is pinned by regenerated goldens; the verdict by
+`TestActionable`; the section header by the `doctor_healthy` testscript.
+
+**Severity decision (checkpoint):** `StatusMissing` → non-actionable **Warn**;
+`StatusLocked`/`StatusFileFallback` → actionable **Problem**; unexpected error → Warn.
+Rationale: doctor is a diagnostic, not a gate, and "not logged in" is a precondition the
+user resolves by logging in. Decisively, this keeps doctor's exit code host-independent
+for the common "no credential" state — important because doctor's testscripts run the
+**real** binary and `OSKeychain` execs `/usr/bin/security` by absolute path, so the four
+doctor testscripts now query the real host keychain. With Missing→Warn they stay hermetic
+(exit 0) whether or not the host has Claude credentials.
 
 ### 2026-06-25
 Created from the 2026-06-23 design-conformance review (Gap 2). Scope decision (with

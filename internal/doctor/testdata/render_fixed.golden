@@ -10,6 +10,9 @@ Version compatibility:
 CA trust:
   ⚠ CA not generated — run `agent-creance setup`
 
+Credential:
+  ⚠ No Claude credential found. Run `claude` on the host and log in before starting a caged session.
+
 Proxy (this project):
   ✓ cleaned orphan proxy (pid 111)
 

@@ -43,6 +43,7 @@ type Report struct {
 	Version []prereq.Result // version-compatibility results (rendered via prereq.Report)
 	Missing string          // prereq.MissingInstructions(Version); "" when nothing missing
 	CA      CASection
+	Cred    CredSection
 	Proxy   ProxySection
 	Exposed ExposedSection
 	FS      FSSection
@@ -51,6 +52,13 @@ type Report struct {
 // CASection is the live CA-trust finding. Detail is the text after the glyph.
 type CASection struct {
 	State  Status // OK=trusted, Problem=untrusted (actionable), Warn=not-generated/could-not-verify
+	Detail string
+}
+
+// CredSection is the host Claude-credential finding. Detail is the text after the glyph
+// (cred.Result.Message() for the non-OK cases, "reachable" for OK).
+type CredSection struct {
+	State  Status // OK=reachable, Problem=locked/file-fallback (actionable), Warn=missing/could-not-check
 	Detail string
 }
 
@@ -84,7 +92,8 @@ type FSWarning struct {
 }
 
 // Actionable returns the labels of remaining actionable problems — missing
-// prerequisites, an untrusted CA, and an orphan proxy that was NOT cleaned. An
+// prerequisites, an untrusted CA, an unavailable credential (locked keychain or
+// unsupported file-based credential), and an orphan proxy that was NOT cleaned. An
 // empty result means the command should exit 0.
 func (r Report) Actionable() []string {
 	var probs []string
@@ -93,6 +102,9 @@ func (r Report) Actionable() []string {
 	}
 	if r.CA.State == StatusProblem {
 		probs = append(probs, "untrusted CA")
+	}
+	if r.Cred.State == StatusProblem {
+		probs = append(probs, "credential unavailable")
 	}
 	if r.Proxy.Diag.Orphan && (r.Proxy.Cleaned == nil || !r.Proxy.Cleaned.Cleaned) {
 		probs = append(probs, "orphan proxy")
@@ -108,7 +120,10 @@ func Render(r Report, sty *style.Styler) string {
 	b.WriteString(prereq.Report(r.Version, sty))
 
 	b.WriteString("\n" + sty.Header("CA trust:") + "\n")
-	line(&b, caGlyph(r.CA.State, sty), r.CA.Detail)
+	line(&b, stateGlyph(r.CA.State, sty), r.CA.Detail)
+
+	b.WriteString("\n" + sty.Header("Credential:") + "\n")
+	line(&b, stateGlyph(r.Cred.State, sty), r.Cred.Detail)
 
 	b.WriteString("\n" + sty.Header("Proxy (this project):") + "\n")
 	renderProxy(&b, r.Proxy, sty)
@@ -130,7 +145,10 @@ func line(b *strings.Builder, glyph, text string) {
 	fmt.Fprintf(b, "  %s %s\n", glyph, text)
 }
 
-func caGlyph(s Status, sty *style.Styler) string {
+// stateGlyph maps a section Status to its styled glyph. Shared by the CA and
+// Credential sections (and any other simple State+Detail finding): OK→✓, Problem→✗,
+// Warn/Skipped→⚠.
+func stateGlyph(s Status, sty *style.Styler) string {
 	switch s {
 	case StatusOK:
 		return sty.OK(glyphOK)

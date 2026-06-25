@@ -10,6 +10,9 @@
 [1mCA trust:[22m
   [31m✗[0m CA verification failed: the mitmproxy CA is not trusted. Re-run `agent-creance setup`.
 
+[1mCredential:[22m
+  [31m✗[0m The login keychain is locked, so the Claude credential can't be read. Unlock your login keychain and retry.
+
 [1mProxy (this project):[22m
   [31m✗[0m orphan proxy [2m(pid 111, port 8080)[22m — no live agents; run `doctor --fix`
 

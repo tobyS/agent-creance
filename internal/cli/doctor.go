@@ -50,6 +50,8 @@ func runDoctor(ctx context.Context, app *App, fix bool) error {
 		Listeners: app.Listeners,
 		FSType:    app.FSType,
 		Paths:     app.Paths,
+		Keychain:  app.Keychain,
+		FS:        app.FS,
 	}
 
 	rep, err := chk.Run(ctx, fix)

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/setup"
@@ -29,6 +30,8 @@ type Checker struct {
 	Listeners sysdep.ListenerScanner
 	FSType    sysdep.FilesystemTyper
 	Paths     sysdep.PathResolver
+	Keychain  sysdep.Keychain
+	FS        sysdep.FileSystem
 }
 
 // Run executes every diagnostic and returns the Report. When fix is true, a found
@@ -41,6 +44,7 @@ func (c *Checker) Run(ctx context.Context, fix bool) (Report, error) {
 	r.Version = prereq.Check(ctx, c.Commander, prereq.DefaultTools(c.Tested))
 	r.Missing = prereq.MissingInstructions(r.Version)
 	r.CA = c.checkCA(ctx)
+	r.Cred = c.checkCred()
 	r.Proxy = c.checkProxy(fix)
 	r.Exposed = c.checkExposed(ctx)
 	r.FS = c.checkFS()
@@ -66,6 +70,34 @@ func (c *Checker) checkCA(ctx context.Context) CASection {
 		return CASection{State: StatusProblem, Detail: res.Message()}
 	}
 	return CASection{State: StatusOK, Detail: "trusted"}
+}
+
+// checkCred reports whether the host Claude credential is reachable, mirroring run's
+// cred.Detect precondition (cli/run.go) so doctor answers "is my credential reachable,
+// and if not, why" without starting a caged session. The wording comes from
+// cred.Result.Message() so the run and doctor paths cannot drift. Severity (AC-0062): a
+// locked keychain or an unsupported file-based credential is an actionable Problem; "not
+// logged in" is a Warn (a precondition the user fixes by logging in, not a broken
+// environment); an unexpected lookup failure degrades to Warn (status-as-data). doctor
+// --fix deliberately does NOT act here — unlocking the keychain and running `claude` login
+// are interactive user actions, not automatable fixes.
+func (c *Checker) checkCred() CredSection {
+	res, err := cred.Detect(c.Keychain, c.FS, c.Paths)
+	if err != nil {
+		return CredSection{State: StatusWarn, Detail: "could not check credential: " + err.Error()}
+	}
+	switch res.Status {
+	case cred.StatusOK:
+		return CredSection{State: StatusOK, Detail: "reachable"}
+	case cred.StatusLocked, cred.StatusFileFallback:
+		return CredSection{State: StatusProblem, Detail: res.Message()}
+	case cred.StatusMissing:
+		return CredSection{State: StatusWarn, Detail: res.Message()}
+	default:
+		// Defensive: a future cred.Status defaults to the hermeticity-safe Warn rather
+		// than silently becoming actionable.
+		return CredSection{State: StatusWarn, Detail: "credential state unknown"}
+	}
 }
 
 // checkProxy inspects the current project's proxy.lock and, when fix is set, cleans

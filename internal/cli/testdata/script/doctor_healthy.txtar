@@ -21,6 +21,10 @@ stdout 'CA trust:'
 stdout 'Proxy \(this project\):'
 stdout 'Exposed host services:'
 stdout 'Filesystem reliability:'
+# The credential finding queries the real login keychain (cred.Detect → OSKeychain),
+# so its glyph/text is host-dependent — only the header is asserted. A missing
+# credential is a non-actionable Warn, so the command still exits 0 here.
+stdout 'Credential:'
 
 -- bin/agent-safehouse --
 #!/bin/sh

@@ -10,6 +10,9 @@
 [1mCA trust:[22m
   [33m⚠[0m CA not generated — run `agent-creance setup`
 
+[1mCredential:[22m
+  [33m⚠[0m No Claude credential found. Run `claude` on the host and log in before starting a caged session.
+
 [1mProxy (this project):[22m
   [32m✓[0m cleaned orphan proxy [2m(pid 111)[22m
 

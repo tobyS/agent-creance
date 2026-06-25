@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/setup"
 	"github.com/tobyS/agent-creance/internal/state"
@@ -48,6 +49,7 @@ type agentRefJSON struct {
 type checkerHarness struct {
 	chk    *Checker
 	fs     *sysdeptest.FakeFileSystem
+	kc     *sysdeptest.FakeKeychain
 	proc   *sysdeptest.FakeProcessManager
 	ports  *sysdeptest.FakePortAllocator
 	prober *sysdeptest.FakeTLSProber
@@ -85,9 +87,11 @@ func newCheckerHarness() *checkerHarness {
 		Listeners: listen,
 		FSType:    fstype,
 		Paths:     paths,
+		Keychain:  kc,
+		FS:        fsys,
 	}
 	return &checkerHarness{
-		chk: chk, fs: fsys, proc: proc, ports: ports, prober: prober,
+		chk: chk, fs: fsys, kc: kc, proc: proc, ports: ports, prober: prober,
 		flock: flock, paths: paths, fstype: fstype, listen: listen,
 	}
 }
@@ -226,4 +230,68 @@ func TestRun_FilesystemWarnsOnNetworkAndICloud(t *testing.T) {
 	assert.Equal(t, "network mount", rep.FS.Warnings[0].Reason)
 	assert.Equal(t, "iCloud Drive", rep.FS.Warnings[1].Reason)
 	assert.Empty(t, rep.Actionable())
+}
+
+// credFallbackPath mirrors the file cred.detectFileFallback stats, given checkerHome.
+var credFallbackPath = filepath.Join(checkerHome, ".claude", ".credentials.json")
+
+func TestRun_CredentialReachable(t *testing.T) {
+	h := newCheckerHarness().withCA()
+	// The account is paths.Getenv("USER"), which the fake leaves empty.
+	h.kc.WithItem(cred.KeychainService, "", "token-bytes")
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, StatusOK, rep.Cred.State)
+	assert.Equal(t, "reachable", rep.Cred.Detail)
+	assert.Empty(t, rep.Actionable())
+}
+
+func TestRun_CredentialMissingIsWarn(t *testing.T) {
+	h := newCheckerHarness().withCA() // empty keychain, no fallback file
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, StatusWarn, rep.Cred.State)
+	// Same wording as run, sourced from cred.Result.Message() (AC: no drift).
+	assert.Equal(t, cred.Result{Status: cred.StatusMissing}.Message(), rep.Cred.Detail)
+	assert.NotContains(t, rep.Actionable(), "credential unavailable")
+}
+
+func TestRun_CredentialFileFallbackIsActionable(t *testing.T) {
+	h := newCheckerHarness().withCA() // empty keychain ⇒ item not found
+	h.fs.Files[credFallbackPath] = []byte("{}")
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, StatusProblem, rep.Cred.State)
+	assert.Equal(t, cred.Result{Status: cred.StatusFileFallback}.Message(), rep.Cred.Detail)
+	assert.Contains(t, rep.Actionable(), "credential unavailable")
+}
+
+func TestRun_CredentialLockedIsActionable(t *testing.T) {
+	h := newCheckerHarness().withCA()
+	h.kc.Locked = true
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, StatusProblem, rep.Cred.State)
+	assert.Equal(t, cred.Result{Status: cred.StatusLocked}.Message(), rep.Cred.Detail)
+	assert.Contains(t, rep.Actionable(), "credential unavailable")
+}
+
+func TestRun_CredentialUnexpectedErrorDegradesToWarn(t *testing.T) {
+	h := newCheckerHarness().withCA()
+	// Empty keychain ⇒ cred falls through to the file stat; a stat error that is not
+	// fs.ErrNotExist makes cred.Detect return an error, which doctor degrades to a Warn
+	// without aborting the other checks.
+	h.fs.StatErrs[credFallbackPath] = errBoom
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, StatusWarn, rep.Cred.State)
+	assert.Contains(t, rep.Cred.Detail, "could not check credential:")
+	assert.NotContains(t, rep.Actionable(), "credential unavailable")
+	// status-as-data: the rest of the report still ran.
+	assert.Equal(t, StatusOK, rep.CA.State)
 }

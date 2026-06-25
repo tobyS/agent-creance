@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/style"
@@ -35,6 +36,7 @@ func goldenCases() map[string]Report {
 		"healthy": {
 			Version: versionResults(),
 			CA:      CASection{State: StatusOK, Detail: "trusted"},
+			Cred:    CredSection{State: StatusOK, Detail: "reachable"},
 			Proxy: ProxySection{Diag: proxy.Diagnosis{
 				LockPresent: true, ProxyPID: 111, Port: 8080, ProxyUp: true, LiveAgents: []int{222},
 			}},
@@ -45,6 +47,7 @@ func goldenCases() map[string]Report {
 		"problems": {
 			Version: versionResults(),
 			CA:      CASection{State: StatusProblem, Detail: "CA verification failed: the mitmproxy CA is not trusted. Re-run `agent-creance setup`."},
+			Cred:    CredSection{State: StatusProblem, Detail: cred.Result{Status: cred.StatusLocked}.Message()},
 			Proxy: ProxySection{Diag: proxy.Diagnosis{
 				LockPresent: true, ProxyPID: 111, Port: 8080, ProxyUp: true, Orphan: true,
 			}},
@@ -61,6 +64,7 @@ func goldenCases() map[string]Report {
 		"fixed": {
 			Version: versionResults(),
 			CA:      CASection{State: StatusWarn, Detail: "CA not generated — run `agent-creance setup`"},
+			Cred:    CredSection{State: StatusWarn, Detail: cred.Result{Status: cred.StatusMissing}.Message()},
 			Proxy: ProxySection{
 				Diag:    proxy.Diagnosis{LockPresent: true, ProxyPID: 111, Port: 8080, ProxyUp: true, Orphan: true},
 				Cleaned: &proxy.CleanResult{Cleaned: true, ProxyPID: 111},
@@ -72,6 +76,7 @@ func goldenCases() map[string]Report {
 		"stranded": {
 			Version: versionResults(),
 			CA:      CASection{State: StatusOK, Detail: "trusted"},
+			Cred:    CredSection{State: StatusOK, Detail: "reachable"},
 			Proxy: ProxySection{Diag: proxy.Diagnosis{
 				LockPresent: true, ProxyPID: 111, Port: 8080, ProxyUp: false, LiveAgents: []int{222, 333}, Stranded: true,
 			}},
@@ -140,6 +145,10 @@ func TestActionable(t *testing.T) {
 		r := Report{Version: []prereq.Result{missingTool}}
 		assert.Equal(t, []string{"missing prerequisites"}, r.Actionable())
 	})
+	t.Run("credential unavailable", func(t *testing.T) {
+		r := Report{Cred: CredSection{State: StatusProblem}}
+		assert.Equal(t, []string{"credential unavailable"}, r.Actionable())
+	})
 	t.Run("orphan not cleaned", func(t *testing.T) {
 		r := Report{Proxy: ProxySection{Diag: proxy.Diagnosis{Orphan: true}}}
 		assert.Equal(t, []string{"orphan proxy"}, r.Actionable())
@@ -154,6 +163,7 @@ func TestActionable(t *testing.T) {
 	t.Run("warnings only are not actionable", func(t *testing.T) {
 		r := Report{
 			CA:      CASection{State: StatusWarn},
+			Cred:    CredSection{State: StatusWarn},
 			Exposed: ExposedSection{State: StatusWarn},
 			FS:      FSSection{State: StatusWarn},
 			Proxy:   ProxySection{Diag: proxy.Diagnosis{Stranded: true}},

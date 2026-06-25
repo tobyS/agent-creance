@@ -10,6 +10,9 @@
 [1mCA trust:[22m
   [32m✓[0m trusted
 
+[1mCredential:[22m
+  [32m✓[0m reachable
+
 [1mProxy (this project):[22m
   [33m⚠[0m 2 attached agent(s) but proxy not reachable on recorded port [2m8080[22m; relaunch them
 

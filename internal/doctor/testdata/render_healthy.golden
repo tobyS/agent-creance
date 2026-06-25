@@ -10,6 +10,9 @@ Version compatibility:
 CA trust:
   ✓ trusted
 
+Credential:
+  ✓ reachable
+
 Proxy (this project):
   ✓ proxy running (pid 111, port 8080), 1 agent(s) attached
 
