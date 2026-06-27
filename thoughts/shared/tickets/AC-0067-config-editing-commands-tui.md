@@ -1,6 +1,6 @@
 # AC-0067: Config-editing commands with interactive TUI fallback
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Extra Large
 **Created:** 2026-06-27
 **Updated:** 2026-06-27
