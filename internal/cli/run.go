@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +30,12 @@ import (
 
 // configFile is the project config filename run resolves in the working directory.
 const configFile = ".agent-creance.yaml"
+
+// msgNoProjectConfig is the run refusal when the working directory has no project
+// config. It names `init` so a first-time user is not left with the low-level
+// "compile policy: ... file not found" wrap the required-config load would
+// otherwise surface (AC-0063).
+const msgNoProjectConfig = "No .agent-creance.yaml in this project. Run `agent-creance init` to create one."
 
 // newRunCmd implements `agent-creance run` — the headline command. It checks
 // prerequisites and that setup has run, then compiles the project's policy and
@@ -84,7 +92,26 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		return fmt.Errorf("credential unavailable")
 	}
 
-	// 4. Resolve the project's out-of-tree state layout (canonical path → identity).
+	// 4. Project config precondition: refuse a config-less project up front with a
+	//    pointer to `agent-creance init`, rather than letting it surface as the
+	//    cryptic "compile policy: ... file not found" wrap at the compile step
+	//    (AC-0063). The path is resolved the same way the config loader resolves it
+	//    (Paths.Abs of the working-dir join), so the check and the later load agree;
+	//    it runs before the progress printer exists, so the refusal prints cleanly
+	//    to stdout with no step line first.
+	configPath, err := app.Paths.Abs(filepath.Join(dir, configFile))
+	if err != nil {
+		return fmt.Errorf("resolve config path: %w", err)
+	}
+	if _, err := app.FS.Stat(configPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintln(app.Stdout, msgNoProjectConfig)
+			return fmt.Errorf("project not initialized")
+		}
+		return fmt.Errorf("stat config: %w", err)
+	}
+
+	// 5. Resolve the project's out-of-tree state layout (canonical path → identity).
 	layout, err := state.New(app.Paths).Resolve(dir)
 	if err != nil {
 		return fmt.Errorf("resolve project: %w", err)
@@ -97,7 +124,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	prog := progress.NewPrinter(app.Stderr, app.Clock, app.Terminal.IsStderrTerminal(), app.ErrStyle)
 	defer prog.Close()
 
-	// 5. Cache-aware policy compile: skipped when inputs are unchanged. The input
+	// 6. Cache-aware policy compile: skipped when inputs are unchanged. The input
 	//    hash is recorded in the proxy lock so a policy change triggers a hot-reload.
 	//    The printer doubles as the compiler's progress reporter (expectation
 	//    message, per-manifest lookup counters).
@@ -116,13 +143,13 @@ func runRun(ctx context.Context, app *App, dir string) error {
 		prog.StepDone(fmt.Sprintf("Egress policy compiled: %d allow, %d deny", polRes.AllowCount, polRes.DenyCount))
 	}
 
-	// 6. Load the merged config (needed to build the Safehouse invocation).
+	// 7. Load the merged config (needed to build the Safehouse invocation).
 	cfg, err := config.NewLoader(app.FS, app.Paths).Load(filepath.Join(dir, configFile))
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// 7. (Re)generate network.sb — the deny-all baseline. Exempt from the policy
+	// 8. (Re)generate network.sb — the deny-all baseline. Exempt from the policy
 	//    cache by design; cheap, always regenerated.
 	prog.StepStart("Compiling sandbox profile")
 	if _, err := profile.New(app.FS, app.Paths).Compile(dir); err != nil {
@@ -130,7 +157,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	}
 	prog.StepDone("Sandbox profile compiled")
 
-	// 8. Extract the mitmproxy enforcer addon (idempotent).
+	// 9. Extract the mitmproxy enforcer addon (idempotent).
 	enforcerPy, err := proxy.NewExtractor(app.FS, app.Paths).Extract()
 	if err != nil {
 		return fmt.Errorf("extract enforcer: %w", err)
@@ -151,7 +178,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	app.ProcessGroup.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	// 9. Start or attach the refcounted proxy. Detach is deferred immediately so
+	// 10. Start or attach the refcounted proxy. Detach is deferred immediately so
 	//    every exit path decrements; the last agent out kills the proxy and purges
 	//    the session overlay (proxy.Manager owns that logic).
 	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)

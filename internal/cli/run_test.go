@@ -361,6 +361,31 @@ func TestRunMissingPrerequisite(t *testing.T) {
 	}
 }
 
+func TestRunMissingConfig(t *testing.T) {
+	f := newRunFixture(t)
+	delete(f.fs.Files, projConfig) // prereqs/setup/credential all pass; only the config is absent
+
+	err := runRun(context.Background(), f.app, ".")
+	if err == nil {
+		t.Fatal("runRun succeeded, want a missing-config refusal")
+	}
+	if !strings.Contains(f.out.String(), "agent-creance init") {
+		t.Errorf("stdout = %q, want a pointer to `agent-creance init`", f.out)
+	}
+	// The cryptic compile-step wrap must not be how a config-less project learns it
+	// is uninitialized (AC-0063).
+	if strings.Contains(f.out.String(), "compile policy") || strings.Contains(err.Error(), "compile policy") {
+		t.Errorf("refusal leaked the compile-policy wrap: stdout=%q err=%v", f.out, err)
+	}
+	// The refusal is up front: nothing downstream ran and no progress step printed.
+	if len(f.proc.Spawned) != 0 || len(f.pg.Started()) != 0 {
+		t.Errorf("proxy/cage started despite missing config")
+	}
+	if strings.Contains(f.err.String(), "Compiling egress policy") {
+		t.Errorf("a progress step printed before the refusal: stderr=%q", f.err)
+	}
+}
+
 // TestRunGrantsLocalPluginMarketplaceDirs asserts a local ("directory") plugin
 // marketplace outside the cage is mounted read-only, while one inside the project
 // (already mounted) is filtered out (AC-0056).

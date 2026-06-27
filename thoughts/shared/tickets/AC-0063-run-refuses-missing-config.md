@@ -1,6 +1,6 @@
 # AC-0063: run refuses with an init pointer when the project has no config
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Low
 **Created:** 2026-06-27
 **Updated:** 2026-06-27
@@ -51,17 +51,22 @@ unaffected.
 
 ## Acceptance Criteria
 
-- [ ] Running `agent-creance run` in a directory with no `.agent-creance.yaml`
+- [x] Running `agent-creance run` in a directory with no `.agent-creance.yaml`
       exits non-zero with a message that explicitly names `agent-creance init`
       (and does not show the `compile policy: compile: load project: …` wrap).
-- [ ] The refusal happens up front, before the policy compile / proxy / cage
+- [x] The refusal happens up front, before the policy compile / proxy / cage
       steps run (no progress lines printed first).
-- [ ] The refusal message style is consistent with the existing precondition
+- [x] The refusal message style is consistent with the existing precondition
       refusals (prereq / setup / credential) in `internal/cli/run.go`.
-- [ ] An initialized project (config present) runs exactly as before — no
+- [x] An initialized project (config present) runs exactly as before — no
       behavior change on the happy path.
-- [ ] A hermetic testscript case under `internal/cli/testdata/script/` covers the
+- [~] A hermetic testscript case under `internal/cli/testdata/script/` covers the
       missing-config refusal and asserts the `init` pointer in the output.
+      **Covered by a unit test instead** — see the 2026-06-27 note: a testscript
+      cannot hermetically reach the step-4 config check because the setup/credential
+      gates (steps 2-3) touch the real login Keychain. `TestRunMissingConfig` in
+      `internal/cli/run_test.go` is the binding coverage and asserts the `init`
+      pointer, the absence of the compile-policy wrap, and that nothing downstream ran.
 
 ## Out of Scope
 
@@ -94,7 +99,7 @@ required-vs-optional config behavior were verified in code.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+`thoughts/shared/plans/2026-06-27-AC-0063-run-refuses-missing-config.md`
 
 ## Notes & Updates
 
@@ -103,3 +108,21 @@ Created from UX audit finding S1. Complexity Low: a single up-front precondition
 plus a testscript case, mirroring an established pattern in `run`. The audit's
 follow-up verification confirmed the project config is required (no fallback) and
 that the error currently surfaces at the compile step, triple-wrapped.
+
+### 2026-06-27 — Implemented (Done)
+Added a fourth precondition to `runRun` as step 4 (after the credential gate,
+before state resolve / the progress printer): it resolves the project config path
+the same way the config loader does (`Paths.Abs(filepath.Join(dir, configFile))`)
+and refuses a config-less project via the `app.FS.Stat` seam with
+`No .agent-creance.yaml in this project. Run \`agent-creance init\` to create one.`
+on stdout and a terse `project not initialized` error. Verified by manual run in a
+config-less dir (init pointer, no compile-policy wrap, exit 1) and the full
+`make test` / `make lint` / `make build`.
+
+Deviation from the plan/AC: the missing-config refusal is covered by a unit test
+(`TestRunMissingConfig`), not a testscript. A testscript cannot hermetically reach
+the step-4 config check because the setup/credential gates (steps 2-3) use the real
+login Keychain that `cli.Main` wires — the same reason `run_missing_prereq.txtar`'s
+header gives for unit-testing the setup/credential refusals. The unit test asserts
+the `init` pointer, the absence of the compile-policy wrap, and that nothing
+downstream ran.

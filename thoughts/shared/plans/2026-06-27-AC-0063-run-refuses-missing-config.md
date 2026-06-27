@@ -2,7 +2,7 @@
 date: 2026-06-27
 ticket: AC-0063
 topic: "run refuses with an init pointer when the project has no config"
-status: ready
+status: implemented
 research: thoughts/shared/research/2026-06-27-AC-0063-run-refuses-missing-config.md
 git_commit: 6e8f452
 branch: main
@@ -158,22 +158,27 @@ the binding coverage otherwise, and note which was used.
 #### Success criteria
 
 **Automated:**
-- [ ] `make test` passes (race; includes the new unit test and any testscript).
-- [ ] `make lint` passes (`go vet` + `golangci-lint`).
-- [ ] `go build ./...` succeeds (typecheck).
-- [ ] `gofmt -s -l internal/cli/run.go internal/cli/run_test.go` reports nothing
-      (or `make fmt` applied).
+- [x] `make test` passes (race; includes the new unit test). Testscript not added
+      (see deviation below); unit test `TestRunMissingConfig` is the binding cover.
+- [x] `make lint` passes (`go vet` + `golangci-lint`).
+- [x] `go build ./...` succeeds (typecheck).
+- [x] `gofmt` clean (verified via `make lint` / pre-commit gofmt check).
 
 **Manual:**
-- [ ] In a temp dir with no `.agent-creance.yaml`, `bin/agent-creance run`
-      (with prereqs/setup/credential satisfied on a real machine) prints the
-      `agent-creance init` pointer and exits non-zero, with no
-      `compile policy: …: file not found` wrap and no progress step line first.
-      (If prereqs are absent on the dev machine, the prereq gate fires first —
-      that is expected given the chosen order; verify in an environment where the
-      tools are installed, or rely on the unit test for the gated path.)
-- [ ] In an initialized project, `bin/agent-creance run` behaves exactly as
-      before (no new output, happy path unchanged).
+- [x] In a temp dir with no `.agent-creance.yaml`, `bin/agent-creance run` printed
+      the `agent-creance init` pointer and exited non-zero (`error: project not
+      initialized`), with no `compile policy: …: file not found` wrap and no
+      progress step line first. (Dev machine had prereqs/setup/credential
+      satisfied, so step 4 was reached.)
+- [x] Initialized-project happy path unchanged — full `make test` regression green,
+      including `TestRunHappyPath`.
+
+**Deviation:** the testscript (planned item 4 / AC #5) was not added. A testscript
+cannot hermetically reach the step-4 config check because the setup/credential
+gates (steps 2-3) touch the real login Keychain (`cli.Main` wires `OSKeychain`),
+exactly as `run_missing_prereq.txtar`'s header documents. `TestRunMissingConfig`
+(`run_test.go`) is the binding coverage and asserts the `init` pointer, the absence
+of the compile-policy wrap, no downstream spawn, and no progress step printed.
 
 ### Phase 2: Build the binary
 
