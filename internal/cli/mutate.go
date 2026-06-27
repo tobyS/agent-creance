@@ -39,21 +39,16 @@ func splitURL(raw string) (host, path string, err error) {
 	return host, u.Path, nil
 }
 
-// ruleFromURL builds an egress Rule from a command-line URL. A bare host (empty or "/"
-// path) becomes a whole-host rule (no paths); a host+path scopes the rule to that path
-// prefix. reason is recorded for deny rules and left empty for allow. v0.1 has no
-// --method flag, so a rule never constrains methods.
-func ruleFromURL(raw, reason string) (config.Rule, error) {
-	host, path, err := splitURL(raw)
-	if err != nil {
-		return config.Rule{}, err
-	}
-	rule := config.Rule{Host: host, Reason: reason}
+// setURLPath translates the path component of an allow/deny URL into a domainAddOpts
+// paths decision: a bare host (empty or "/" path) becomes a host-wide rule (allPaths),
+// while a host+path scopes the rule to that single path prefix. This is how the legacy
+// allow/deny aliases resolve the paths decision without an interactive prompt.
+func setURLPath(opts *domainAddOpts, path string) {
 	if path != "" && path != "/" {
-		p := []string{path}
-		rule.Paths = &p
+		opts.paths = []string{path}
+		return
 	}
-	return rule, nil
+	opts.allPaths = true
 }
 
 // mutationTarget resolves the file a mutation writes to and a human label for it.

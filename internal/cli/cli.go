@@ -125,6 +125,7 @@ func newRootCmd(app *App) *cobra.Command {
 	root.AddCommand(newSetupCmd(app))
 	root.AddCommand(newAllowCmd(app))
 	root.AddCommand(newDenyCmd(app))
+	root.AddCommand(newDomainCmd(app))
 	root.AddCommand(newIncludeCmd(app))
 	root.AddCommand(newImportCmd(app))
 	root.AddCommand(newStatusCmd(app))

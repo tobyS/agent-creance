@@ -4,14 +4,13 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
-
-	"github.com/tobyS/agent-creance/internal/config"
 )
 
 // newDenyCmd implements `agent-creance deny URL [--reason]` — append a hard-deny
 // (deny_always) rule to the committed project config and recompile. Unlike allow,
 // deny has no --once/--global in v0.1 (docs/design.md "Commands"): a hard deny is a
-// deliberate, committed decision, so it always lands in the project file.
+// deliberate, committed decision, so it always lands in the project file. It is a thin
+// alias over `domain add --deny` (AC-0067).
 func newDenyCmd(app *App) *cobra.Command {
 	var reason string
 	cmd := &cobra.Command{
@@ -28,15 +27,14 @@ func newDenyCmd(app *App) *cobra.Command {
 }
 
 // runDeny is the testable body: dir and reason are parameters so unit tests can assert
-// the rule (and its reason) are persisted to the project file.
+// the rule (and its reason) are persisted to the project file. It delegates to
+// runDomainAdd with --deny preset.
 func runDeny(ctx context.Context, app *App, dir, rawURL, reason string) error {
-	rule, err := ruleFromURL(rawURL, reason)
+	host, path, err := splitURL(rawURL)
 	if err != nil {
 		return err
 	}
-	path, label, err := mutationTarget(app, dir, false /*once*/, false /*global*/)
-	if err != nil {
-		return err
-	}
-	return mutateAndRecompile(ctx, app, dir, path, label, config.DenyList, rule, "denied")
+	opts := domainAddOpts{deny: true, reason: reason}
+	setURLPath(&opts, path)
+	return runDomainAdd(ctx, app, dir, host, opts)
 }

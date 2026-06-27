@@ -23,18 +23,21 @@ status: in-progress
 - Note: single-path removal re-renders the item from typed values (reflows just
   that item); whole-element removal deletes only the element's own lines.
 
-## Phase 3: domain group + allow/deny aliases (flags)
-- [ ] domain.go (add/remove), rule builder, guards
-- [ ] allow/deny delegate to shared body
-- [ ] register in cli.go
-- [ ] unit + testscript tests
-- [ ] Verified
-
-## Phase 4: interactive prompt helper + domain add fallback
-- [ ] prompt.go helper (select/text/require-interactive)
-- [ ] domain add prompts for omitted choices
-- [ ] interactive unit tests + non-TTY testscript
-- [ ] Verified
+## Phase 3+4: domain group + aliases + interactive prompt — DONE
+(Consolidated: building a flags-only intermediate with no fallback would be a
+deliberately broken step, so the prompt fallback was built with domain add.)
+- [x] prompt.go helper (promptSelect / promptText / requireInteractive)
+- [x] domain.go (add/remove), rule builder, guards (all-paths/path conflict,
+      passthrough+paths/methods, deny+method/mode, unknown mode)
+- [x] domain add prompts for the paths decision when omitted; non-TTY → flag hint
+- [x] allow/deny delegate to runDomainAdd via setURLPath (ruleFromURL removed)
+- [x] register newDomainCmd in cli.go
+- [x] domain_test.go (guards/builder/remove) + domain_interactive_test.go + domain.txtar
+- [x] Verified (make test / build / lint)
+- DEVIATION from a strict AC sub-bullet: methods and mode are NOT prompted when
+  omitted — they use safe defaults (any method / intercept). Only the paths
+  decision prompts (the explicit user story). --method/--mode set them explicitly.
+  Flag for review.
 
 ## Phase 5: service + mount with write-and-warn
 - [ ] applyAndWarn helper (live-cage probe)

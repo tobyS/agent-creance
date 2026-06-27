@@ -1,0 +1,84 @@
+# `agent-creance domain add/remove` is the noun-verb surface for egress allow/deny
+# rules (AC-0067). The seed config lists no generators, so the whole scenario runs
+# offline. HOME/XDG_CACHE_HOME under $WORK keep it hermetic; PATH is pinned to
+# $CREANCE_BIN. Under testscript stdin is never a tty, so this covers the flag paths,
+# the validation errors, and the non-interactive "fail with a hint" branch; the
+# interactive prompt path is unit-tested in domain_interactive_test.go.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# --help advertises the flags.
+agent-creance domain add --help
+stdout '--all-paths'
+stdout '--method'
+stdout '--mode'
+stdout '--deny'
+
+# Conflicting / invalid flag combinations are rejected up front, before any edit.
+! agent-creance domain add example.com --all-paths --path /x/
+stderr 'cannot combine --all-paths with --path'
+! agent-creance domain add example.com --mode passthrough --path /x/
+stderr 'passthrough cannot carry paths'
+! agent-creance domain add example.com --deny --method GET
+stderr 'not valid with --deny'
+! agent-creance domain add example.com --mode bogus --all-paths
+stderr 'unknown --mode'
+
+# A missing paths decision with no terminal fails with a flag-naming hint and never hangs.
+! agent-creance domain add lonely.example
+stderr 'no terminal for interactive input'
+stderr 'all-paths'
+
+# domain add with explicit paths + methods → rule appended (comment preserved) and
+# visible in policy show.
+agent-creance domain add api.github.com --path /repos/ --method GET --method post
+stdout 'allowed api\.github\.com/repos/ in \.agent-creance\.yaml'
+grep '# keep this comment' .agent-creance.yaml
+grep 'host: api.github.com' .agent-creance.yaml
+grep 'methods: \[GET, POST\]' .agent-creance.yaml
+agent-creance policy show
+stdout 'api\.github\.com'
+stdout '/repos/'
+
+# domain add --all-paths → host-wide rule (no paths).
+agent-creance domain add react.dev --all-paths
+stdout 'allowed react.dev'
+grep 'host: react.dev' .agent-creance.yaml
+
+# domain add --deny --reason → deny_always rule.
+agent-creance domain add w3schools.com --deny --reason 'low quality'
+stdout 'denied w3schools.com'
+grep 'reason: "low quality"' .agent-creance.yaml
+agent-creance policy explain https://w3schools.com/
+stdout 'hard-deny'
+
+# domain add --global → lands in ~/.config, not the project file.
+agent-creance domain add globally.example --all-paths --global
+exists $WORK/home/.config/agent-creance.yaml
+grep 'host: globally.example' $WORK/home/.config/agent-creance.yaml
+! grep 'globally.example' .agent-creance.yaml
+
+# domain remove --path drops only that path; the rule stays host-wide afterwards if it
+# had others. Here /repos/ was the only path, so the whole rule goes.
+agent-creance domain remove api.github.com --path /repos/
+stdout 'removed api\.github\.com path /repos/'
+! grep 'host: api.github.com' .agent-creance.yaml
+
+# domain remove (no --path) drops the whole rule, allow or deny.
+agent-creance domain remove w3schools.com
+stdout 'removed w3schools.com'
+! grep 'host: w3schools.com' .agent-creance.yaml
+
+# Removing a host that is in neither list is a clear non-zero error.
+! agent-creance domain remove notthere.example
+stderr 'not in .agent-creance.yaml; nothing to remove'
+
+-- .agent-creance.yaml --
+# keep this comment
+network:
+  egress:
+    # allow rules go here
+    allow:
+      - host: seed.example
