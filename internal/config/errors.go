@@ -26,6 +26,11 @@ var (
 	// arbitrary user-readable files (~/.ssh, ~/.aws, /etc/...) — an unintended
 	// read-and-leak surface for a confinement tool (AC-0059, F8).
 	ErrIncludeOutOfScope = errors.New("config: include path out of scope")
+	// ErrNotFound is returned by the Remove* edit operations when the entry to remove
+	// is not present in the config. It is errors.Is-checkable so the CLI can turn a
+	// remove-of-a-missing-entry into a clear non-zero exit (AC-0067) rather than a
+	// silent no-op.
+	ErrNotFound = errors.New("config: entry not found")
 )
 
 // ValidationError aggregates one or more human-readable problems with a config

@@ -104,11 +104,7 @@ func planInsertDir(doc *yaml.Node, lines []string, before *Config, dir string, r
 	// it is not lost with the line.
 	keyIndent := indentOf(listKey)
 	items := append(append([]string{}, dirList(before, rw)...), dir)
-	line := strings.Repeat(" ", keyIndent) + key + ": " + flowSeq(items)
-	if c := lineComment(listKey, listVal); c != "" {
-		line += "  " + c
-	}
-	rewritten := []string{line}
+	rewritten := []string{flowDirLine(keyIndent, key, items, lineComment(listKey, listVal))}
 	last := maxLine(listVal)
 	if last < listKey.Line {
 		last = listKey.Line
@@ -133,6 +129,17 @@ func renderNestedDir(baseIndent int, keys []string, dir string) []string {
 // renderDirItem renders one add_dirs_* entry as a block sequence item "- <scalar>".
 func renderDirItem(dir string, indent int) []string {
 	return []string{strings.Repeat(" ", indent) + "- " + scalar(dir)}
+}
+
+// flowDirLine renders a flow-style add_dirs_* key line `<key>: [items...]` at keyIndent,
+// re-appending an inline comment when one was carried from the original line. Shared by
+// the append (AppendDir) and remove (RemoveDir) flow-rewrite paths.
+func flowDirLine(keyIndent int, key string, items []string, comment string) string {
+	line := strings.Repeat(" ", keyIndent) + key + ": " + flowSeq(items)
+	if comment != "" {
+		line += "  " + comment
+	}
+	return line
 }
 
 // lineComment returns the first non-empty yaml LineComment (including its leading "#")

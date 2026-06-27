@@ -14,10 +14,14 @@ status: in-progress
   LineComment carried over; block lists get an appended item. Slashed paths are
   quoted via scalar(), consistent with `include`.
 
-## Phase 2: Removal infrastructure
-- [ ] endOfItem primitive + RemoveRule/RemoveHostService/RemoveDir + ErrNotFound
-- [ ] Table + golden tests, fixtures
-- [ ] Verified
+## Phase 2: Removal infrastructure — DONE
+- [x] RemoveRule (whole + single-path, drop-on-last), RemoveHostService(port),
+      RemoveDir(both lists) + ErrNotFound sentinel
+- [x] Element span bounded by maxLine(node subtree) so inter-element comments survive
+- [x] Inline-string tests incl. comment preservation, both-lists, not-found
+- [x] Verified (make test / build / lint)
+- Note: single-path removal re-renders the item from typed values (reflows just
+  that item); whole-element removal deletes only the element's own lines.
 
 ## Phase 3: domain group + allow/deny aliases (flags)
 - [ ] domain.go (add/remove), rule builder, guards
