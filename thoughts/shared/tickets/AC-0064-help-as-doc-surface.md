@@ -1,6 +1,6 @@
 # AC-0064: make --help a real doc surface (Long/Example, root overview, command groups)
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
 **Updated:** 2026-06-28
@@ -104,9 +104,27 @@ None — well-understood from the audit.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+See `thoughts/shared/plans/2026-06-28-AC-0064-help-as-doc-surface.md` (research:
+`thoughts/shared/research/2026-06-28-AC-0064-help-as-doc-surface.md`).
 
 ## Notes & Updates
+
+### 2026-06-28
+Done. Implemented in three phases:
+- **Groups + root overview** (`internal/cli/cli.go`): a root `Long:` with the
+  setup -> init -> run happy path and the once-per-machine / once-per-project
+  distinction, and four cobra command groups (Setup / Daily / Inspect /
+  Maintenance) with `completion`/`help` routed into Maintenance via
+  `SetHelpCommandGroupID`/`SetCompletionCommandGroupID` (no "Additional
+  Commands:" bucket). New `root_help.txtar`.
+- **`Long:`+`Example:` on every leaf command** (decision at the question
+  checkpoint went beyond the five named to full coverage): the five priority
+  commands first, then `deny`, `logs`, `import`, `status`, `clean`, `version`,
+  `include`, and the `policy`/`domain`/`service`/`mount` subcommands; the four
+  parent commands get a framing `Long:`. Wording drawn from `docs/design.md`.
+- **Tests**: `Examples:`/`Long:` assertions folded into existing help `.txtar`
+  files plus new `run_doctor_help.txtar` and `more_help.txtar`. `make test`,
+  `make lint`, `make build` all green.
 
 ### 2026-06-27
 Created from UX audit finding S4. Complexity Medium: touches several command
