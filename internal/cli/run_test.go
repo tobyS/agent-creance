@@ -120,7 +120,7 @@ func newRunFixture(t *testing.T) *runFixture {
 func TestRunHappyPath(t *testing.T) {
 	f := newRunFixture(t)
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun: %v\nstdout: %s\nstderr: %s", err, f.out, f.err)
 	}
 
@@ -190,7 +190,7 @@ func TestRunWrapperKeepsSignalSubscriptionThroughTeardown(t *testing.T) {
 	f.pg.Proc = &sysdeptest.FakeProcess{WaitGate: gate}
 
 	done := make(chan error, 1)
-	go func() { done <- runRun(context.Background(), f.app, ".") }()
+	go func() { done <- runRun(context.Background(), f.app, ".", false) }()
 
 	// Wait until both the wrapper (registered before the cage launches) and cage.Run
 	// have subscribed. Before the fix only cage.Run subscribed (one channel).
@@ -249,7 +249,7 @@ func coversIntTerm(sigs []os.Signal) bool {
 func TestRunProgressOutput(t *testing.T) {
 	f := newRunFixture(t)
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun: %v\nstdout: %s\nstderr: %s", err, f.out, f.err)
 	}
 	want := "Compiling egress policy…\n" +
@@ -265,11 +265,30 @@ func TestRunProgressOutput(t *testing.T) {
 
 	// A second run hits the input-hash cache: same steps, compact cached line.
 	f.err.Reset()
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun #2: %v\nstderr: %s", err, f.err)
 	}
 	if !strings.Contains(f.err.String(), "✓ Egress policy up to date (cached) (0s)\n") {
 		t.Errorf("cached-run stderr = %q, want the up-to-date line", f.err)
+	}
+}
+
+// TestRunQuietSuppressesProgress asserts S7: --quiet routes the progress printer
+// to a discard writer, so none of the step announcements reach stderr — while the
+// run still proceeds normally (proxy + cage launched).
+func TestRunQuietSuppressesProgress(t *testing.T) {
+	f := newRunFixture(t)
+
+	if err := runRun(context.Background(), f.app, ".", true /*quiet*/); err != nil {
+		t.Fatalf("runRun --quiet: %v\nstderr: %s", err, f.err)
+	}
+	if got := f.err.String(); strings.Contains(got, "Compiling egress policy") ||
+		strings.Contains(got, "Starting egress proxy") || strings.Contains(got, "Launching agent") {
+		t.Errorf("--quiet still printed progress to stderr:\n%s", got)
+	}
+	// The run still ran: proxy spawned and cage launched.
+	if len(f.proc.Spawned) != 1 || len(f.pg.Started()) != 1 {
+		t.Errorf("--quiet must not change behavior: spawns=%d cage=%d", len(f.proc.Spawned), len(f.pg.Started()))
 	}
 }
 
@@ -296,7 +315,7 @@ func TestRunLaunchesResolvedBinary(t *testing.T) {
 					"Agent Safehouse "+buildinfo.TestedVersions[buildinfo.ToolSafehouse])
 			}
 
-			if err := runRun(context.Background(), f.app, "."); err != nil {
+			if err := runRun(context.Background(), f.app, ".", false); err != nil {
 				t.Fatalf("runRun: %v\nstdout: %s\nstderr: %s", err, f.out, f.err)
 			}
 			started := f.pg.Started()
@@ -314,7 +333,7 @@ func TestRunSetupMissing(t *testing.T) {
 	f := newRunFixture(t)
 	f.kc.Certs = map[string][]byte{} // no trusted CA → setup incomplete
 
-	err := runRun(context.Background(), f.app, ".")
+	err := runRun(context.Background(), f.app, ".", false)
 	if err == nil {
 		t.Fatal("runRun succeeded, want a setup-incomplete refusal")
 	}
@@ -333,7 +352,7 @@ func TestRunCredentialMissing(t *testing.T) {
 	f := newRunFixture(t)
 	f.kc.Items = map[string][]byte{} // CA present, but no Keychain credential
 
-	err := runRun(context.Background(), f.app, ".")
+	err := runRun(context.Background(), f.app, ".", false)
 	if err == nil {
 		t.Fatal("runRun succeeded, want a credential refusal")
 	}
@@ -349,7 +368,7 @@ func TestRunMissingPrerequisite(t *testing.T) {
 	f := newRunFixture(t)
 	f.app.Commander = sysdeptest.NewFakeCommander() // neither tool installed
 
-	err := runRun(context.Background(), f.app, ".")
+	err := runRun(context.Background(), f.app, ".", false)
 	if err == nil {
 		t.Fatal("runRun succeeded, want a missing-prerequisite refusal")
 	}
@@ -365,7 +384,7 @@ func TestRunMissingConfig(t *testing.T) {
 	f := newRunFixture(t)
 	delete(f.fs.Files, projConfig) // prereqs/setup/credential all pass; only the config is absent
 
-	err := runRun(context.Background(), f.app, ".")
+	err := runRun(context.Background(), f.app, ".", false)
 	if err == nil {
 		t.Fatal("runRun succeeded, want a missing-config refusal")
 	}
@@ -397,7 +416,7 @@ func TestRunMalformedConfigHint(t *testing.T) {
 		"network:\n  egress:\n    allow:\n      - host: api.anthropic.com\n" +
 		"        mode: passthrough\n        paths: [\"/v1/\"]\n")
 
-	err := runRun(context.Background(), f.app, ".")
+	err := runRun(context.Background(), f.app, ".", false)
 	if err == nil {
 		t.Fatal("runRun succeeded, want a config-compile failure")
 	}
@@ -424,7 +443,7 @@ func TestRunGrantsLocalPluginMarketplaceDirs(t *testing.T) {
 	f.fs.Dirs[outside] = true
 	f.fs.Dirs[inside] = true
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun: %v\nstderr: %s", err, f.err)
 	}
 	started := f.pg.Started()
@@ -447,7 +466,7 @@ func TestRunMalformedMarketplaceRegistryWarns(t *testing.T) {
 	f := newRunFixture(t)
 	f.fs.Files[runHome+"/.claude/plugins/known_marketplaces.json"] = []byte(`{not json`)
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun should not fail on a malformed registry: %v", err)
 	}
 	if !strings.Contains(f.err.String(), "plugin marketplace") {
@@ -470,7 +489,7 @@ func TestRunMalformedMarketplaceRegistryWarns(t *testing.T) {
 func TestRunStartsAndStopsConfigWatcher(t *testing.T) {
 	f := newRunFixture(t)
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun: %v\nstderr: %s", err, f.err)
 	}
 
@@ -488,7 +507,7 @@ func TestRunConfigWatcherFailureIsAdvisory(t *testing.T) {
 	f := newRunFixture(t)
 	f.watch.NewErr = errFakeWatcher
 
-	if err := runRun(context.Background(), f.app, "."); err != nil {
+	if err := runRun(context.Background(), f.app, ".", false); err != nil {
 		t.Fatalf("runRun should not fail when the watcher can't start: %v", err)
 	}
 	if !strings.Contains(f.err.String(), "config hot-reload unavailable") {

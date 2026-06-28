@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/signal"
@@ -47,20 +48,24 @@ const msgNoProjectConfig = "No .agent-creance.yaml in this project. Run `agent-c
 // cage.Builder/Runner. The order of operations is the design's load-bearing
 // contract (docs/design.md, "Commands" + "Multi-agent lifecycle").
 func newRunCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var quiet bool
+	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the agent inside the egress-filtered cage",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runRun(cmd.Context(), app, ".")
+			return runRun(cmd.Context(), app, ".", quiet)
 		},
 	}
+	cmd.Flags().BoolVar(&quiet, "quiet", false,
+		"suppress startup progress output (errors and the agent's own output are unaffected)")
+	return cmd
 }
 
 // runRun is the testable body of the run command: dir is the project directory
 // ("." in production), taken as a parameter so unit tests can drive it against
-// the sysdep fakes.
-func runRun(ctx context.Context, app *App, dir string) error {
+// the sysdep fakes. quiet suppresses the startup progress lines.
+func runRun(ctx context.Context, app *App, dir string, quiet bool) error {
 	// 1. Prerequisites. A missing tool is a hard failure with an actionable block
 	//    (no stack trace); a version skew never blocks (design.md "version handling").
 	results := prereq.Check(ctx, app.Commander, prereq.DefaultTools(app.Tested))
@@ -120,8 +125,15 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// Progress goes to stderr (run's stdout belongs to the agent session; same
 	// convention as git/curl). All announced steps finish before the agent owns
 	// the terminal; the deferred Close terminates a half-drawn \r line on error
-	// paths so the `error:` line starts fresh.
-	prog := progress.NewPrinter(app.Stderr, app.Clock, app.Terminal.IsStderrTerminal(), app.ErrStyle)
+	// paths so the `error:` line starts fresh. --quiet routes the printer to a
+	// discard writer so every step line (and the compiler's progress events, which
+	// share this printer) is suppressed; errors still reach Main's stderr printer
+	// and the agent's own output is untouched (S7).
+	progOut := io.Writer(app.Stderr)
+	if quiet {
+		progOut = io.Discard
+	}
+	prog := progress.NewPrinter(progOut, app.Clock, app.Terminal.IsStderrTerminal(), app.ErrStyle)
 	defer prog.Close()
 
 	// 6. Cache-aware policy compile: skipped when inputs are unchanged. The input

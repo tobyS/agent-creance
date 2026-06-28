@@ -244,7 +244,7 @@ and golden-test discipline favor self-contained messages.
 
 ---
 
-## Phase 5 — S7: `run --quiet`
+## Phase 5 — S7: `run --quiet` [DONE]
 
 ### Changes
 
