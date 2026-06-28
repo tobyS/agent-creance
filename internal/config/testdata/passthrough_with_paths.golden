@@ -1,2 +1,2 @@
 invalid .agent-creance.yaml:
-  - egress allow rule for host "api.anthropic.com" uses mode: passthrough, which cannot carry paths
+  - egress allow rule for host "api.anthropic.com" uses mode: passthrough, which cannot carry paths (use mode: intercept to filter by path, or drop paths for a passthrough tunnel)

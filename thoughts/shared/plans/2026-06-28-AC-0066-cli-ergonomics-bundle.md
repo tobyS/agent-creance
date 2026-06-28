@@ -152,7 +152,7 @@ shell completion is documented in the README with per-shell install steps.
 
 ---
 
-## Phase 3 — S6: config-validation corrected-form hints
+## Phase 3 — S6: config-validation corrected-form hints [DONE]
 
 ### Changes
 

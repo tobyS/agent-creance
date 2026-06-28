@@ -77,13 +77,13 @@ func TestValidate(t *testing.T) {
 			name:         "passthrough with paths is rejected",
 			yaml:         "network:\n  egress:\n    allow:\n      - host: api.anthropic.com\n        mode: passthrough\n        paths: [\"/x\"]\n",
 			wantErr:      true,
-			wantContains: "cannot carry paths",
+			wantContains: "use mode: intercept to filter by path",
 		},
 		{
 			name:         "passthrough with methods is rejected",
 			yaml:         "network:\n  egress:\n    allow:\n      - host: api.anthropic.com\n        mode: passthrough\n        methods: [GET]\n",
 			wantErr:      true,
-			wantContains: "cannot carry methods",
+			wantContains: "use mode: intercept to filter by method",
 		},
 		{
 			name:         "passthrough with empty paths list is still rejected",
@@ -137,7 +137,7 @@ func TestValidate(t *testing.T) {
 			name:         "host with a scheme is rejected",
 			yaml:         "network:\n  egress:\n    allow:\n      - host: http://x/y\n",
 			wantErr:      true,
-			wantContains: "invalid host",
+			wantContains: "valid form: a bare hostname like example.com",
 		},
 		{
 			name:         "host that is only whitespace is rejected",

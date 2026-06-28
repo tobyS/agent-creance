@@ -35,10 +35,10 @@ func validateRules(rules []Rule, list string, verr *ValidationError) {
 			// path/method matching is impossible — carrying them is a config error,
 			// not a silent no-op (docs/design.md "Per-host enforcement modes").
 			if r.Paths != nil {
-				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry paths", list, ref)
+				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry paths (use mode: intercept to filter by path, or drop paths for a passthrough tunnel)", list, ref)
 			}
 			if r.Methods != nil {
-				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry methods", list, ref)
+				verr.add("egress %s rule %s uses mode: passthrough, which cannot carry methods (use mode: intercept to filter by method, or drop methods for a passthrough tunnel)", list, ref)
 			}
 		default:
 			verr.add("egress %s rule %s has unknown mode %q (want %q or %q)", list, ref, r.Mode, ModeIntercept, ModePassthrough)
@@ -196,7 +196,7 @@ func ValidateMethods(methods []string) error {
 // validateRuleHostMethods records host and method problems for one rule onto verr.
 func validateRuleHostMethods(r Rule, list, ref string, verr *ValidationError) {
 	if err := ValidateHost(r.Host); err != nil {
-		verr.add("egress %s rule %s has an invalid host %q: %v", list, ref, r.Host, err)
+		verr.add("egress %s rule %s has an invalid host %q: %v (valid form: a bare hostname like example.com, or a wildcard like *.example.com)", list, ref, r.Host, err)
 	}
 	if r.Methods != nil {
 		if err := ValidateMethods(*r.Methods); err != nil {
