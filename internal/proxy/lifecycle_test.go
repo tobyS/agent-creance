@@ -385,6 +385,8 @@ func TestAttachFailsWhenProxyNeverListens(t *testing.T) {
 	_, err := h.mgr.Attach(context.Background(), h.cfg(222))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "did not start listening")
+	// S6: the readiness-timeout path points at doctor (it did not before).
+	assert.Contains(t, err.Error(), "agent-creance doctor")
 	// The readiness poll exhausted its attempts (one Sleep per attempt).
 	assert.Len(t, h.sleep.Sleeps, 100)
 }
@@ -415,6 +417,8 @@ func TestAttachSpawnError(t *testing.T) {
 
 	_, err := h.mgr.Attach(context.Background(), h.cfg(222))
 	require.Error(t, err)
+	// S6: a spawn failure points at doctor.
+	assert.Contains(t, err.Error(), "agent-creance doctor")
 	// Lock is still released (defer) so the next invocation is not wedged.
 	assert.Equal(t, []string{h.lay.ProxyLock()}, h.flock.Released)
 }

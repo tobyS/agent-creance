@@ -386,6 +386,29 @@ func TestRunMissingConfig(t *testing.T) {
 	}
 }
 
+// TestRunMalformedConfigHint asserts S6: a config that exists but is invalid
+// fails at the compile step with a pointer to the config file (not `doctor`,
+// which does not inspect the project config). The underlying validation error
+// still names the offending field.
+func TestRunMalformedConfigHint(t *testing.T) {
+	f := newRunFixture(t)
+	// Passes the up-front existence gate, fails validation: passthrough + paths.
+	f.fs.Files[projConfig] = []byte("agent:\n  command: [\"claude\"]\n" +
+		"network:\n  egress:\n    allow:\n      - host: api.anthropic.com\n" +
+		"        mode: passthrough\n        paths: [\"/v1/\"]\n")
+
+	err := runRun(context.Background(), f.app, ".")
+	if err == nil {
+		t.Fatal("runRun succeeded, want a config-compile failure")
+	}
+	if !strings.Contains(err.Error(), "check your .agent-creance.yaml") {
+		t.Errorf("err = %q, want the config-file remediation pointer", err)
+	}
+	if len(f.proc.Spawned) != 0 || len(f.pg.Started()) != 0 {
+		t.Errorf("proxy/cage started despite the invalid config")
+	}
+}
+
 // TestRunGrantsLocalPluginMarketplaceDirs asserts a local ("directory") plugin
 // marketplace outside the cage is mounted read-only, while one inside the project
 // (already mounted) is filtered out (AC-0056).

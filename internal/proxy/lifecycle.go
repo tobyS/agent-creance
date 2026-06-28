@@ -164,7 +164,7 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		}
 		pid, err := m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg)...)
 		if err != nil {
-			return Attachment{}, fmt.Errorf("proxy: start mitmproxy: %w", err)
+			return Attachment{}, fmt.Errorf("proxy: start mitmproxy: %w (try `agent-creance doctor`)", err)
 		}
 		if err := m.waitProxyReady(ctx, pid, port); err != nil {
 			// Don't leave a half-started proxy orphaned: the lock has not been written
@@ -212,7 +212,7 @@ func (m *Manager) waitProxyReady(ctx context.Context, pid, port int) error {
 			return fmt.Errorf("proxy: wait for mitmproxy to listen on port %d: %w", port, err)
 		}
 	}
-	return fmt.Errorf("proxy: mitmproxy did not start listening on port %d within %s", port, time.Duration(readyMaxAttempts)*readyPollInterval)
+	return fmt.Errorf("proxy: mitmproxy did not start listening on port %d within %s (try `agent-creance doctor`)", port, time.Duration(readyMaxAttempts)*readyPollInterval)
 }
 
 // Detach removes selfPID from the project's lock under the flock. If it was the

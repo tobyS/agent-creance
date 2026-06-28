@@ -97,7 +97,12 @@ shell completion is documented in the README with per-shell install steps.
 
 ---
 
-## Phase 2 — S6: `run`/proxy startup error remediation hints
+## Phase 2 — S6: `run`/proxy startup error remediation hints [DONE]
+
+> Deviation: config wraps (`compile policy`, `load config`) point at
+> `.agent-creance.yaml`, not `doctor` — verified `doctor` does not inspect the
+> project config, so a doctor pointer there would be misleading. Proxy paths
+> point at `doctor` as planned.
 
 ### Changes
 

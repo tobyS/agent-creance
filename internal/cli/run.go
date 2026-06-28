@@ -135,7 +135,12 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	}
 	polRes, err := compiler.Compile(ctx, dir)
 	if err != nil {
-		return fmt.Errorf("compile policy: %w", err)
+		// Past the up-front missing-config gate, a compile failure is a malformed
+		// config / unresolvable include / generator fetch — fixable by editing the
+		// config, not by `doctor` (which doesn't inspect the project config) or
+		// `init` (the file already exists). Point at the file; the underlying
+		// validation error already shows the corrected form (S6).
+		return fmt.Errorf("compile policy: %w (check your .agent-creance.yaml)", err)
 	}
 	if polRes.Skipped {
 		prog.StepDone("Egress policy up to date (cached)")
@@ -146,7 +151,7 @@ func runRun(ctx context.Context, app *App, dir string) error {
 	// 7. Load the merged config (needed to build the Safehouse invocation).
 	cfg, err := config.NewLoader(app.FS, app.Paths).Load(filepath.Join(dir, configFile))
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return fmt.Errorf("load config: %w (check your .agent-creance.yaml)", err)
 	}
 
 	// 8. (Re)generate network.sb — the deny-all baseline. Exempt from the policy
