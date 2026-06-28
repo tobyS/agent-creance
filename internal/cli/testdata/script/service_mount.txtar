@@ -1,0 +1,55 @@
+# `agent-creance service` and `mount` edit the parts of the config that are baked into
+# the frozen Seatbelt profile at launch (host_services, safehouse mounts), so they write
+# the config but do NOT recompile policy.json (AC-0067). With no cage running there is no
+# warning. Hermetic: HOME/XDG_CACHE_HOME under $WORK, PATH pinned to $CREANCE_BIN, stdin
+# never a tty so the missing-choice branches fail with a hint. The interactive prompt and
+# the live-cage warning are unit-tested (service_test.go / mount_test.go).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# service add LABEL:PORT → host_services entry.
+agent-creance service add mysql:3306
+stdout 'added mysql:3306 in \.agent-creance\.yaml'
+grep '- mysql:3306' .agent-creance.yaml
+
+# service add with only a port and no tty → fail with a hint, never hang.
+! agent-creance service add 6379
+stderr 'LABEL:PORT'
+
+# service remove PORT → gone; removing a missing port is a clear error.
+agent-creance service remove 3306
+stdout 'removed port 3306'
+! grep 'mysql:3306' .agent-creance.yaml
+! agent-creance service remove 9999
+stderr 'no host service on port 9999'
+
+# mount add PATH --rw / --ro → safehouse list entry.
+agent-creance mount add ./data --rw
+stdout 'mounted read-write ./data'
+grep 'add_dirs_rw' .agent-creance.yaml
+agent-creance mount add ~/.config/git --ro
+stdout 'mounted read-only'
+grep 'add_dirs_ro' .agent-creance.yaml
+
+# mount add with neither --rw nor --ro and no tty → hint.
+! agent-creance mount add ./other
+stderr '--rw or --ro'
+# --rw and --ro together is rejected.
+! agent-creance mount add ./other --rw --ro
+stderr 'cannot combine --rw and --ro'
+
+# mount remove PATH → gone; removing a non-mount is a clear error.
+agent-creance mount remove ./data
+stdout 'unmounted ./data'
+! grep '"./data"' .agent-creance.yaml
+! agent-creance mount remove ./nope
+stderr 'not a mount'
+
+-- .agent-creance.yaml --
+# project config
+network:
+  egress:
+    allow:
+      - host: seed.example

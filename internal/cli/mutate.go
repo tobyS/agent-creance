@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/policy/compile"
+	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/state"
 )
 
@@ -125,6 +126,65 @@ func applyAndRecompile(ctx context.Context, app *App, dir, path, fileLabel, subj
 		fmt.Fprintf(app.Stdout, "%s %s %s in %s; policy recompiled\n", app.OutStyle.OK("✓"), verb, subject, fileLabel)
 		return nil
 	})
+}
+
+// applyAndWarn is the read → apply → atomic-write skeleton for edits that do NOT affect
+// a running cage: host_services and filesystem mounts are baked into the Seatbelt profile
+// at launch (docs/design.md "Config compilation"/"Crash recovery"), so a live session
+// cannot pick them up. Unlike applyAndRecompile it does not recompile policy.json (these
+// edits are not in it); instead, when a cage is currently running for the project, it
+// warns that the change takes effect on the next `agent-creance run`. A no-op
+// (changed=false) is reported without writing.
+func applyAndWarn(app *App, dir, path, fileLabel, subject, verb string, apply func(src []byte) (out []byte, changed bool, err error)) error {
+	return withConfigLock(app, path, func() error {
+		data, err := app.FS.ReadFile(path)
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("read %s: %w", path, err)
+			}
+			data = nil
+		}
+
+		out, changed, err := apply(data)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			fmt.Fprintf(app.Stdout, "%s is already %s in %s; nothing to do\n", subject, verb, fileLabel)
+			return nil
+		}
+
+		if err := app.FS.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+		}
+		if err := writeFileAtomic(app.FS, path, out, configFilePerm); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+
+		fmt.Fprintf(app.Stdout, "%s %s %s in %s\n", app.OutStyle.OK("✓"), verb, subject, fileLabel)
+		if cageRunning(app, dir) {
+			fmt.Fprintf(app.Stderr, "%s takes effect on the next agent-creance run; the running cage is unchanged\n",
+				app.ErrStyle.Warn("⚠"))
+		}
+		return nil
+	})
+}
+
+// cageRunning reports whether a proxy cage is currently up for the project at dir, using
+// the same read-only liveness probe `status` uses (proxy.Manager.Inspect). Any probe
+// error is treated as "not running": the warning is advisory and must never turn a
+// successful config edit into a failure.
+func cageRunning(app *App, dir string) bool {
+	layout, err := state.New(app.Paths).Resolve(dir)
+	if err != nil {
+		return false
+	}
+	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
+	diag, err := mgr.Inspect(layout)
+	if err != nil {
+		return false
+	}
+	return diag.ProxyUp
 }
 
 // withConfigLock serializes a config read-modify-write against concurrent

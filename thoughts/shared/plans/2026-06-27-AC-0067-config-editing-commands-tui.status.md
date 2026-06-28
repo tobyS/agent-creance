@@ -39,12 +39,14 @@ deliberately broken step, so the prompt fallback was built with domain add.)
   decision prompts (the explicit user story). --method/--mode set them explicitly.
   Flag for review.
 
-## Phase 5: service + mount with write-and-warn
-- [ ] applyAndWarn helper (live-cage probe)
-- [ ] service.go, mount.go
-- [ ] register in cli.go
-- [ ] unit + testscript tests (incl. seedlock live-cage warning)
-- [ ] Verified
+## Phase 5: service + mount with write-and-warn — DONE
+- [x] applyAndWarn + cageRunning helper (proxy.Manager.Inspect probe) in mutate.go
+- [x] service.go (add LABEL:PORT / remove PORT), mount.go (add PATH --rw/--ro / remove)
+- [x] config.ParseHostService exported for early service-add validation
+- [x] register newServiceCmd / newMountCmd in cli.go
+- [x] service_test.go (incl. live-cage warning via seeded proxy.lock + alive PID/port),
+      mount_test.go, service_mount.txtar (flag/error/no-cage paths)
+- [x] Verified (make test all 28 pkgs / build / lint)
 
 ## Notes
 - Checkpoint decisions: last-path removal drops whole rule; remove-missing errors

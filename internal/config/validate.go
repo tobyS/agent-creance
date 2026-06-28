@@ -94,6 +94,12 @@ func parseGenerator(node *yaml.Node) (Generator, error) {
 	}
 }
 
+// ParseHostService parses a "label:port" entry into a typed HostService, applying the
+// same validation the loader uses (non-empty, control-character-free label; port in
+// 1-65535). Exported for the `service add` command to validate its argument up front
+// (AC-0067).
+func ParseHostService(s string) (HostService, error) { return parseHostService(s) }
+
 // parseHostService parses a "label:port" entry into a typed HostService. The label
 // is cosmetic but must be non-empty; the port must be a number in 1-65535.
 func parseHostService(s string) (HostService, error) {

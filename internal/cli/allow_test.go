@@ -20,11 +20,15 @@ const (
 )
 
 type mutateFixture struct {
-	app    *App
-	fs     *sysdeptest.FakeFileSystem
-	paths  *sysdeptest.FakePathResolver
-	out    *bytes.Buffer
-	layout state.Layout
+	app       *App
+	fs        *sysdeptest.FakeFileSystem
+	paths     *sysdeptest.FakePathResolver
+	out       *bytes.Buffer
+	errOut    *bytes.Buffer
+	flock     *sysdeptest.FakeFlock
+	procMgr   *sysdeptest.FakeProcessManager
+	portAlloc *sysdeptest.FakePortAllocator
+	layout    state.Layout
 }
 
 func newMutateFixture(t *testing.T) *mutateFixture {
@@ -36,18 +40,28 @@ func newMutateFixture(t *testing.T) *mutateFixture {
 	paths.HomeDir = mutHomeDir
 
 	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	flock := sysdeptest.NewFakeFlock()
+	procMgr := sysdeptest.NewFakeProcessManager()
+	portAlloc := sysdeptest.NewFakePortAllocator()
 	app := &App{
-		Stdout: out,
-		Stderr: &bytes.Buffer{},
-		FS:     fs,
-		Paths:  paths,
-		Clock:  sysdeptest.NewFakeClock(time.Unix(0, 0)),
-		HTTP:   sysdeptest.NewFakeHTTPGetter(),
-		Flock:  sysdeptest.NewFakeFlock(),
+		Stdout:         out,
+		Stderr:         errOut,
+		FS:             fs,
+		Paths:          paths,
+		Clock:          sysdeptest.NewFakeClock(time.Unix(0, 0)),
+		HTTP:           sysdeptest.NewFakeHTTPGetter(),
+		Flock:          flock,
+		ProcessManager: procMgr,
+		PortAllocator:  portAlloc,
+		Sleeper:        &sysdeptest.FakeSleeper{},
 	}
 	layout, err := state.New(paths).Resolve(mutProjDir)
 	require.NoError(t, err)
-	return &mutateFixture{app: app, fs: fs, paths: paths, out: out, layout: layout}
+	return &mutateFixture{
+		app: app, fs: fs, paths: paths, out: out, errOut: errOut,
+		flock: flock, procMgr: procMgr, portAlloc: portAlloc, layout: layout,
+	}
 }
 
 func (f *mutateFixture) file(t *testing.T, path string) []byte {
