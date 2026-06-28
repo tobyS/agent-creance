@@ -15,6 +15,9 @@ stdout '--all-paths'
 stdout '--method'
 stdout '--mode'
 stdout '--deny'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'Examples:'
+stdout 'agent-creance domain add'
 
 # Conflicting / invalid flag combinations are rejected up front, before any edit.
 ! agent-creance domain add example.com --all-paths --path /x/

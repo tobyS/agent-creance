@@ -24,6 +24,8 @@ func newIncludeCmd(app *App) *cobra.Command {
 			"formatting) and recompile the policy. PATH may be relative to the project\n" +
 			"config's directory, absolute, or ~/-relative. The target is validated before\n" +
 			"the entry is written, so a missing or unparseable include is reported up front.",
+		Example: "  # Layer in a shared baseline config\n" +
+			"  agent-creance include ../shared/agent-creance-base.yaml",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInclude(cmd.Context(), app, ".", args[0])

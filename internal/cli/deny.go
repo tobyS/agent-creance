@@ -16,7 +16,17 @@ func newDenyCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deny URL",
 		Short: "Append a deny_always rule and recompile the policy",
-		Args:  cobra.ExactArgs(1),
+		Long: "Append a hard deny_always egress rule for URL to the committed project config\n" +
+			"and recompile. Unlike allow there is no --once/--global: a hard deny is a\n" +
+			"deliberate, committed decision, so it always lands in the project file. With\n" +
+			"--reason the explanation is recorded and shown to the agent so it does not try to\n" +
+			"escalate around the block.",
+		Example: "  # Block a host for this project\n" +
+			"  agent-creance deny https://example.com\n" +
+			"\n" +
+			"  # Block with a recorded rationale\n" +
+			"  agent-creance deny https://example.com --reason 'low-quality source'",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDeny(cmd.Context(), app, ".", args[0], reason)
 		},

@@ -12,6 +12,9 @@ env PATH=$CREANCE_BIN
 # --help advertises the command; a missing PATH is rejected before any side effect.
 agent-creance include --help
 stdout 'include PATH'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'Examples:'
+stdout 'agent-creance include'
 ! agent-creance include
 stderr 'accepts 1 arg'
 

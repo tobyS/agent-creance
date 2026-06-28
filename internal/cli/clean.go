@@ -19,7 +19,16 @@ func newCleanCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Tear down this project's proxy, lock, and session overlay",
-		Args:  cobra.NoArgs,
+		Long: "Tear down this project's cage runtime state — stop the mitmproxy, release the\n" +
+			"lock, and purge the session overlay. It refuses while live agents are still\n" +
+			"attached unless you pass --force (which leaves those agents without egress). Use it\n" +
+			"to recover from a crashed run that left an orphaned proxy behind.",
+		Example: "  # Tear down this project's cage state\n" +
+			"  agent-creance clean\n" +
+			"\n" +
+			"  # Force teardown even while agents are attached\n" +
+			"  agent-creance clean --force",
+		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			return runClean(app, force)
 		},

@@ -37,6 +37,10 @@ func newDomainCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain",
 		Short: "Add or remove egress allow/deny rules",
+		Long: "Add or remove egress rules at the host level. domain add is the full-control form\n" +
+			"behind allow/deny — it takes paths, methods, enforcement mode, and deny/reason, and\n" +
+			"prompts for any choice not given as a flag; domain remove deletes a rule or a single\n" +
+			"path from it. Both edit the project config by default, or ~/.config with --global.",
 	}
 	cmd.AddCommand(newDomainAddCmd(app), newDomainRemoveCmd(app))
 	return cmd
@@ -47,7 +51,16 @@ func newDomainAddCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add HOST",
 		Short: "Add an egress rule for a host (prompts for any choice not given as a flag)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Add an egress rule for HOST with full control over its shape: --path and --method\n" +
+			"(repeatable) scope it, --mode picks intercept or passthrough, --deny with --reason\n" +
+			"makes it a hard deny, and --all-paths makes it host-wide. Any choice not given as a\n" +
+			"flag is prompted for. --global edits ~/.config instead of the project config.",
+		Example: "  # Allow a host for specific paths and methods\n" +
+			"  agent-creance domain add api.github.com --path /repos/ --method GET\n" +
+			"\n" +
+			"  # Add a host-wide deny with a reason\n" +
+			"  agent-creance domain add tracker.example --all-paths --deny --reason 'tracking'",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDomainAdd(cmd.Context(), app, ".", args[0], opts)
 		},
@@ -69,7 +82,15 @@ func newDomainRemoveCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove HOST",
 		Short: "Remove an egress rule (or one path from it with --path)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Remove the egress rule for HOST, or with --path remove just that one path prefix\n" +
+			"and leave the rest of the rule intact. --global edits ~/.config instead of the\n" +
+			"project config. The policy is recompiled so a running proxy hot-reloads.",
+		Example: "  # Remove a whole host rule\n" +
+			"  agent-creance domain remove api.github.com\n" +
+			"\n" +
+			"  # Remove just one path from a rule\n" +
+			"  agent-creance domain remove api.github.com --path /repos/",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDomainRemove(cmd.Context(), app, ".", args[0], path, global)
 		},

@@ -23,7 +23,19 @@ func newLogsCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: "Read the egress audit log (dump, --summary, or --follow)",
-		Args:  cobra.NoArgs,
+		Long: "Read this project's egress audit log — every allow / soft-deny / hard-deny\n" +
+			"decision the proxy made. With no flags it dumps the log; --summary prints the\n" +
+			"allow/soft-deny/hard-deny counts; --follow streams new entries live and is\n" +
+			"rotation-aware. --follow and --summary are mutually exclusive.",
+		Example: "  # Dump the egress log\n" +
+			"  agent-creance logs\n" +
+			"\n" +
+			"  # Show allow/deny counts\n" +
+			"  agent-creance logs --summary\n" +
+			"\n" +
+			"  # Tail the log while an agent runs\n" +
+			"  agent-creance logs --follow",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if follow && summary {
 				return fmt.Errorf("--follow and --summary are mutually exclusive")

@@ -22,6 +22,10 @@ func newServiceCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "service",
 		Short: "Add or remove in-cage host services (label:port)",
+		Long: "Add or remove host services the caged agent may reach on the host loopback —\n" +
+			"each a label:port bind under network.host_services, for things like a local dev\n" +
+			"server or database the agent needs. service add registers one; service remove\n" +
+			"deletes the bind on a port.",
 	}
 	cmd.AddCommand(newServiceAddCmd(app), newServiceRemoveCmd(app))
 	return cmd
@@ -31,7 +35,12 @@ func newServiceAddCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add LABEL:PORT",
 		Short: "Add a host service bind (prompts for a missing label)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Add a host service bind so the caged agent can reach a service on the host's\n" +
+			"loopback at PORT under the name LABEL. Given only a port, the label is prompted\n" +
+			"for. The bind is written to network.host_services in the project config.",
+		Example: "  # Expose the host's Postgres to the agent\n" +
+			"  agent-creance service add db:5432",
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runServiceAdd(app, ".", args[0])
 		},
@@ -43,7 +52,11 @@ func newServiceRemoveCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove PORT",
 		Short: "Remove the host service on a port",
-		Args:  cobra.ExactArgs(1),
+		Long: "Remove the host service bound on PORT from network.host_services, so the caged\n" +
+			"agent can no longer reach that host loopback port.",
+		Example: "  # Stop exposing the host service on port 5432\n" +
+			"  agent-creance service remove 5432",
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runServiceRemove(app, ".", args[0])
 		},

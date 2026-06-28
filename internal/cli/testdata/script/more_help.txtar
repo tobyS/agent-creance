@@ -1,0 +1,53 @@
+# Every leaf command's --help is a doc surface: a Long: description plus a worked
+# Examples: section. This locks the remaining commands not covered by their own
+# behavior scripts. --help touches no external tools or state, so PATH=$CREANCE_BIN
+# alone keeps it hermetic.
+env PATH=$CREANCE_BIN
+
+agent-creance deny --help
+stdout 'Examples:'
+stdout 'agent-creance deny https://example.com'
+
+agent-creance logs --help
+stdout 'Examples:'
+stdout 'agent-creance logs --summary'
+
+agent-creance status --help
+stdout 'Examples:'
+stdout 'agent-creance status --json'
+
+agent-creance clean --help
+stdout 'Examples:'
+stdout 'agent-creance clean --force'
+
+agent-creance version --help
+stdout 'Examples:'
+stdout 'agent-creance version'
+
+agent-creance policy show --help
+stdout 'Examples:'
+stdout 'agent-creance policy show --json'
+
+agent-creance policy explain --help
+stdout 'Examples:'
+stdout 'agent-creance policy explain'
+
+agent-creance policy refresh --help
+stdout 'Examples:'
+stdout 'agent-creance policy refresh'
+
+agent-creance service add --help
+stdout 'Examples:'
+stdout 'agent-creance service add'
+
+agent-creance mount add --help
+stdout 'Examples:'
+stdout 'agent-creance mount add'
+
+# Parent commands carry a Long: framing their subcommands (no Examples:).
+agent-creance policy --help
+stdout 'Inspect the egress policy'
+agent-creance service --help
+stdout 'host loopback'
+agent-creance mount --help
+stdout 'add_dirs'

@@ -11,6 +11,9 @@ env XDG_CACHE_HOME=$WORK/cache
 # --help advertises --yes and the FILE arg.
 agent-creance import --help
 stdout '--yes'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'Examples:'
+stdout 'agent-creance import --yes'
 
 cd proj
 

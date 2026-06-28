@@ -30,7 +30,16 @@ func newImportCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import FILE",
 		Short: "Merge a YAML config fragment into the project config after review",
-		Args:  cobra.ExactArgs(1),
+		Long: "Merge a YAML config fragment (egress allow/deny rules and host_services) from\n" +
+			"FILE into .agent-creance.yaml. The fragment is strict-validated, the merged result\n" +
+			"is shown, and nothing is written until you confirm (or pass --yes). This is the\n" +
+			"paste-back half of init's agent prompt — a way to apply rules the agent proposed.",
+		Example: "  # Review and merge a fragment\n" +
+			"  agent-creance import extra-rules.yaml\n" +
+			"\n" +
+			"  # Merge without the confirmation prompt (non-interactive)\n" +
+			"  agent-creance import --yes extra-rules.yaml",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runImport(cmd.Context(), app, ".", args[0], yes)
 		},

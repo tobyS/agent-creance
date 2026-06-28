@@ -12,7 +12,12 @@ func newVersionCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print agent-creance version and the tool versions it was tested against",
-		Args:  cobra.NoArgs,
+		Long: "Print the agent-creance version (with build commit and date) and the external\n" +
+			"tool versions — agent-safehouse and mitmproxy — this build was tested against, so\n" +
+			"you can compare them against what doctor finds installed.",
+		Example: "  # Print version and tested-against tool versions\n" +
+			"  agent-creance version",
+		Args: cobra.NoArgs,
 		// RunE receives the cobra command; we write through app.Stdout (not
 		// fmt.Println) so output is captured in tests.
 		RunE: func(_ *cobra.Command, _ []string) error {

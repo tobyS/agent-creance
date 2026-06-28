@@ -19,6 +19,10 @@ func newPolicyCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "policy",
 		Short: "Inspect the resolved egress policy",
+		Long: "Inspect the egress policy that the cage will enforce. Subcommands compile the\n" +
+			"project's effective policy on demand and let you dump it (show), test a single URL\n" +
+			"against it (explain), or force a re-fetch of generator metadata (refresh). None of\n" +
+			"them require a running cage.",
 	}
 	cmd.AddCommand(newPolicyShowCmd(app), newPolicyExplainCmd(app), newPolicyRefreshCmd(app))
 	return cmd
@@ -34,7 +38,13 @@ func newPolicyRefreshCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "refresh",
 		Short: "Force a re-fetch of generator metadata and recompile the policy",
-		Args:  cobra.NoArgs,
+		Long: "Force a re-fetch of generator registry metadata — invalidating this project's\n" +
+			"per-package cache and the generator output cache — and recompile the policy,\n" +
+			"ignoring the 30-day refresh window and the input-hash cache. Reports what was\n" +
+			"refreshed and exits 0. --json emits the structured report.",
+		Example: "  # Re-fetch generator metadata and recompile\n" +
+			"  agent-creance policy refresh",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			compiler, err := compile.New(app.FS, app.Paths, app.Clock, app.HTTP, nil /*silent*/)
 			if err != nil {
@@ -68,7 +78,16 @@ func newPolicyShowCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Dump the fully-resolved policy with rule sources",
-		Args:  cobra.NoArgs,
+		Long: "Compile the project's effective policy on demand (cached) and dump every rule\n" +
+			"with its source annotation and passthrough / lower-trust flags, so you can see what\n" +
+			"the cage will allow and where each rule came from. --json re-emits the compiled\n" +
+			"artifact verbatim.",
+		Example: "  # Dump the resolved policy\n" +
+			"  agent-creance policy show\n" +
+			"\n" +
+			"  # Machine-readable output\n" +
+			"  agent-creance policy show --json",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			compiled, err := resolvePolicy(cmd.Context(), app, ".")
 			if err != nil {
@@ -101,7 +120,16 @@ func newPolicyExplainCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "explain URL",
 		Short: "Show which rule (if any) decides a given URL",
-		Args:  cobra.ExactArgs(1),
+		Long: "Evaluate URL against the compiled policy and report the decision (allow /\n" +
+			"soft-deny / hard-deny) and the matching rule, so you can debug why a request would\n" +
+			"be let through or blocked. A URL carries no HTTP method, so --method (default GET)\n" +
+			"supplies the one the matcher evaluates. --json emits the explanation as JSON.",
+		Example: "  # Explain how a URL would be decided\n" +
+			"  agent-creance policy explain https://api.github.com/repos/foo/bar\n" +
+			"\n" +
+			"  # Evaluate against a specific method\n" +
+			"  agent-creance policy explain --method POST https://api.example.com",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req, err := requestFromURL(args[0], method)
 			if err != nil {

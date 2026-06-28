@@ -19,7 +19,15 @@ func newStatusCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "List running cages across all projects",
-		Args:  cobra.NoArgs,
+		Long: "List the cages running on this machine across every project — each one's project\n" +
+			"path, proxy, and attached-agent count. It never mutates anything and always exits\n" +
+			"0; use it to see what is live before a clean. --json emits the report as JSON.",
+		Example: "  # List running cages\n" +
+			"  agent-creance status\n" +
+			"\n" +
+			"  # Machine-readable output\n" +
+			"  agent-creance status --json",
+		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			return runStatus(app, asJSON)
 		},
