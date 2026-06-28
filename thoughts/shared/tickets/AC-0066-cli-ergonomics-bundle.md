@@ -1,6 +1,6 @@
 # AC-0066: CLI ergonomics bundle — setup orientation, error remediation, machine-readable output, completion
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
 **Updated:** 2026-06-28
@@ -71,21 +71,21 @@ documented and discoverable.
 
 ## Acceptance Criteria
 
-- [ ] `agent-creance setup` ends with a clear next-step line pointing at
+- [x] `agent-creance setup` ends with a clear next-step line pointing at
       `agent-creance init` (and the overall happy path).
-- [ ] The high-traffic `run` startup errors carry a remediation pointer where one
+- [x] The high-traffic `run` startup errors carry a remediation pointer where one
       applies — at minimum the config-load and proxy-start/readiness paths point
       at `agent-creance doctor` (or `init`, as appropriate).
-- [ ] The most common config validation errors (e.g. passthrough-with-paths,
+- [x] The most common config validation errors (e.g. passthrough-with-paths,
       unknown mode, malformed host) include a short corrected-form example or a
       pointer to valid syntax.
-- [ ] `agent-creance doctor --json` emits the diagnostic report as machine-readable
+- [x] `agent-creance doctor --json` emits the diagnostic report as machine-readable
       JSON; exit code semantics are preserved.
-- [ ] `agent-creance status --json` emits the running-cages report as
+- [x] `agent-creance status --json` emits the running-cages report as
       machine-readable JSON.
-- [ ] `agent-creance run --quiet` suppresses the startup progress output (the
+- [x] `agent-creance run --quiet` suppresses the startup progress output (the
       agent's own output is unaffected; errors are still shown).
-- [ ] Shell completion is documented (how to enable it for at least bash/zsh) in
+- [x] Shell completion is documented (how to enable it for at least bash/zsh) in
       the README and/or root help, and surfaced rather than buried.
 
 ## Out of Scope
@@ -132,7 +132,8 @@ was verified in the built binary.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+- Research: `thoughts/shared/research/2026-06-28-AC-0066-cli-ergonomics-bundle.md`
+- Plan: `thoughts/shared/plans/2026-06-28-AC-0066-cli-ergonomics-bundle.md`
 
 ## Notes & Updates
 
@@ -143,3 +144,26 @@ already-working command), S6 is targeted hint-threading, and S7 (JSON + quiet) i
 the heaviest sub-item and the likeliest split candidate if it grows. The audit's
 follow-up verification confirmed the `completion` command already exists, so S8 is
 "document + surface," not "enable."
+
+### 2026-06-28 — Done
+Implemented via `/tce:work` in six phases (one commit each):
+
+- **S5** — `setup` now ends with `Next: run \`agent-creance init\` …`, added in
+  the command's `RunE` closure (not `runSetup`, which `init` reuses inline).
+- **S6** — proxy spawn + readiness-timeout errors now point at
+  `agent-creance doctor` (mirroring the crash path); the `compile policy` /
+  `load config` wraps point at `.agent-creance.yaml`. **Deviation from plan:** the
+  config wraps point at the config file, *not* `doctor` — `doctor` does not
+  inspect the project config, so a doctor pointer there would be misleading
+  (proxy paths do point at doctor, which diagnoses the proxy). Common config
+  validation errors (passthrough-with-paths/methods, invalid host) gained a
+  corrected-form clause; unknown-mode already named valid options.
+- **S7** — `doctor --json` and `status --json` via dedicated string-valued output
+  structs (the `policy/render` convention; int `Status` → `ok/warn/problem/
+  skipped`, empty arrays as `[]`). `doctor --json` preserves the non-zero exit on
+  actionable problems. `run --quiet` routes the progress printer to `io.Discard`.
+  Kept as one ticket (the open planning question) — no split needed.
+- **S8** — README "Shell completion" section with per-shell install hints;
+  command grouping / root `Long:` deliberately left to AC-0064.
+
+All `make test` + `make lint` green; verified against `bin/agent-creance`.
