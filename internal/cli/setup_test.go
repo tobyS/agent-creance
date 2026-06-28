@@ -384,6 +384,26 @@ func TestSetupNoSkillStillScaffoldsGlobalConfig(t *testing.T) {
 	}
 }
 
+// TestSetupCommandPrintsNextStep pins the orientation pointer added in the setup
+// command's RunE closure (S5): a successful `setup` ends by pointing at `init`.
+// The line lives in the closure, not runSetup, so init's inline setup gate never
+// prints it — hence this exercises newSetupCmd rather than calling runSetup.
+func TestSetupCommandPrintsNextStep(t *testing.T) {
+	f := newSetupFixture() // already-trusted happy path
+
+	cmd := newSetupCmd(f.app)
+	cmd.SetArgs(nil)
+	cmd.SetOut(f.out)
+	cmd.SetErr(f.out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup command: %v\nstdout: %s", err, f.out)
+	}
+
+	if got := f.out.String(); !strings.Contains(got, "Next: run `agent-creance init` in your project.") {
+		t.Errorf("stdout = %q, want the next-step pointer to init", got)
+	}
+}
+
 // keys returns the map keys, for readable assertion failure messages.
 func keys(m map[string][]byte) []string {
 	out := make([]string, 0, len(m))

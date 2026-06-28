@@ -1,9 +1,9 @@
 # AC-0066: CLI ergonomics bundle — setup orientation, error remediation, machine-readable output, completion
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
-**Updated:** 2026-06-27
+**Updated:** 2026-06-28
 
 ## Problem Statement
 

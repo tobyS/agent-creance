@@ -29,7 +29,14 @@ func newSetupCmd(app *App) *cobra.Command {
 		Short: "Trust the mitmproxy CA and install the agent-creance skill",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runSetup(cmd.Context(), app, noSkill, noCAInstall, noGlobalConfig)
+			if err := runSetup(cmd.Context(), app, noSkill, noCAInstall, noGlobalConfig); err != nil {
+				return err
+			}
+			// Orient the user toward the project-once step. This lives in the
+			// command closure, not runSetup, because init reuses runSetup as its
+			// host-setup gate and must not print "run init" mid-init.
+			fmt.Fprintln(app.Stdout, "Next: run `agent-creance init` in your project.")
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&noSkill, "no-skill", false,

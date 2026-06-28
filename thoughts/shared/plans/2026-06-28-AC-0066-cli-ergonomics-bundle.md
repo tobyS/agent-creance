@@ -67,7 +67,7 @@ shell completion is documented in the README with per-shell install steps.
 
 ---
 
-## Phase 1 — S5: `setup` → `init` next-step pointer
+## Phase 1 — S5: `setup` → `init` next-step pointer [DONE]
 
 ### Changes
 
