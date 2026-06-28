@@ -1,7 +1,7 @@
 ---
 plan: thoughts/shared/plans/2026-06-27-AC-0067-config-editing-commands-tui.md
 ticket: AC-0067
-status: in-progress
+status: complete
 ---
 
 # Status: AC-0067 — config-editing commands with TUI fallback

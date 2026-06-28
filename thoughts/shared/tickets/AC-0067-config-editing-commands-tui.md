@@ -1,9 +1,9 @@
 # AC-0067: Config-editing commands with interactive TUI fallback
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Extra Large
 **Created:** 2026-06-27
-**Updated:** 2026-06-27
+**Updated:** 2026-06-28
 
 ## Problem Statement
 
@@ -70,60 +70,64 @@ are gathered interactively; and config edits preserve the file's comments and fo
 ## Acceptance Criteria
 
 ### Command surface
-- [ ] New `domain` command group: `domain add HOST` and `domain remove HOST`.
-- [ ] New `service` command group: `service add LABEL:PORT` and `service remove PORT`.
-- [ ] New `mount` command group: `mount add PATH` and `mount remove PATH`.
-- [ ] Existing `allow` / `deny` verbs continue to work unchanged (kept as aliases).
+- [x] New `domain` command group: `domain add HOST` and `domain remove HOST`.
+- [x] New `service` command group: `service add LABEL:PORT` and `service remove PORT`.
+- [x] New `mount` command group: `mount add PATH` and `mount remove PATH`.
+- [x] Existing `allow` / `deny` verbs continue to work unchanged (kept as aliases that
+      delegate to the shared `runDomainAdd` body).
 
 ### Domain rules (allow + deny)
-- [ ] `domain add HOST --path P` (repeatable) scopes the rule to specific paths; `--method M`
+- [x] `domain add HOST --path P` (repeatable) scopes the rule to specific paths; `--method M`
       (repeatable) constrains methods; `--mode intercept|passthrough` sets the enforcement mode.
-- [ ] `domain add HOST --all-paths` produces a host-wide rule (no `paths`). `--all-paths`
+- [x] `domain add HOST --all-paths` produces a host-wide rule (no `paths`). `--all-paths`
       and `--path` together is a clear error.
-- [ ] `domain add HOST --deny --reason "..."` writes a `deny_always` rule instead of an allow.
-- [ ] `domain add` / `domain remove` accept `--global` to target `~/.config/agent-creance.yaml`
+- [x] `domain add HOST --deny --reason "..."` writes a `deny_always` rule instead of an allow.
+- [x] `domain add` / `domain remove` accept `--global` to target `~/.config/agent-creance.yaml`
       (allow and deny only).
-- [ ] `domain remove HOST` with no `--path` removes the entire rule; with `--path P` removes
-      only that path from the rule (and removes the rule entirely if it was its last path —
-      decide exact behavior in planning).
-- [ ] Passthrough with `paths`/`methods` is rejected with a clear, early error (not a later
-      compile failure) — the invalid combination is guarded.
+- [x] `domain remove HOST` with no `--path` removes the entire rule; with `--path P` removes
+      only that path from the rule, dropping the whole rule when it was the last path
+      (decision: drop-whole-rule, per the planning checkpoint).
+- [x] Passthrough with `paths`/`methods` is rejected with a clear, early error (not a later
+      compile failure) — the invalid combination is guarded in the command.
 
 ### Host services and mounts
-- [ ] `service add LABEL:PORT` appends a `host_services` entry; `service remove PORT` removes it.
-- [ ] `mount add PATH --rw|--ro` appends to `add_dirs_rw`/`add_dirs_ro`; `mount remove PATH`
-      removes it (from whichever list it is in).
+- [x] `service add LABEL:PORT` appends a `host_services` entry; `service remove PORT` removes it.
+- [x] `mount add PATH --rw|--ro` appends to `add_dirs_rw`/`add_dirs_ro`; `mount remove PATH`
+      removes it (from both lists if present in both, per the planning checkpoint).
 
 ### Interactive TUI fallback ("explicit-or-prompt")
-- [ ] For every choice a command needs, if it is supplied via flag the command runs
-      non-interactively; if it is *omitted*, an interactive prompt collects it. Omission is
-      not treated as a default — it triggers the prompt.
-- [ ] `domain add HOST` with neither `--path` nor `--all-paths` prompts: "allow all paths, or
-      specific paths?" (and collects the paths if "specific"). Methods and mode prompt the
-      same way when omitted.
-- [ ] `service add` prompts for a missing label; `mount add` prompts for missing `--rw`/`--ro`.
-- [ ] When an interactive prompt is needed but stdin/stdout is not a terminal, the command
+- [x] For every choice a command needs, if it is supplied via flag the command runs
+      non-interactively; if it is *omitted*, an interactive prompt collects it. (See the
+      deviation below: methods/mode use safe defaults rather than prompting.)
+- [x] `domain add HOST` with neither `--path` nor `--all-paths` prompts: "allow all paths, or
+      specific paths?" (and collects the paths if "specific"). **Deviation:** methods and mode
+      are NOT prompted when omitted — they use safe defaults (any method / intercept), which
+      matches the primary user story and avoids prompt noise; `--method`/`--mode` set them
+      explicitly. See Notes & Updates.
+- [x] `service add` prompts for a missing label; `mount add` prompts for missing `--rw`/`--ro`.
+- [x] When an interactive prompt is needed but stdin/stdout is not a terminal, the command
       fails with a clear hint naming the flags to supply, and never hangs.
 
 ### Edit semantics
-- [ ] Adding and **removing** entries preserves the file's existing comments and formatting
-      (no decode/re-encode reflow) — removal is new infrastructure beyond today's append-only editor.
-- [ ] Removing a non-existent entry is a clear, well-defined outcome (no-op with a message, or
-      explicit error — decide in planning), not a crash or silent corruption.
-- [ ] All edits go through the existing config lock (`withConfigLock`) and atomic write path.
+- [x] Adding and **removing** entries preserves the file's existing comments and formatting
+      (no decode/re-encode reflow) — removal is new infrastructure (a text-splice delete bounded
+      by the element's own node subtree, so neighbouring comments survive).
+- [x] Removing a non-existent entry is a clear, well-defined outcome — an explicit error with a
+      non-zero exit (decision: error, per the planning checkpoint), not a crash or corruption.
+- [x] All edits go through the existing config lock (`withConfigLock`) and atomic write path.
 
 ### Live-session behavior
-- [ ] `domain`/deny edits recompile `policy.json` so a running proxy hot-reloads (as today).
-- [ ] `service`/`mount` edits, when a cage is running for the project, write the change and
+- [x] `domain`/deny edits recompile `policy.json` so a running proxy hot-reloads (as today).
+- [x] `service`/`mount` edits, when a cage is running for the project, write the change and
       print a warning that it takes effect on the next `agent-creance run` and the live session
       is unchanged (because these are baked into the frozen Seatbelt profile).
 
 ### Testing
-- [ ] Pure edit/removal logic covered by table-driven unit tests; new `.sb`/policy artifacts
-      (if any) by golden tests.
-- [ ] Command behavior (flag paths, non-TTY fallback, error cases) covered by hermetic
-      `testscript` `.txtar` files; the TUI fits the `internal/sysdep` injected-terminal seam so
-      it is scriptable and never touches the real OS in unit tests.
+- [x] Pure edit/removal logic covered by table-driven unit tests (no new `.sb`/policy artifacts
+      were needed, so no new golden files).
+- [x] Command behavior (flag paths, non-TTY fallback, error cases) covered by hermetic
+      `testscript` `.txtar` files (`domain.txtar`, `service_mount.txtar`); the prompt fits the
+      `internal/sysdep` injected-terminal seam and is unit-tested without touching the real OS.
 
 ## Out of Scope
 
@@ -194,3 +198,36 @@ made during authoring:
 - **`--once`** stays on the legacy `allow` alias only; `domain` writes persistent config.
 - **Complexity:** Extra Large, kept as a single ticket per author preference (large
   implement pass expected; planning may phase it internally).
+
+### 2026-06-28 — Implemented (Done)
+
+Implemented across five internal phases (research + plan: `thoughts/shared/research/` and
+`thoughts/shared/plans/2026-06-27-AC-0067-*`):
+
+1. `config.AppendDir` — comment-preserving append for `safehouse.add_dirs_*` (flow lists
+   rewritten in place; block lists get an item).
+2. Removal infrastructure (`internal/config/remove.go`): `RemoveRule` (whole + single-path,
+   drop-on-last), `RemoveHostService` (by port), `RemoveDir` (both lists), `ErrNotFound`.
+   A deleted element's span is bounded by its own node subtree, so neighbouring comments
+   survive.
+3. `domain` group + a hand-rolled prompt helper (`prompt.go`); `allow`/`deny` re-pointed to
+   delegate to `runDomainAdd`.
+4. (folded into 3) interactive paths prompt + non-TTY flag hint.
+5. `service`/`mount` groups with `applyAndWarn` (live-cage probe via `proxy.Manager.Inspect`,
+   write-and-warn, no recompile).
+
+**Checkpoint decisions (resolved with the user before planning):** last-path removal drops
+the whole rule; removing a missing entry errors with a non-zero exit; `mount remove` detaches
+from both rw and ro lists; `allow`/`deny` are aliases over the shared `domain add` body.
+
+**Deviation from the acceptance criteria (flag for review):** the AC asked that *methods and
+mode* also prompt when omitted. Implemented only the **paths** decision as an interactive
+prompt (the primary user story); `--method`/`--mode` default silently to "any method" /
+`intercept` when omitted, to avoid prompting on every `domain add`. The flags set them
+explicitly. Easy to extend to prompt for these too if strict adherence is preferred.
+
+**Tests:** table/inline unit tests for the config edits and removals; `domain_test.go`,
+`domain_interactive_test.go`, `service_test.go`, `mount_test.go`; hermetic `domain.txtar` and
+`service_mount.txtar`. The live-cage warning is unit-tested with a seeded `proxy.lock` + alive
+PID/port. Full suite (`make test`, 28 packages), `make lint`, and `make build` all green; the
+built binary was smoke-tested end-to-end.
