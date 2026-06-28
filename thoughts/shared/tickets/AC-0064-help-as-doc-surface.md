@@ -1,9 +1,9 @@
 # AC-0064: make --help a real doc surface (Long/Example, root overview, command groups)
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
-**Updated:** 2026-06-27
+**Updated:** 2026-06-28
 
 ## Problem Statement
 

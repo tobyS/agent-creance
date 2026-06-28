@@ -78,6 +78,18 @@ type App struct {
 	ErrStyle *style.Styler
 }
 
+// Command group IDs for the root help listing. cobra prints subcommands under
+// their group's Title (in AddGroup order) instead of one alphabetized list;
+// every top-level command must carry one of these or cobra panics at runtime
+// (checkCommandGroups). The auto-generated help/completion commands are routed
+// into groupMaint via Set{Help,Completion}CommandGroupID below.
+const (
+	groupSetup   = "setup"
+	groupDaily   = "daily"
+	groupInspect = "inspect"
+	groupMaint   = "maintenance"
+)
+
 // newRootCmd builds the cobra command tree for the given App.
 //
 // cobra (the same library behind kubectl, gh, helm) is roughly the Go analog of
@@ -88,8 +100,23 @@ type App struct {
 func newRootCmd(app *App) *cobra.Command {
 	var colorMode string
 	root := &cobra.Command{
-		Use:           "agent-creance",
-		Short:         "Run a coding agent inside an isolated, egress-filtered cage",
+		Use:   "agent-creance",
+		Short: "Run a coding agent inside an isolated, egress-filtered cage",
+		Long: "agent-creance runs a coding agent (Claude Code or another) inside an isolated,\n" +
+			"egress-filtered cage on macOS, composing agent-safehouse (filesystem and process\n" +
+			"isolation) with mitmproxy (a TLS-terminating egress allowlist), configured by one\n" +
+			".agent-creance.yaml file.\n" +
+			"\n" +
+			"Getting started — the happy path is setup -> init -> run:\n" +
+			"\n" +
+			"  agent-creance setup   # once per machine: trust the mitmproxy CA, install the\n" +
+			"                        #   skill, and scaffold the global config\n" +
+			"  agent-creance init    # once per project: write .agent-creance.yaml\n" +
+			"  agent-creance run     # start the cage and your agent inside it\n" +
+			"\n" +
+			"setup runs once per machine, init once per project. If you skip them, run won't\n" +
+			"fail with a stack trace — it refuses early with a pointer to whichever command\n" +
+			"you still need.",
 		SilenceUsage:  true, // don't dump usage on a runtime error
 		SilenceErrors: true, // we print errors ourselves in Main
 		// Resolve the color decision once, before any subcommand runs. Per stream,
@@ -116,22 +143,41 @@ func newRootCmd(app *App) *cobra.Command {
 	root.PersistentFlags().StringVar(&colorMode, "color", "auto",
 		"when to colorize output: auto (a tty, unless NO_COLOR), always, or never")
 
-	root.AddCommand(newInitCmd(app))
-	root.AddCommand(newVersionCmd(app))
-	root.AddCommand(newDoctorCmd(app))
-	root.AddCommand(newPolicyCmd(app))
-	root.AddCommand(newLogsCmd(app))
-	root.AddCommand(newRunCmd(app))
-	root.AddCommand(newSetupCmd(app))
-	root.AddCommand(newAllowCmd(app))
-	root.AddCommand(newDenyCmd(app))
-	root.AddCommand(newDomainCmd(app))
-	root.AddCommand(newServiceCmd(app))
-	root.AddCommand(newMountCmd(app))
-	root.AddCommand(newIncludeCmd(app))
-	root.AddCommand(newImportCmd(app))
-	root.AddCommand(newStatusCmd(app))
-	root.AddCommand(newCleanCmd(app))
+	root.AddGroup(
+		&cobra.Group{ID: groupSetup, Title: "Setup Commands:"},
+		&cobra.Group{ID: groupDaily, Title: "Daily Commands:"},
+		&cobra.Group{ID: groupInspect, Title: "Inspect Commands:"},
+		&cobra.Group{ID: groupMaint, Title: "Maintenance Commands:"},
+	)
+	// addCmd registers a subcommand under a group, keeping the taxonomy in one
+	// reviewable place rather than scattering GroupID across the factories.
+	addCmd := func(cmd *cobra.Command, group string) {
+		cmd.GroupID = group
+		root.AddCommand(cmd)
+	}
+	// Setup — the once-per-machine / once-per-project bootstrap.
+	addCmd(newSetupCmd(app), groupSetup)
+	addCmd(newInitCmd(app), groupSetup)
+	// Daily — running the cage and editing its egress/config.
+	addCmd(newRunCmd(app), groupDaily)
+	addCmd(newAllowCmd(app), groupDaily)
+	addCmd(newDenyCmd(app), groupDaily)
+	addCmd(newDomainCmd(app), groupDaily)
+	addCmd(newServiceCmd(app), groupDaily)
+	addCmd(newMountCmd(app), groupDaily)
+	addCmd(newIncludeCmd(app), groupDaily)
+	addCmd(newImportCmd(app), groupDaily)
+	// Inspect — read-only diagnostics and state.
+	addCmd(newDoctorCmd(app), groupInspect)
+	addCmd(newStatusCmd(app), groupInspect)
+	addCmd(newLogsCmd(app), groupInspect)
+	addCmd(newPolicyCmd(app), groupInspect)
+	addCmd(newVersionCmd(app), groupInspect)
+	// Maintenance — teardown (plus the auto-generated help/completion below).
+	addCmd(newCleanCmd(app), groupMaint)
+
+	root.SetHelpCommandGroupID(groupMaint)
+	root.SetCompletionCommandGroupID(groupMaint)
 	return root
 }
 
