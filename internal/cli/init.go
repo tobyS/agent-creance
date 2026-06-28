@@ -30,7 +30,20 @@ func newInitCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a starter .agent-creance.yaml (detecting package.json / composer.json)",
-		Args:  cobra.NoArgs,
+		Long: "Initialize the current project — a one-time, per-project step. init writes a\n" +
+			".agent-creance.yaml template, scans for manifests (package.json, composer.json) up\n" +
+			"to two directory levels deep (skipping node_modules/ and vendor/) and pre-populates a\n" +
+			"generators: entry per detected manifest, and reads .git/config to add static allow\n" +
+			"entries for the project's own remotes. Interactive runs also offer to import the\n" +
+			"project's Claude Code web domains, MCP servers, and detected dev ports, and chain the\n" +
+			"one-time host setup, so you can start here. Without --git-push the agent gets\n" +
+			"read-only remote access.",
+		Example: "  # Scaffold the project config (prompts where a TTY is available)\n" +
+			"  agent-creance init\n" +
+			"\n" +
+			"  # Grant the agent push access to the project's git remotes\n" +
+			"  agent-creance init --git-push",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runInit(cmd.Context(), app, ".", force, noSetup, gitPush)
 		},

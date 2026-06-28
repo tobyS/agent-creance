@@ -18,7 +18,20 @@ func newAllowCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "allow URL",
 		Short: "Append a soft-allow rule and recompile the policy",
-		Args:  cobra.ExactArgs(1),
+		Long: "Append a soft-allow egress rule for URL and recompile the policy so a running\n" +
+			"proxy picks it up without a restart. A bare host allows the whole host; a URL with a\n" +
+			"path allows just that path. By default the rule is written to the committed project\n" +
+			"config; --global writes ~/.config/agent-creance.yaml instead, and --once writes the\n" +
+			"out-of-tree session overlay that is purged when the last agent exits.",
+		Example: "  # Allow a host for this project (committed config)\n" +
+			"  agent-creance allow https://example.com\n" +
+			"\n" +
+			"  # Allow just for the current session (purged on exit)\n" +
+			"  agent-creance allow --once https://example.com/api\n" +
+			"\n" +
+			"  # Allow globally, for every project on this machine\n" +
+			"  agent-creance allow --global https://example.com",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAllow(cmd.Context(), app, ".", args[0], once, global)
 		},

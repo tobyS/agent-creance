@@ -7,6 +7,10 @@ env PATH=$CREANCE_BIN
 agent-creance setup --help
 stdout '--no-skill'
 stdout '--no-ca-install'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'one-time, per-machine'
+stdout 'Examples:'
+stdout 'agent-creance setup --no-skill'
 
 # Extra positional args are rejected before any side effect (cobra.NoArgs).
 ! agent-creance setup bogus

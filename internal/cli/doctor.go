@@ -23,7 +23,17 @@ func newDoctorCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Diagnose prerequisites, CA trust, proxies, and environment",
-		Args:  cobra.NoArgs,
+		Long: "Diagnose whether this machine can run a cage. doctor checks the agent-safehouse\n" +
+			"install, CA trust (with a live curl verification), prerequisite tool versions\n" +
+			"(flagging every mismatch, down to the patch level), orphaned proxies, and exposed\n" +
+			"host services, then prints a report and exits non-zero while any actionable problem\n" +
+			"remains. With --fix it remediates what it safely can (e.g. cleaning orphan proxies).",
+		Example: "  # Run all diagnostics\n" +
+			"  agent-creance doctor\n" +
+			"\n" +
+			"  # Diagnose and auto-fix what is safe to fix\n" +
+			"  agent-creance doctor --fix",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(cmd.Context(), app, fix, asJSON)
 		},

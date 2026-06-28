@@ -16,6 +16,10 @@ env PATH=$CREANCE_BIN
 agent-creance init --help
 stdout '--force'
 stdout '--no-setup'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'one-time, per-project'
+stdout 'Examples:'
+stdout 'agent-creance init --git-push'
 ! agent-creance init bogus
 stderr 'unknown command'
 

@@ -1,0 +1,15 @@
+# run and doctor exec real external tools, so their behavior is covered by unit
+# tests and run_missing_prereq.txtar; here we only assert their --help is a doc
+# surface (a Long: description plus a worked Examples: section). --help never
+# touches the tools, so PATH=$CREANCE_BIN alone keeps this hermetic.
+env PATH=$CREANCE_BIN
+
+agent-creance run --help
+stdout 'Requires a'
+stdout 'Examples:'
+stdout 'agent-creance run --quiet'
+
+agent-creance doctor --help
+stdout 'live curl verification'
+stdout 'Examples:'
+stdout 'agent-creance doctor --fix'

@@ -27,7 +27,21 @@ func newSetupCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Trust the mitmproxy CA and install the agent-creance skill",
-		Args:  cobra.NoArgs,
+		Long: "Prepare this machine to run caged agents — a one-time, per-machine step. setup\n" +
+			"trusts the mitmproxy CA in the keychain (verified with a live curl test), installs\n" +
+			"the agent-creance Claude Code skill into ~/.claude/skills/, and scaffolds the global\n" +
+			"config (~/.config/agent-creance.yaml) with the Claude Code egress baseline when no\n" +
+			"global config exists. An existing global config is never touched. CA trust needs one\n" +
+			"keychain/sudo prompt. After setup, run `agent-creance init` in each project.",
+		Example: "  # Trust the CA, install the skill, scaffold the global config\n" +
+			"  agent-creance setup\n" +
+			"\n" +
+			"  # Skip the skill install\n" +
+			"  agent-creance setup --no-skill\n" +
+			"\n" +
+			"  # Use the CA via env vars only, without trusting it system-wide\n" +
+			"  agent-creance setup --no-ca-install",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := runSetup(cmd.Context(), app, noSkill, noCAInstall, noGlobalConfig); err != nil {
 				return err

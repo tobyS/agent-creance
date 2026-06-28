@@ -52,7 +52,19 @@ func newRunCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start the agent inside the egress-filtered cage",
-		Args:  cobra.NoArgs,
+		Long: "Compile the egress policy, start (or reuse) this project's mitmproxy, build the\n" +
+			"agent-safehouse sandbox profile, and exec the agent inside the cage. Requires a\n" +
+			"completed setup (trusted CA) and an initialized project (.agent-creance.yaml); if\n" +
+			"either is missing, run prints a pointer to the command you still need and exits\n" +
+			"non-zero rather than failing with a stack trace. Startup progress is reported on\n" +
+			"stderr (each step with a duration); stdout belongs to the agent. run blocks until\n" +
+			"the agent exits, then tears down the cage.",
+		Example: "  # Start the agent in the current project\n" +
+			"  agent-creance run\n" +
+			"\n" +
+			"  # Same, without the startup progress lines\n" +
+			"  agent-creance run --quiet",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runRun(cmd.Context(), app, ".", quiet)
 		},

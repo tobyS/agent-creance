@@ -13,6 +13,10 @@ env PATH=$CREANCE_BIN
 agent-creance allow --help
 stdout '--once'
 stdout '--global'
+# Help is a doc surface: a Long: description and a worked Examples: section.
+stdout 'recompile the policy'
+stdout 'Examples:'
+stdout 'agent-creance allow https://example.com'
 ! agent-creance allow
 stderr 'accepts 1 arg'
 ! agent-creance allow --once --global example.com
