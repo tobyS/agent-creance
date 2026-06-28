@@ -275,7 +275,7 @@ and golden-test discipline favor self-contained messages.
 
 ---
 
-## Phase 6 — S8: document shell completion
+## Phase 6 — S8: document shell completion [DONE]
 
 ### Changes
 
