@@ -1,6 +1,6 @@
 # AC-0065: user-facing onboarding — fix stale README, add quickstart and an install path
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
 **Updated:** 2026-06-28
@@ -53,19 +53,19 @@ them from obtaining the tool to a running caged session, and (3) install the
 
 ## Acceptance Criteria
 
-- [ ] The README status banner no longer claims only `version`/`doctor` are
+- [x] The README status banner no longer claims only `version`/`doctor` are
       implemented; it accurately reflects the implemented command surface (or
       drops the per-command claim entirely).
-- [ ] The "not yet wired up" qualifier in `## Requirements` (README.md:18) is
+- [x] The "not yet wired up" qualifier in `## Requirements` (README.md:18) is
       removed or corrected to match reality.
-- [ ] The README contains a Quickstart / Getting Started section listing the
+- [x] The README contains a Quickstart / Getting Started section listing the
       ordered happy-path commands: obtain/install → `agent-creance setup` →
       `agent-creance init` → `agent-creance run`, including the external
       prerequisites (`agent-safehouse`, `mitmproxy`).
-- [ ] At least one install method that puts `agent-creance` on `PATH` is
+- [x] At least one install method that puts `agent-creance` on `PATH` is
       documented and works (e.g. `go install …`, or a `make install` target to a
       standard bin dir).
-- [ ] No statement in the README is contradicted by the code or by another part
+- [x] No statement in the README is contradicted by the code or by another part
       of the README.
 
 ## Out of Scope
@@ -107,9 +107,25 @@ None — well-understood from the audit.
 
 ## Implementation Plan
 
-[Leave empty — filled when the plan is created.]
+`thoughts/shared/plans/2026-06-28-AC-0065-onboarding-readme-quickstart-install.md`
+
+Two phases:
+1. Add a `make install` target (stamped `go install` into `go env GOPATH`/bin).
+2. README: rewrite the stale status banner, drop "(not yet wired up)" from
+   Requirements, and add self-contained `## Quickstart` and `## Install`
+   sections (both `go install …@latest` and `make install`).
 
 ## Notes & Updates
+
+### 2026-06-28
+Implemented. Research confirmed the only stale claims were the two named (banner
+per-command list; "not yet wired up") — no others. Checkpoint decisions:
+document **both** install methods (a `make install` that wraps a stamped
+`go install` lands in the same `GOPATH/bin` as `go install …@latest`, so they
+complement), and keep the **Quickstart self-contained in the README** with a
+pointer to `docs/design.md`. `make install` verified locally (installed binary
+reports a stamped version, not `dev`); `go install …@latest` resolves via the
+public Go proxy once the commit is pushed. Set to Done.
 
 ### 2026-06-27
 Created from UX audit findings S2 and S3, combined per request because both are

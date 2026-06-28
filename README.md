@@ -6,17 +6,55 @@ isolated, egress-filtered cage on macOS — composed from
 and [mitmproxy](https://mitmproxy.org/) (TLS-terminating egress allowlist),
 configured by one `.agent-creance.yaml` file.
 
-> **Status:** early development (pre-v0.1). The full design lives in
-> [`docs/design.md`](docs/design.md). What's implemented today is the project
-> skeleton plus the `version` and `doctor` (prerequisite/version-compatibility)
-> commands.
+> **Status:** early development (pre-v0.1), under active development. The v0.1
+> core is implemented: `setup`, `init`, and `run` work end to end, along with the
+> egress-policy commands (`allow`/`deny`/`policy`/`import`), `doctor`, `status`,
+> and `logs`. The full design lives in [`docs/design.md`](docs/design.md).
 
 ## Requirements
 
-- Go 1.26+
+- Go 1.26+ (to build/install)
 - macOS (v0.1 is macOS-only)
-- For actually running a cage (not yet wired up): `agent-safehouse` and
-  `mitmproxy` on `PATH`.
+- For running a cage: `agent-safehouse` and `mitmproxy` on `PATH`. `setup` and
+  `run` check for these and tell you how to install any that are missing.
+
+## Quickstart
+
+You need Go 1.26+ and, to actually run a cage, `agent-safehouse` and `mitmproxy`
+on your `PATH` (macOS only — see [Requirements](#requirements)). Install
+`agent-creance` (see [Install](#install) below), then:
+
+```sh
+agent-creance setup          # once per machine: trust the mitmproxy CA, install
+                             #   the skill, and scaffold the global config
+cd your-project
+agent-creance init           # once per project: write .agent-creance.yaml
+agent-creance run            # start the cage and your agent inside it
+```
+
+`setup` is a one-time, per-machine step; `init` is one-time per project. If you
+skip them, `run` won't fail with a stack trace — it refuses early with a pointer
+to whichever command you still need. For the full command reference, see
+[`docs/design.md`](docs/design.md).
+
+## Install
+
+Both methods below install the `agent-creance` binary into `go env GOPATH`/bin
+(usually `~/go/bin`). Make sure that directory is on your `PATH` — if it isn't,
+add it: `export PATH="$PATH:$(go env GOPATH)/bin"`.
+
+```sh
+# Quickest — no clone:
+go install github.com/tobyS/agent-creance/cmd/agent-creance@latest
+
+# From source (stamps the build version into `agent-creance version`):
+git clone https://github.com/tobyS/agent-creance.git
+cd agent-creance
+make install
+```
+
+The `go install` build reports its version as `dev` (cosmetic — it doesn't affect
+how the cage runs); the `make install` build stamps the real version.
 
 ## Egress baseline
 

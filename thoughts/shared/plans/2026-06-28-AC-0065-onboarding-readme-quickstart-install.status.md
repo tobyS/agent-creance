@@ -5,7 +5,7 @@ Plan: `thoughts/shared/plans/2026-06-28-AC-0065-onboarding-readme-quickstart-ins
 ## Progress
 
 - [x] Phase 1 — Add a `make install` target
-- [ ] Phase 2 — README: fix stale claims, add Quickstart + Install
+- [x] Phase 2 — README: fix stale claims, add Quickstart + Install
 
 ## Notes
 
@@ -13,3 +13,7 @@ Plan: `thoughts/shared/plans/2026-06-28-AC-0065-onboarding-readme-quickstart-ins
 - Phase 1 done: `make install` = stamped `go install` into GOPATH/bin. Verified
   `make help` lists it; installed binary reports `59492e7-dirty`, not `dev`.
   Tests/lint green.
+- Phase 2 done: banner rewritten (accurate command surface), "(not yet wired
+  up)" removed, `## Quickstart` + `## Install` added (both methods, PATH note).
+  Full-README accuracy pass found no other contradictions. `make build` green.
+  All 5 acceptance criteria met; ticket set to Done.
