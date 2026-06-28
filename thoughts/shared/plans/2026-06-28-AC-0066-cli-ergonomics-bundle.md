@@ -196,7 +196,7 @@ and golden-test discipline favor self-contained messages.
 
 ---
 
-## Phase 4 — S7: `doctor --json` and `status --json`
+## Phase 4 — S7: `doctor --json` and `status --json` [DONE]
 
 ### Changes
 

@@ -80,7 +80,7 @@ func TestDoctorFixCleansRealOrphan(t *testing.T) {
 	// agent-safehouse prereq would make it non-nil independently of the cleanup).
 	buf := &bytes.Buffer{}
 	app := realApp(buf)
-	doctorErr := runDoctor(ctx, app, true)
+	doctorErr := runDoctor(ctx, app, true, false)
 	t.Logf("doctor --fix err=%v\n--- stdout ---\n%s", doctorErr, buf.String())
 
 	// The orphan proxy must stop listening. (We probe the socket rather than

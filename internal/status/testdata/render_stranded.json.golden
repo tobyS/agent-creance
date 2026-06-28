@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "project": "/Users/toby/code/wedged",
+      "hash": "0011223344556677",
+      "state": "stranded",
+      "port": 8082,
+      "pid": 555,
+      "agents": 1
+    }
+  ]
+}

@@ -19,17 +19,19 @@ import (
 // can (today: cleaning an orphan proxy). It exits non-zero when an actionable
 // problem remains (untrusted CA, an un-fixed orphan, or a missing prerequisite).
 func newDoctorCmd(app *App) *cobra.Command {
-	var fix bool
+	var fix, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Diagnose prerequisites, CA trust, proxies, and environment",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDoctor(cmd.Context(), app, fix)
+			return runDoctor(cmd.Context(), app, fix, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&fix, "fix", false,
 		"remediate what can be safely fixed (e.g. clean orphan proxies)")
+	cmd.Flags().BoolVar(&asJSON, "json", false,
+		"emit the diagnostic report as JSON (exit code unchanged)")
 	return cmd
 }
 
@@ -37,7 +39,7 @@ func newDoctorCmd(app *App) *cobra.Command {
 // runs every check, renders the report, and turns remaining actionable problems into
 // a non-zero exit (Main prints the error to stderr). Taking fix as a parameter is
 // what lets the unit tests drive both modes against the sysdep fakes.
-func runDoctor(ctx context.Context, app *App, fix bool) error {
+func runDoctor(ctx context.Context, app *App, fix, asJSON bool) error {
 	chk := &doctor.Checker{
 		Commander: app.Commander,
 		Tested:    app.Tested,
@@ -58,8 +60,18 @@ func runDoctor(ctx context.Context, app *App, fix bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(app.Stdout, doctor.Render(rep, app.OutStyle))
+	if asJSON {
+		out, jerr := doctor.RenderJSON(rep)
+		if jerr != nil {
+			return jerr
+		}
+		fmt.Fprint(app.Stdout, out)
+	} else {
+		fmt.Fprint(app.Stdout, doctor.Render(rep, app.OutStyle))
+	}
 
+	// Exit verdict is independent of the output format (S7): --json still exits
+	// non-zero when an actionable problem remains.
 	if probs := rep.Actionable(); len(probs) > 0 {
 		return fmt.Errorf("%d actionable problem(s) remain: %s", len(probs), strings.Join(probs, ", "))
 	}

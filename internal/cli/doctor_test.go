@@ -122,7 +122,7 @@ func (f *doctorFixture) seedLock(t *testing.T, ls doctorLockJSON) {
 func TestDoctorHealthyExitsZero(t *testing.T) {
 	f := newDoctorFixture(t)
 
-	if err := runDoctor(context.Background(), f.app, false); err != nil {
+	if err := runDoctor(context.Background(), f.app, false, false); err != nil {
 		t.Fatalf("runDoctor: %v\nstdout: %s", err, f.out)
 	}
 	out := f.out.String()
@@ -133,11 +133,59 @@ func TestDoctorHealthyExitsZero(t *testing.T) {
 	}
 }
 
+func TestDoctorJSONHealthy(t *testing.T) {
+	f := newDoctorFixture(t)
+
+	if err := runDoctor(context.Background(), f.app, false, true /*json*/); err != nil {
+		t.Fatalf("runDoctor --json: %v\nstdout: %s", err, f.out)
+	}
+	var rep struct {
+		CA         struct{ State string } `json:"ca"`
+		Proxy      struct{ State string } `json:"proxy"`
+		Actionable []string               `json:"actionable"`
+	}
+	if err := json.Unmarshal(f.out.Bytes(), &rep); err != nil {
+		t.Fatalf("doctor --json is not valid JSON: %v\n%s", err, f.out)
+	}
+	if rep.CA.State != "ok" || rep.Proxy.State != "none" {
+		t.Errorf("ca=%q proxy=%q, want ok/none", rep.CA.State, rep.Proxy.State)
+	}
+	if len(rep.Actionable) != 0 {
+		t.Errorf("actionable = %v, want empty on a healthy host", rep.Actionable)
+	}
+}
+
+// TestDoctorJSONPreservesExitCode pins S7: --json must still exit non-zero (and
+// emit JSON) when an actionable problem remains.
+func TestDoctorJSONPreservesExitCode(t *testing.T) {
+	f := newDoctorFixture(t)
+	f.prober.Outcome = sysdep.ProbeUntrusted // actionable: untrusted CA
+
+	err := runDoctor(context.Background(), f.app, false, true /*json*/)
+	if err == nil {
+		t.Fatalf("want non-zero exit for untrusted CA under --json\nstdout: %s", f.out)
+	}
+	if !strings.Contains(err.Error(), "untrusted CA") {
+		t.Errorf("error = %q, want it to mention untrusted CA", err)
+	}
+	// JSON was still emitted to stdout (machine-readable even on failure).
+	var rep struct {
+		CA         struct{ State string } `json:"ca"`
+		Actionable []string               `json:"actionable"`
+	}
+	if jerr := json.Unmarshal(f.out.Bytes(), &rep); jerr != nil {
+		t.Fatalf("doctor --json emitted no valid JSON on the failure path: %v\n%s", jerr, f.out)
+	}
+	if rep.CA.State != "problem" {
+		t.Errorf("ca state = %q, want problem", rep.CA.State)
+	}
+}
+
 func TestDoctorUntrustedCAExitsNonZero(t *testing.T) {
 	f := newDoctorFixture(t)
 	f.prober.Outcome = sysdep.ProbeUntrusted
 
-	err := runDoctor(context.Background(), f.app, false)
+	err := runDoctor(context.Background(), f.app, false, false)
 	if err == nil {
 		t.Fatalf("want non-zero exit for untrusted CA, got nil\nstdout: %s", f.out)
 	}
@@ -153,7 +201,7 @@ func TestDoctorOrphanActionableThenFixed(t *testing.T) {
 	f.ports.Listening[8080] = true // listening; 999 dead ⇒ orphan
 
 	// Without --fix: orphan makes doctor exit non-zero.
-	if err := runDoctor(context.Background(), f.app, false); err == nil {
+	if err := runDoctor(context.Background(), f.app, false, false); err == nil {
 		t.Fatalf("want non-zero exit for un-fixed orphan, got nil\nstdout: %s", f.out)
 	} else if !strings.Contains(err.Error(), "orphan proxy") {
 		t.Errorf("error = %q, want it to mention orphan proxy", err)
@@ -161,7 +209,7 @@ func TestDoctorOrphanActionableThenFixed(t *testing.T) {
 
 	// With --fix: orphan cleaned, exit zero.
 	f.out.Reset()
-	if err := runDoctor(context.Background(), f.app, true); err != nil {
+	if err := runDoctor(context.Background(), f.app, true, false); err != nil {
 		t.Fatalf("doctor --fix should clean the orphan and exit 0, got %v\nstdout: %s", err, f.out)
 	}
 	if !strings.Contains(f.out.String(), "cleaned orphan proxy (pid 111)") {
@@ -173,7 +221,7 @@ func TestDoctorExposedServiceIsWarningExitsZero(t *testing.T) {
 	f := newDoctorFixture(t)
 	f.listen.List = []sysdep.Listener{{Command: "node", PID: 501, Address: "*:8080"}}
 
-	if err := runDoctor(context.Background(), f.app, false); err != nil {
+	if err := runDoctor(context.Background(), f.app, false, false); err != nil {
 		t.Fatalf("exposed service is a warning, doctor must exit 0, got %v", err)
 	}
 	if !strings.Contains(f.out.String(), "node (pid 501) listening on *:8080") {

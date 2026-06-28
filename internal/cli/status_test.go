@@ -67,11 +67,54 @@ func (f *statusFixture) seed(t *testing.T, hash string, ls doctorLockJSON) {
 
 func TestStatusNoCages(t *testing.T) {
 	f := newStatusFixture(t)
-	if err := runStatus(f.app); err != nil {
+	if err := runStatus(f.app, false); err != nil {
 		t.Fatalf("runStatus: %v", err)
 	}
 	if got := f.out.String(); !strings.Contains(got, "No active cages.") {
 		t.Errorf("status with no projects should say so, got %q", got)
+	}
+}
+
+func TestStatusJSON(t *testing.T) {
+	f := newStatusFixture(t)
+	f.seed(t, "1111111111111111", doctorLockJSON{ProxyPID: 11, Port: 8080, Agents: agentEntries(12), CanonicalPath: "/code/alpha"})
+	f.proc.AlivePIDs[11] = true
+	f.proc.AlivePIDs[12] = true
+	f.proc.StartTimes[12] = agentStart(12)
+	f.ports.Listening[8080] = true
+
+	if err := runStatus(f.app, true /*json*/); err != nil {
+		t.Fatalf("runStatus --json: %v", err)
+	}
+	var rep struct {
+		Projects []struct {
+			Project string `json:"project"`
+			State   string `json:"state"`
+			Port    int    `json:"port"`
+			Agents  int    `json:"agents"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(f.out.Bytes(), &rep); err != nil {
+		t.Fatalf("status --json is not valid JSON: %v\n%s", err, f.out)
+	}
+	if len(rep.Projects) != 1 {
+		t.Fatalf("projects = %d, want 1\n%s", len(rep.Projects), f.out)
+	}
+	p := rep.Projects[0]
+	if p.Project != "/code/alpha" || p.State != "running" || p.Port != 8080 || p.Agents != 1 {
+		t.Errorf("project = %+v, want /code/alpha running 8080 1 agent", p)
+	}
+}
+
+// TestStatusJSONEmpty pins that no cages serializes as an empty array (not null),
+// so scripts can iterate unconditionally.
+func TestStatusJSONEmpty(t *testing.T) {
+	f := newStatusFixture(t)
+	if err := runStatus(f.app, true /*json*/); err != nil {
+		t.Fatalf("runStatus --json: %v", err)
+	}
+	if got := strings.TrimSpace(f.out.String()); got != "{\n  \"projects\": []\n}" {
+		t.Errorf("empty status --json = %q, want an empty projects array", got)
 	}
 }
 
@@ -90,7 +133,7 @@ func TestStatusListsProjects(t *testing.T) {
 	f.proc.AlivePIDs[21] = true
 	f.ports.Listening[8081] = true
 
-	if err := runStatus(f.app); err != nil {
+	if err := runStatus(f.app, false); err != nil {
 		t.Fatalf("runStatus: %v", err)
 	}
 	out := f.out.String()

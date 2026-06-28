@@ -1,0 +1,41 @@
+{
+  "prerequisites": [
+    {
+      "name": "agent-safehouse",
+      "installed": true,
+      "version": "1.4.2",
+      "tested": "1.4.2",
+      "skew": "exact"
+    },
+    {
+      "name": "mitmproxy",
+      "installed": true,
+      "version": "12.0.1",
+      "tested": "12.0.1",
+      "skew": "exact"
+    }
+  ],
+  "ca": {
+    "state": "ok",
+    "detail": "trusted"
+  },
+  "credential": {
+    "state": "ok",
+    "detail": "reachable"
+  },
+  "proxy": {
+    "state": "running",
+    "pid": 111,
+    "port": 8080,
+    "agents": 1
+  },
+  "exposed_services": {
+    "state": "ok",
+    "listeners": []
+  },
+  "filesystem": {
+    "state": "ok",
+    "warnings": []
+  },
+  "actionable": []
+}

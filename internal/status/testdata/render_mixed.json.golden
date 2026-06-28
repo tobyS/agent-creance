@@ -1,0 +1,28 @@
+{
+  "projects": [
+    {
+      "project": "/Users/toby/code/alpha",
+      "hash": "1111111111111111",
+      "state": "running",
+      "port": 8080,
+      "pid": 111,
+      "agents": 1
+    },
+    {
+      "project": "2222222222222222",
+      "hash": "2222222222222222",
+      "state": "orphan",
+      "port": 8081,
+      "pid": 333,
+      "agents": 0
+    },
+    {
+      "project": "/Users/toby/code/gamma",
+      "hash": "3333333333333333",
+      "state": "down",
+      "port": 8082,
+      "pid": 444,
+      "agents": 0
+    }
+  ]
+}

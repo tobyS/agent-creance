@@ -8,6 +8,6 @@ Plan: thoughts/shared/plans/2026-06-28-AC-0066-cli-ergonomics-bundle.md
     not inspect the project config, so a doctor pointer there would be dishonest.
     Proxy paths point at `doctor` (doctor does diagnose the proxy).
 - [x] Phase 3 — S6: config-validation corrected-form hints (commit pending)
-- [ ] Phase 4 — S7: doctor --json and status --json
+- [x] Phase 4 — S7: doctor --json and status --json (commit pending)
 - [ ] Phase 5 — S7: run --quiet
 - [ ] Phase 6 — S8: document shell completion

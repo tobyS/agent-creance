@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "project": "/Users/toby/code/other",
+      "hash": "9f8e7d6c5b4a3021",
+      "state": "orphan",
+      "port": 8081,
+      "pid": 444,
+      "agents": 0
+    }
+  ]
+}

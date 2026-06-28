@@ -1,0 +1,69 @@
+{
+  "prerequisites": [
+    {
+      "name": "agent-safehouse",
+      "installed": true,
+      "version": "1.4.2",
+      "tested": "1.4.2",
+      "skew": "exact"
+    },
+    {
+      "name": "mitmproxy",
+      "installed": true,
+      "version": "12.0.1",
+      "tested": "12.0.1",
+      "skew": "exact"
+    }
+  ],
+  "ca": {
+    "state": "problem",
+    "detail": "CA verification failed: the mitmproxy CA is not trusted. Re-run `agent-creance setup`."
+  },
+  "credential": {
+    "state": "problem",
+    "detail": "The login keychain is locked, so the Claude credential can't be read. Unlock your login keychain and retry."
+  },
+  "proxy": {
+    "state": "orphan",
+    "pid": 111,
+    "port": 8080,
+    "agents": 0
+  },
+  "exposed_services": {
+    "state": "warn",
+    "listeners": [
+      {
+        "command": "node",
+        "pid": 501,
+        "address": "*:8080"
+      },
+      {
+        "command": "sshd",
+        "pid": 77,
+        "address": "*:22"
+      }
+    ]
+  },
+  "filesystem": {
+    "state": "warn",
+    "warnings": [
+      {
+        "label": "working directory",
+        "path": "/Users/toby/proj",
+        "fs_type": "smbfs",
+        "reason": "network mount"
+      },
+      {
+        "label": "state cache",
+        "path": "/Users/toby/Library/Mobile Documents/com~apple~CloudDocs/.cache/agent-creance",
+        "fs_type": "apfs",
+        "reason": "iCloud Drive"
+      }
+    ]
+  },
+  "actionable": [
+    "untrusted CA",
+    "credential unavailable",
+    "orphan proxy"
+  ]
+}

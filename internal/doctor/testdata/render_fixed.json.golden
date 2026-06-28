@@ -1,0 +1,42 @@
+{
+  "prerequisites": [
+    {
+      "name": "agent-safehouse",
+      "installed": true,
+      "version": "1.4.2",
+      "tested": "1.4.2",
+      "skew": "exact"
+    },
+    {
+      "name": "mitmproxy",
+      "installed": true,
+      "version": "12.0.1",
+      "tested": "12.0.1",
+      "skew": "exact"
+    }
+  ],
+  "ca": {
+    "state": "warn",
+    "detail": "CA not generated — run `agent-creance setup`"
+  },
+  "credential": {
+    "state": "warn",
+    "detail": "No Claude credential found. Run `claude` on the host and log in before starting a caged session."
+  },
+  "proxy": {
+    "state": "cleaned",
+    "pid": 111,
+    "port": 8080,
+    "agents": 0
+  },
+  "exposed_services": {
+    "state": "skipped",
+    "listeners": [],
+    "detail": "could not scan (lsof unavailable)"
+  },
+  "filesystem": {
+    "state": "ok",
+    "warnings": []
+  },
+  "actionable": []
+}
