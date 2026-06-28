@@ -1,8 +1,10 @@
 # Root --help is a real doc surface: a Long: orientation block with the
-# setup -> init -> run happy path, and a grouped command list (Setup / Daily /
-# Inspect / Maintenance) instead of one alphabetized wall. The auto-generated
-# completion/help commands are routed into Maintenance, so no command falls
-# under cobra's "Additional Commands:" bucket.
+# setup -> init -> run happy path, and an importance-ordered, grouped command
+# list. The groups lead with the happy path (Getting Started) and doctor
+# (Troubleshooting) before the config/inspect/maintenance commands, and within
+# Getting Started the commands read in sequence order (setup, init, run) rather
+# than alphabetically. The auto-generated completion/help commands are routed
+# into Maintenance, so no command falls under cobra's "Additional Commands:".
 env PATH=$CREANCE_BIN
 
 agent-creance --help
@@ -11,14 +13,19 @@ stdout 'egress-filtered cage'
 stdout 'setup -> init -> run'
 stdout 'once per machine'
 # Grouped command headings, in display order.
-stdout 'Setup Commands:'
-stdout 'Daily Commands:'
-stdout 'Inspect Commands:'
-stdout 'Maintenance Commands:'
-# completion/help are grouped, not interleaved or dumped under Additional.
-stdout 'completion'
+stdout 'Getting Started:'
+stdout 'Troubleshooting:'
+stdout 'Configure Egress & Cage:'
+stdout 'Inspect:'
+stdout 'Maintenance:'
+# Importance ordering: Getting Started (setup, init, run in sequence) comes
+# before Troubleshooting (doctor), which comes before the rest.
+stdout '(?s)Getting Started:.*setup.*init.*run.*Troubleshooting:.*doctor.*Configure Egress & Cage:.*allow'
+# completion/help are grouped under Maintenance, not interleaved or dumped under
+# an Additional Commands: bucket.
+stdout '(?s)Maintenance:.*completion'
 ! stdout 'Additional Commands:'
 
 # -h is the same surface.
 agent-creance -h
-stdout 'Setup Commands:'
+stdout 'Getting Started:'

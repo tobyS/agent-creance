@@ -109,6 +109,14 @@ See `thoughts/shared/plans/2026-06-28-AC-0064-help-as-doc-surface.md` (research:
 
 ## Notes & Updates
 
+### 2026-06-28 (follow-up: importance ordering)
+Reworked the command grouping so the root help leads with importance rather than
+a flat semantic split: `cobra.EnableCommandSorting = false` so commands list in
+registration order, and five groups — Getting Started (setup, init, run in
+sequence), Troubleshooting (doctor), Configure Egress & Cage, Inspect,
+Maintenance. This puts the happy path and the debug entry point at the top
+instead of burying `run` mid-alphabet.
+
 ### 2026-06-28
 Done. Implemented in three phases:
 - **Groups + root overview** (`internal/cli/cli.go`): a root `Long:` with the

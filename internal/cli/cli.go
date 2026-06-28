@@ -81,13 +81,17 @@ type App struct {
 // Command group IDs for the root help listing. cobra prints subcommands under
 // their group's Title (in AddGroup order) instead of one alphabetized list;
 // every top-level command must carry one of these or cobra panics at runtime
-// (checkCommandGroups). The auto-generated help/completion commands are routed
-// into groupMaint via Set{Help,Completion}CommandGroupID below.
+// (checkCommandGroups). The groups are ordered by how a user meets the tool:
+// the setup -> init -> run happy path first, then doctor for when it breaks,
+// then the config-editing and inspection commands, then teardown. The
+// auto-generated help/completion commands are routed into groupMaint via
+// Set{Help,Completion}CommandGroupID below.
 const (
-	groupSetup   = "setup"
-	groupDaily   = "daily"
-	groupInspect = "inspect"
-	groupMaint   = "maintenance"
+	groupStart     = "start"
+	groupTrouble   = "troubleshoot"
+	groupConfigure = "configure"
+	groupInspect   = "inspect"
+	groupMaint     = "maintenance"
 )
 
 // newRootCmd builds the cobra command tree for the given App.
@@ -143,11 +147,19 @@ func newRootCmd(app *App) *cobra.Command {
 	root.PersistentFlags().StringVar(&colorMode, "color", "auto",
 		"when to colorize output: auto (a tty, unless NO_COLOR), always, or never")
 
+	// Order commands by importance (registration order), not alphabetically, so
+	// the happy-path sequence reads setup -> init -> run at the top instead of
+	// being re-sorted within its group. This is a package-global in cobra; it
+	// also makes nested subcommand lists (e.g. policy show/explain/refresh) print
+	// in registration order, which is the intended reading order there too.
+	cobra.EnableCommandSorting = false
+
 	root.AddGroup(
-		&cobra.Group{ID: groupSetup, Title: "Setup Commands:"},
-		&cobra.Group{ID: groupDaily, Title: "Daily Commands:"},
-		&cobra.Group{ID: groupInspect, Title: "Inspect Commands:"},
-		&cobra.Group{ID: groupMaint, Title: "Maintenance Commands:"},
+		&cobra.Group{ID: groupStart, Title: "Getting Started:"},
+		&cobra.Group{ID: groupTrouble, Title: "Troubleshooting:"},
+		&cobra.Group{ID: groupConfigure, Title: "Configure Egress & Cage:"},
+		&cobra.Group{ID: groupInspect, Title: "Inspect:"},
+		&cobra.Group{ID: groupMaint, Title: "Maintenance:"},
 	)
 	// addCmd registers a subcommand under a group, keeping the taxonomy in one
 	// reviewable place rather than scattering GroupID across the factories.
@@ -155,20 +167,21 @@ func newRootCmd(app *App) *cobra.Command {
 		cmd.GroupID = group
 		root.AddCommand(cmd)
 	}
-	// Setup — the once-per-machine / once-per-project bootstrap.
-	addCmd(newSetupCmd(app), groupSetup)
-	addCmd(newInitCmd(app), groupSetup)
-	// Daily — running the cage and editing its egress/config.
-	addCmd(newRunCmd(app), groupDaily)
-	addCmd(newAllowCmd(app), groupDaily)
-	addCmd(newDenyCmd(app), groupDaily)
-	addCmd(newDomainCmd(app), groupDaily)
-	addCmd(newServiceCmd(app), groupDaily)
-	addCmd(newMountCmd(app), groupDaily)
-	addCmd(newIncludeCmd(app), groupDaily)
-	addCmd(newImportCmd(app), groupDaily)
-	// Inspect — read-only diagnostics and state.
-	addCmd(newDoctorCmd(app), groupInspect)
+	// Getting started — the happy path, in sequence order (setup -> init -> run).
+	addCmd(newSetupCmd(app), groupStart)
+	addCmd(newInitCmd(app), groupStart)
+	addCmd(newRunCmd(app), groupStart)
+	// Troubleshooting — the first thing to reach for when run won't start.
+	addCmd(newDoctorCmd(app), groupTrouble)
+	// Configure — editing the project's egress rules and cage exposure.
+	addCmd(newAllowCmd(app), groupConfigure)
+	addCmd(newDenyCmd(app), groupConfigure)
+	addCmd(newDomainCmd(app), groupConfigure)
+	addCmd(newServiceCmd(app), groupConfigure)
+	addCmd(newMountCmd(app), groupConfigure)
+	addCmd(newIncludeCmd(app), groupConfigure)
+	addCmd(newImportCmd(app), groupConfigure)
+	// Inspect — read-only state and resolved policy.
 	addCmd(newStatusCmd(app), groupInspect)
 	addCmd(newLogsCmd(app), groupInspect)
 	addCmd(newPolicyCmd(app), groupInspect)
