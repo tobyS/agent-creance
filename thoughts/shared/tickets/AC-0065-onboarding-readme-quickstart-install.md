@@ -1,9 +1,9 @@
 # AC-0065: user-facing onboarding — fix stale README, add quickstart and an install path
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-27
-**Updated:** 2026-06-27
+**Updated:** 2026-06-28
 
 ## Problem Statement
 

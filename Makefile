@@ -40,6 +40,11 @@ build:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/agent-creance
 
+## install: build and install agent-creance onto PATH (into `go env GOPATH`/bin)
+.PHONY: install
+install:
+	go install -ldflags "$(LDFLAGS)" ./cmd/agent-creance
+
 ## run: build and run (pass args via ARGS="doctor")
 .PHONY: run
 run:
