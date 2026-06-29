@@ -21,6 +21,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make golden` — regenerate golden files; always review the resulting diff.
 - **At the end of every ticket, run `make build`** so `bin/agent-creance` reflects the final commit — the user tests with this binary.
 
+## Development runs inside an agent-creance cage
+
+Development on this project is regularly performed by an agent running **inside an
+agent-creance cage itself** (dogfooding). The cage is egress-filtered and isolates
+filesystem/process; the host-side proxy and `agent-safehouse` sandbox live outside
+it. So hermetic work (`make test`, golden, testscript, pure logic, config) runs
+fine in-cage, but some operations cannot:
+
+- **Spawning the host-side proxy / sandbox** — `make test-integration` and anything
+  that stands up a real `mitmproxy` or `agent-safehouse` (the cage's own egress
+  already routes through such a proxy; you can't nest it).
+- **Real external services that aren't plain allowlistable HTTPS, or that are the
+  thing under test** — e.g. real GitHub GraphQL, GitHub App / OAuth token minting.
+
+When the current development task needs something executed **outside** the cage:
+
+1. **Batch it, best effort.** Collect all out-of-cage operations you can foresee for
+   the task into one set rather than asking for repeated breakouts.
+2. **Ask the user to close the cage** for that batch, and state exactly what will be
+   run while it's down.
+3. **Tell the user when the cage can be re-activated** — i.e. once the out-of-cage
+   batch is done and you're back to hermetic work.
+
+Plan the work so in-cage (hermetic) and out-of-cage (integration / real-service)
+phases are separated, minimizing how often the cage must be toggled.
+
 ## Testing conventions (follow these — the project is built around them)
 
 - **Never call the OS directly from logic packages.** Process execution, keychain, clock, filesystem go through interfaces in `internal/sysdep`, injected at construction. Tests use the fakes in `internal/sysdep/sysdeptest`. New side-effecting dependencies get a new interface there, not a direct `os/exec`/keychain call inline.
