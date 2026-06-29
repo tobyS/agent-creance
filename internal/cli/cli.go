@@ -43,6 +43,11 @@ type App struct {
 	// to detect credential availability before a caged run (its consumers, the
 	// run/doctor preconditions, land in later phases).
 	Keychain sysdep.Keychain
+	// SecretResolver resolves host-side secret references (op:// / keychain:// /
+	// env://) to in-memory values for credential injection (AC-0068); its
+	// consumers — the proxy spawner (AC-0068c) and the credential CLI (AC-0068d) —
+	// land in later phases.
+	SecretResolver sysdep.SecretResolver
 	// ProcessGroup starts the caged agent in its own process group and forwards
 	// SIGINT/SIGTERM to the whole group; the run command (AC-0025) drives it via
 	// cage.Runner to tear the agent's subtree down on Ctrl-C before the lock decrement.
@@ -200,17 +205,22 @@ func newRootCmd(app *App) *cobra.Command {
 // runs it in-process).
 func Main() int {
 	app := &App{
-		Commander:      sysdep.ExecCommander{},
-		Stdout:         os.Stdout,
-		Stderr:         os.Stderr,
-		Stdin:          os.Stdin,
-		Terminal:       sysdep.OSTerminal{},
-		Tested:         buildinfo.TestedVersions,
-		FS:             sysdep.OSFileSystem{},
-		Paths:          sysdep.OSPathResolver{},
-		Clock:          sysdep.OSClock{},
-		HTTP:           sysdep.OSHTTPGetter{},
-		Keychain:       sysdep.OSKeychain{},
+		Commander: sysdep.ExecCommander{},
+		Stdout:    os.Stdout,
+		Stderr:    os.Stderr,
+		Stdin:     os.Stdin,
+		Terminal:  sysdep.OSTerminal{},
+		Tested:    buildinfo.TestedVersions,
+		FS:        sysdep.OSFileSystem{},
+		Paths:     sysdep.OSPathResolver{},
+		Clock:     sysdep.OSClock{},
+		HTTP:      sysdep.OSHTTPGetter{},
+		Keychain:  sysdep.OSKeychain{},
+		SecretResolver: sysdep.OSSecretResolver{
+			Commander: sysdep.ExecCommander{},
+			Keychain:  sysdep.OSKeychain{},
+			Paths:     sysdep.OSPathResolver{},
+		},
 		ProcessGroup:   sysdep.OSProcessGroup{},
 		Flock:          sysdep.OSFlock{},
 		ProcessManager: sysdep.OSProcessManager{},
