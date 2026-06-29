@@ -12,3 +12,6 @@ coverage.out
 __pycache__/
 .pytest_cache/
 
+# In-cage (dogfooding) Go caches — see .agent-creance.yaml env: redirects
+/.gocache/
+
