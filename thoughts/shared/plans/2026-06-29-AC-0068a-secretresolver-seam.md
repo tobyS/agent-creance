@@ -80,7 +80,7 @@ errors never include the secret value.
 
 ---
 
-## Phase 1 — Extend the `Commander` seam with a secret-safe stdout capture
+## Phase 1 — Extend the `Commander` seam with a secret-safe stdout capture [CODE COMPLETE]
 
 ### Changes
 
@@ -121,7 +121,7 @@ errors never include the secret value.
 
 ---
 
-## Phase 2 — `SecretResolver` seam: interface, impl, fake, tests
+## Phase 2 — `SecretResolver` seam: interface, impl, fake, tests [CODE COMPLETE]
 
 ### Changes
 
@@ -220,7 +220,7 @@ errors never include the secret value.
 
 ---
 
-## Phase 3 — Wire `SecretResolver` into the composition root
+## Phase 3 — Wire `SecretResolver` into the composition root [CODE COMPLETE]
 
 ### Changes
 

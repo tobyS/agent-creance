@@ -1,6 +1,6 @@
 # AC-0068a: SecretResolver sysdep seam (op:// / keychain:// / env://)
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
 **Updated:** 2026-06-29
@@ -35,17 +35,20 @@ CLI) is built here.
 
 ## Acceptance Criteria
 
-- [ ] `internal/sysdep` defines a `SecretResolver` interface mirroring the
+- [x] `internal/sysdep` defines a `SecretResolver` interface mirroring the
       `keychain.go` seam pattern (interface + `OS*` impl + fake in `sysdeptest`).
-- [ ] Backends resolve `op://…`, `keychain://…`, and `env://NAME` reference forms;
-      an unknown scheme is a clear error.
-- [ ] Resolution returns the value in memory only — never written to disk, argv, or
-      a logged field; errors do not include the secret value.
-- [ ] The real impl invokes `op`/`security` only through the existing process-exec
-      sysdep (no inline `os/exec`), and is exercised only under `integration`.
-- [ ] The fake supports table-driven success and failure (unresolvable reference,
-      tool missing) for downstream unit tests.
-- [ ] `make test` green; new pure logic table-driven, OS impl behind `integration`.
+- [x] Backends resolve `op://…`, `keychain://…`, and `env://NAME` reference forms;
+      an unknown scheme is a clear error (`ErrUnknownSecretScheme`).
+- [x] Resolution returns the value in memory only — never written to disk, argv, or
+      a logged field; errors do not include the secret value (op errors carry only
+      `op`'s stderr via the stdout-only `Commander.OutputStdout`).
+- [x] The real impl invokes `op`/`security` only through sysdep seams (no inline
+      `os/exec`): `op` via `Commander.OutputStdout`, `security` via the existing
+      `Keychain` seam; the real path is exercised only under `integration`.
+- [x] The fake (`sysdeptest.FakeSecretResolver`) supports table-driven success and
+      failure (unresolvable reference → `ErrSecretNotFound`, scripted tool-missing)
+      for downstream unit tests.
+- [x] `make test` green; pure parsing table-driven, OS path behind `integration`.
 
 ## Out of Scope
 
@@ -60,10 +63,16 @@ None.
 
 ## Questions for Research/Planning
 
-- [ ] Exact `op://` reference grammar to support (vault/item/field vs. full secret
-      reference syntax) and how `op read` errors map to resolver errors.
-- [ ] Whether `keychain://` reuses the existing `keychain.go` accessor or is a
-      distinct generic-password lookup.
+- [x] Exact `op://` reference grammar / error mapping. **Resolved:** `op read`
+      accepts the whole `op://vault/item[/section]/field` reference as one argument
+      and validates it itself, so the resolver forwards it verbatim (with
+      `--no-newline`) — no internal parsing. `op read` returns a uniform non-zero
+      exit on any failure with diagnostics on stderr, so the resolver maps any
+      failure to `ErrSecretNotFound` and a missing `op` (LookPath) to
+      `ErrSecretToolMissing`.
+- [x] Whether `keychain://` reuses the existing accessor. **Resolved:** reuses the
+      `Keychain` seam (`FindGenericPassword`), inheriting `ErrKeychainLocked`
+      detection; `keychain://service[/account]` maps onto service+account.
 
 ## References
 
@@ -75,9 +84,28 @@ None.
 
 ## Implementation Plan
 
-(Filled when planned.)
+- Research: `thoughts/shared/research/2026-06-29-AC-0068a-secretresolver-seam.md`
+- Plan: `thoughts/shared/plans/2026-06-29-AC-0068a-secretresolver-seam.md`
 
 ## Notes & Updates
 
 ### 2026-06-29
 Created as the foundation sub-ticket of AC-0068.
+
+Implemented and merged to `main` in three commits:
+
+- `feat(AC-0068a): add a secret-safe stdout capture to the Commander seam` —
+  `Commander.OutputStdout` (separated stdout/stderr; `Output`'s `CombinedOutput`
+  is unsafe for a secret because `op` may write notices to stderr on success).
+- `feat(AC-0068a): add the SecretResolver sysdep seam (op:// / keychain:// /
+  env://)` — interface, sentinels, pure parsers, `OSSecretResolver` (composing
+  `Commander`/`Keychain`/`PathResolver`), `sysdeptest.FakeSecretResolver`, unit +
+  integration tests.
+- `feat(AC-0068a): wire SecretResolver into the App composition root` — `App`
+  field + `Main()` wiring, no consumer yet (AC-0068c/d).
+
+Verification: `make test`, `make lint`, `make build` green; `make test-integration`
+— the SecretResolver live tests pass (keychain://) or skip cleanly (op:// when no
+reference/tool), and the only failing battery (`internal/verify` `kc-read`/
+`kc-write`) is a pre-existing environmental cage-keychain issue that fails
+identically on the pre-ticket commit, unrelated to this change.
