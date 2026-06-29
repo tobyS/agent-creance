@@ -9,6 +9,8 @@ package sysdeptest
 import (
 	"context"
 	"fmt"
+
+	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
 // FakeCommander is a scripted Commander. You pre-load the executables it should
@@ -24,7 +26,13 @@ type FakeCommander struct {
 	// Errs optionally maps an executable name to an error Output should return,
 	// simulating a tool that exists but fails when invoked.
 	Errs map[string]error
+	// Calls records each Output / OutputStdout invocation as name followed by its
+	// args, in order, so callers can assert the exact argv a command was run with
+	// (e.g. that a secret reference was forwarded verbatim).
+	Calls [][]string
 }
+
+var _ sysdep.Commander = (*FakeCommander)(nil)
 
 // NewFakeCommander returns an empty, ready-to-populate fake.
 func NewFakeCommander() *FakeCommander {
@@ -52,7 +60,20 @@ func (f *FakeCommander) LookPath(name string) (string, error) {
 	return "", fmt.Errorf("%s: executable file not found in $PATH", name)
 }
 
-func (f *FakeCommander) Output(_ context.Context, name string, _ ...string) ([]byte, error) {
+func (f *FakeCommander) Output(_ context.Context, name string, args ...string) ([]byte, error) {
+	return f.run(name, args)
+}
+
+// OutputStdout returns the same scripted output as Output — a fake has no real
+// stdout/stderr distinction — so callers exercise the stdout-only contract
+// through the resolver, while the real separation is covered by ExecCommander's
+// integration test.
+func (f *FakeCommander) OutputStdout(_ context.Context, name string, args ...string) ([]byte, error) {
+	return f.run(name, args)
+}
+
+func (f *FakeCommander) run(name string, args []string) ([]byte, error) {
+	f.Calls = append(f.Calls, append([]string{name}, args...))
 	if err, ok := f.Errs[name]; ok {
 		return nil, err
 	}
