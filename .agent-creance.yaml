@@ -1,0 +1,136 @@
+# .agent-creance.yaml — agent-creance project config.
+# Full schema and guidance: docs/design.md. Manage egress rules interactively
+# with `agent-creance allow` / `agent-creance deny`.
+agent:
+  command: ["claude", "--dangerously-skip-permissions"]
+  workdir: .
+
+safehouse:
+  add_dirs_rw: [.]
+
+network:
+  egress:
+    # generators:
+    #   - package_json                 # = ./package.json
+    #   - type: composer_json
+    #     path: services/api/composer.json
+    allow:
+      # Project git remotes — repo, API, and content hosts (agent-creance init)
+      - host: github.com
+        paths: ["/tobyS/agent-creance/", "/tobyS/agent-creance.git/"]
+        reason: "project git remote (origin)"
+      - host: api.github.com
+        paths: ["/repos/tobyS/agent-creance/"]
+        reason: "project git remote (origin)"
+      - host: raw.githubusercontent.com
+        paths: ["/tobyS/agent-creance/"]
+        reason: "project git remote (origin)"
+      - host: codeload.github.com
+        paths: ["/tobyS/agent-creance/"]
+        reason: "project git remote (origin)"
+      - host: tobys.github.io
+        paths: ["/agent-creance/"]
+        reason: "project git remote (origin)"
+      - host: objects.githubusercontent.com
+        reason: "project git remote (origin)"
+      # Imported from project settings
+      - host: agent-safehouse.dev
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: blog.cloudflare.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: chromium.googlesource.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: container-use.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: developers.openai.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: docs.anthropic.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: docs.claude.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: docs.github.com
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: docs.mitmproxy.org
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: docs.nono.sh
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: http.dev
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+      - host: nono.sh
+        methods: [GET]
+        reason: "imported from Claude Code settings"
+    # deny_always:
+    #   - host: w3schools.com
+    #     reason: "Known low-quality source. Use MDN or official docs instead."
+      - host: proxy.golang.org
+        methods: [GET]
+      - host: sum.golang.org
+        methods: [GET]
+      - host: pkg.go.dev
+        methods: [GET]
+      - host: go.dev
+        methods: [GET]
+      - host: cobra.dev
+        methods: [GET]
+      - host: github.com
+        paths: ["/tobyS/agent-creance", "/spf13/cobra", "/fsnotify/fsnotify", "/rogpeppe/go-internal", "/stretchr/testify", "/golang/sys", "/go-yaml/yaml", "/davecgh/go-spew", "/fatih/color", "/inconshreveable/mousetrap", "/mattn/go-colorable", "/mattn/go-isatty", "/pmezard/go-difflib", "/spf13/pflag", "/golang/tools", "/golang/go", "/golangci/golangci-lint", "/mitmproxy/mitmproxy", "/eugene1g/agent-safehouse"]
+        methods: [GET]
+      - host: api.github.com
+        paths: ["/repos/tobyS/agent-creance"]
+        methods: [GET, POST, PATCH, PUT, DELETE]
+      - host: api.github.com
+        paths: ["/user", "/rate_limit"]
+        methods: [GET]
+      - host: uploads.github.com
+        paths: ["/repos/tobyS/agent-creance"]
+        methods: [POST]
+      - host: raw.githubusercontent.com
+        paths: ["/tobyS/agent-creance", "/spf13/cobra", "/fsnotify/fsnotify", "/rogpeppe/go-internal", "/stretchr/testify", "/golang/sys", "/go-yaml/yaml", "/davecgh/go-spew", "/fatih/color", "/inconshreveable/mousetrap", "/mattn/go-colorable", "/mattn/go-isatty", "/pmezard/go-difflib", "/spf13/pflag", "/golang/tools", "/golang/go", "/golangci/golangci-lint", "/mitmproxy/mitmproxy", "/eugene1g/agent-safehouse"]
+        methods: [GET]
+      - host: research.swtch.com
+        methods: [GET]
+      - host: dave.cheney.net
+        methods: [GET]
+      - host: eli.thegreenplace.net
+        methods: [GET]
+      - host: gobyexample.com
+        methods: [GET]
+      - host: docs.python.org
+        methods: [GET]
+      - host: docs.pytest.org
+        methods: [GET]
+      - host: newosxbook.com
+        methods: [GET]
+      - host: developer.apple.com
+        methods: [GET]
+      - host: datatracker.ietf.org
+        methods: [GET]
+      - host: www.rfc-editor.org
+        methods: [GET]
+      - host: github.blog
+        methods: [GET]
+      - host: code.claude.com
+        methods: [GET]
+      - host: getargv.narzt.cam
+        methods: [GET]
+      - host: developer.1password.com
+        methods: [GET]
+      - host: www.1password.dev
+        methods: [GET]
+    deny_always:
+      - host: w3schools.com
+        reason: "Known low-quality source. Use the Go spec, pkg.go.dev, or MDN instead."
+      - host: "*"
+        paths: ["**/.env", "**/.git/config"]
+        reason: "Secrets path."
