@@ -1,6 +1,6 @@
 # AC-0068b: Config model — transport×auth two-axis, credentials indirection, value-template
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
 **Updated:** 2026-07-02
@@ -40,17 +40,17 @@ The config schema gains:
 
 ## Acceptance Criteria
 
-- [ ] Config types in `internal/config` model the auth axis and the `credentials:`
+- [x] Config types in `internal/config` model the auth axis and the `credentials:`
       block; round-trip parse/serialize covered.
-- [ ] The value-template supports Bearer / `token` / bare / Basic(+username
+- [x] The value-template supports Bearer / `token` / bare / Basic(+username
       sentinel) / custom-header forms; rendering is unit-tested (no real secret).
-- [ ] Validation rejects: `passthrough`+`inject` on one host; `inject` referencing
+- [x] Validation rejects: `passthrough`+`inject` on one host; `inject` referencing
       an undefined credential. It flags a credentialed host with neither `inject`
       nor `in-cage`.
-- [ ] Policy compile/render (`internal/policy`) carries the new fields through to
+- [x] Policy compile/render (`internal/policy`) carries the new fields through to
       whatever the proxy reads; golden files updated and reviewed (`make golden`).
-- [ ] No secret value appears in compiled `policy.json` (only the reference/name).
-- [ ] `make test` green; schema changes table-driven + golden.
+- [x] No secret value appears in compiled `policy.json` (only the reference/name).
+- [x] `make test` green; schema changes table-driven + golden.
 
 ## Out of Scope
 
@@ -64,12 +64,19 @@ None blocking.
 
 ## Questions for Research/Planning
 
-- [ ] Where the `credentials:` block lives given the cage mounts `./` read-write —
-      main config vs. an out-of-tree sibling (cf. the gotcha that security-critical
-      state is kept under `~/.cache/agent-creance/`). The compiled `policy.json`
-      must carry only the reference, not the value.
-- [ ] Whether `in-cage` is a per-host flag or a per-rule attribute, and how it
-      interacts with existing `intercept`/`passthrough` precedence.
+- [x] Where the `credentials:` block lives given the cage mounts `./` read-write —
+      **resolved: a top-level `credentials:` section in the normal config**, layered
+      by the existing global/project/include merge. It carries only *references*
+      (`op://` / `keychain://` / `env://`), which are non-secret pointers, so the
+      cage-writable-`./` gotcha does not apply; a user who prefers can keep it in the
+      out-of-tree global config via the same layering. The compiled `policy.json`
+      (already out-of-tree) carries the reference, never the value.
+- [x] Whether `in-cage` is a per-host flag or a per-rule attribute —
+      **resolved: per-rule.** Rules are a flat list keyed by host pattern (no per-host
+      object exists), so the auth axis is two flat `Rule` fields — `inject: <name>`
+      and `in_cage: true` — orthogonal to `mode`. "Intercept-only" is enforced as a
+      validation rule (`inject` on a `passthrough` rule is rejected; `in_cage` on a
+      passthrough rule stays valid), not as structural nesting.
 
 ## References
 
@@ -81,7 +88,8 @@ None blocking.
 
 ## Implementation Plan
 
-(Filled when planned.)
+- Research: `thoughts/shared/research/2026-07-02-AC-0068b-config-injection-model.md`
+- Plan: `thoughts/shared/plans/2026-07-02-AC-0068b-config-injection-model.md`
 
 ## Notes & Updates
 
@@ -89,3 +97,16 @@ None blocking.
 Created as the config-schema sub-ticket of AC-0068. Value-template generality is
 intentional (Version A): one mechanism for all shapes, Bearer gold-plated later in
 AC-0068e, custom-header/Basic present but not validated.
+
+### 2026-07-02
+Done. Implemented in four phases (schema → value-template → validation → policy
+pipeline): `Rule.Inject`/`InCage` + a top-level `credentials:` block (references
+only) in `internal/config`; a pure `RenderCredentialValue` value-template covering
+Bearer/`token`/bare/Basic(+username)/custom (the reference spec the AC-0068c Python
+injector will port); validation split into per-document structural checks and a
+post-merge `ValidateEffective` (inject→undefined = hard error; dangling credential =
+new non-fatal warning tier, surfaced by `run`); and the fields carried through
+compile/render into `policy.json` with no resolved value. Planning-checkpoint
+decisions: top-level section, two flat rule fields, warning tier for the "flag
+neither" lint. Both Questions for Research/Planning resolved above. `make test` /
+`make test-enforcer` / `make lint` green; `make build` refreshed the binary.

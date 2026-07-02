@@ -7,7 +7,7 @@ started: 2026-07-02
 # Implementation status — AC-0068b
 
 ## Phase 1 — Config schema: types, parsing, merge
-Status: done (commit pending)
+Status: done
 
 - Added Rule.Inject/InCage (auth axis), the Credential type, Config.Credentials,
   DefaultCredentialHeader, and Config.Warnings.
@@ -20,7 +20,7 @@ Status: done (commit pending)
   unchanged — new policy fields land in Phase 4).
 
 ## Phase 2 — Value-template rendering (pure)
-Status: done (commit pending)
+Status: done
 
 - internal/config/template.go: RenderCredentialValue + validateTemplate. Substitutes
   {token}/{user}, applies an optional single non-nested base64(…) wrapper. Reference
@@ -30,7 +30,7 @@ Status: done (commit pending)
   placeholder; accept the valid forms. Green.
 
 ## Phase 3 — Validation: local structural + cross-reference + warning tier
-Status: done (commit pending)
+Status: done
 
 - sysdep: exported pure ValidateSecretRefSyntax(ref) (op/keychain/env scheme + non-
   empty remainder, no resolution) + table test.
@@ -47,8 +47,12 @@ Status: done (commit pending)
   undefined-inject fails, dangling warns; ValidateEffective unit test. Green; lint
   clean.
 
+## Ticket: Done (2026-07-02). All phases complete; make test / test-enforcer / lint
+## green; make build refreshed bin/agent-creance. Both Questions for
+## Research/Planning resolved on the ticket.
+
 ## Phase 4 — Policy pipeline: compile, render, golden, enforcer
-Status: done (commit pending)
+Status: done
 
 - policy.go: Rule.Inject/InCage (json, ignored-by-Decide annotations); RuleFromConfig
   copies them; policy.Credential type + CredentialsFromConfig + Compiled.Credentials
