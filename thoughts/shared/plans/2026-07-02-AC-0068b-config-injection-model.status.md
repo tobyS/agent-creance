@@ -48,4 +48,17 @@ Status: done (commit pending)
   clean.
 
 ## Phase 4 — Policy pipeline: compile, render, golden, enforcer
-Status: not started
+Status: done (commit pending)
+
+- policy.go: Rule.Inject/InCage (json, ignored-by-Decide annotations); RuleFromConfig
+  copies them; policy.Credential type + CredentialsFromConfig + Compiled.Credentials
+  (references only).
+- compile.go: build merges credentials across layers (mergeCredentials), runs
+  validateInjectRefs (fail-closed on inject→undefined, the compiler's merged-view
+  check since it bypasses Loader.Load), and ruleKey now includes inject/in_cage.
+- render.go: authField marker (inject:<name> / in-cage), dimmed, in the allow view;
+  JSON view carries credentials + fields automatically.
+- Goldens regenerated + reviewed: compile policy.golden (credentials block + per-rule
+  fields, no value; input_hash moved), render show/show.json/show_color and the
+  explain index shift. Enforcer test_policy.py: new load test proves the fields are
+  carried but ignored by the matcher. make test / test-enforcer / lint all green.

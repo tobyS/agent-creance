@@ -106,3 +106,43 @@ def test_empty_paths_list_matches_nothing():
     )
     got = policy.decide(rs, policy.Request("react.dev", "/learn", "GET"))
     assert got.decision == policy.DECISION_SOFT_DENY
+
+def test_auth_fields_and_credentials_carried_but_ignored_by_matcher():
+    """AC-0068b: per-rule inject/in_cage and the top-level credentials block are
+    carried in policy.json but are annotations the matcher ignores. Rule.from_dict /
+    RuleSet.from_dict must load a policy carrying them without error, and decide must be
+    unchanged (no secret value is present — only references)."""
+    data = {
+        "version": 1,
+        "input_hash": "x",
+        "credentials": {
+            "github-token": {
+                "source": "op://Private/GitHub PAT/token",
+                "header": "Authorization",
+                "template": "Bearer {token}",
+            }
+        },
+        "allow": [
+            {
+                "host": "api.github.com",
+                "paths": ["/graphql"],
+                "methods": ["POST"],
+                "mode": "intercept",
+                "inject": "github-token",
+            },
+            {"host": "s3.eu-central-1.amazonaws.com", "mode": "intercept", "in_cage": True},
+        ],
+        "deny_always": [],
+    }
+
+    rs = policy.RuleSet.from_dict(data)
+
+    # The unknown top-level 'credentials' key and the inject/in_cage rule keys are
+    # ignored on load; the rules still decide purely by host/path/method.
+    allowed = policy.decide(rs, policy.Request("api.github.com", "/graphql", "POST"))
+    assert allowed.decision == policy.DECISION_ALLOW
+
+    in_cage = policy.decide(
+        rs, policy.Request("s3.eu-central-1.amazonaws.com", "/bucket/key", "GET")
+    )
+    assert in_cage.decision == policy.DECISION_ALLOW

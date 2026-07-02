@@ -1,8 +1,9 @@
-Resolved egress policy (6 allow, 2 deny)
+Resolved egress policy (7 allow, 2 deny)
 
 ALLOW
   [global]                        passthrough  api.anthropic.com              (any path)  ⚠ passthrough (audit blind spot)
-  [explicit]                      intercept    api.github.com                 /repos/tobyS/x/  (GET, POST)
+  [explicit]                      intercept    api.github.com                 /repos/tobyS/x/  (GET, POST)  inject:github-token
+  [explicit]                      intercept    s3.eu-central-1.amazonaws.com  (any path)  in-cage
   [generated:package_json:react]  intercept    react.dev                      (any path)
   [generated:package_json:react]  intercept    github.com                     /facebook/react/
   [generated:package_json:react]  intercept    objects.githubusercontent.com  (any path)  ⚠ lower-trust

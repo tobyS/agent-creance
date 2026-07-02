@@ -8,7 +8,7 @@
   "mode": "intercept",
   "matched": {
     "list": "allow",
-    "index": 3,
+    "index": 4,
     "host": "github.com",
     "paths": [
       "/facebook/react/"

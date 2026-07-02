@@ -75,12 +75,20 @@ const (
 // Source and LowerTrust are populated by the compiler (AC-0013) for the on-disk
 // policy.json and are *ignored by Decide* — they exist so `policy show` can render an
 // annotated artifact. They are absent from the decision-vector corpus (omitempty).
+//
+// Inject and InCage are the auth axis (AC-0068b): Inject names a credentials: entry
+// the proxy will resolve and inject (AC-0068c); InCage marks a host whose auth headers
+// the proxy must not touch. Like Source/LowerTrust they are annotations *ignored by
+// Decide* (they act on an already-allowed request, not on the allow/deny decision), so
+// they never enter the decision-vector corpus and cannot change matcher parity.
 type Rule struct {
 	Host       string   `json:"host"`
 	Paths      []string `json:"paths,omitempty"`
 	Methods    []string `json:"methods,omitempty"`
 	Mode       string   `json:"mode,omitempty"`
 	Reason     string   `json:"reason,omitempty"`
+	Inject     string   `json:"inject,omitempty"`
+	InCage     bool     `json:"in_cage,omitempty"`
 	Source     string   `json:"source,omitempty"`
 	LowerTrust bool     `json:"lower_trust,omitempty"`
 }
@@ -96,14 +104,47 @@ type RuleSet struct {
 // the Python enforcer. Bump only on a breaking change to the artifact shape.
 const CompiledVersion = 1
 
+// Credential is one compiled credentials: entry (AC-0068b) as the proxy will read it:
+// a reference the enforcer resolves host-side and injects, never a resolved value. It
+// mirrors config.Credential but carries json tags for the artifact. Source is an
+// op:// / keychain:// / env:// reference; Header is the target header; Template is the
+// value-template; Username is the Basic sentinel. No secret value ever appears here.
+type Credential struct {
+	Source   string `json:"source"`
+	Header   string `json:"header,omitempty"`
+	Template string `json:"template"`
+	Username string `json:"username,omitempty"`
+}
+
+// CredentialsFromConfig converts the config credentials map into the compiled form
+// (reference-only, no resolution). It returns nil for an empty input so the artifact
+// omits the block entirely.
+func CredentialsFromConfig(in map[string]config.Credential) map[string]Credential {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]Credential, len(in))
+	for name, c := range in {
+		out[name] = Credential{
+			Source:   c.Source,
+			Header:   c.Header,
+			Template: c.Template,
+			Username: c.Username,
+		}
+	}
+	return out
+}
+
 // Compiled is the on-disk policy.json the compiler (AC-0013) writes and the proxy
 // enforcer reads: a versioned, input-hash-keyed RuleSet whose rules carry source
 // annotations. The embedded RuleSet promotes allow/deny_always to the top level, so the
-// artifact serializes as {version, input_hash, allow, deny_always}. InputHash keys the
-// compiler's regeneration cache; the enforcer ignores it.
+// artifact serializes as {version, input_hash, allow, deny_always}, plus the optional
+// credentials: block (AC-0068b, references only). InputHash keys the compiler's
+// regeneration cache; the enforcer ignores it.
 type Compiled struct {
-	Version   int    `json:"version"`
-	InputHash string `json:"input_hash"`
+	Version     int                   `json:"version"`
+	InputHash   string                `json:"input_hash"`
+	Credentials map[string]Credential `json:"credentials,omitempty"`
 	RuleSet
 }
 
@@ -218,6 +259,8 @@ func RuleFromConfig(r config.Rule) Rule {
 		Host:   r.Host,
 		Mode:   r.Mode,
 		Reason: r.Reason,
+		Inject: r.Inject,
+		InCage: r.InCage,
 	}
 	if r.Paths != nil {
 		out.Paths = *r.Paths

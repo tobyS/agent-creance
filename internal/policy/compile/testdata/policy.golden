@@ -1,6 +1,13 @@
 {
   "version": 1,
-  "input_hash": "ba5d12e91e2d177e6154ac9094f790387bab5565afc3b49cadc11249a07e04b3",
+  "input_hash": "150ec164f7fca01f82919b7915eab091223ef175a683b9c4ff69d4383584e9f9",
+  "credentials": {
+    "github-token": {
+      "source": "op://Private/GitHub PAT/token",
+      "header": "Authorization",
+      "template": "Bearer {token}"
+    }
+  },
   "allow": [
     {
       "host": "api.anthropic.com",
@@ -17,6 +24,13 @@
         "POST"
       ],
       "mode": "intercept",
+      "inject": "github-token",
+      "source": "explicit"
+    },
+    {
+      "host": "s3.eu-central-1.amazonaws.com",
+      "mode": "intercept",
+      "in_cage": true,
       "source": "explicit"
     },
     {

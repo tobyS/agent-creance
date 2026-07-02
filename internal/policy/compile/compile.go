@@ -333,10 +333,23 @@ func (c *Compiler) build(ctx context.Context, in compileInputs) (Result, error) 
 		return Result{}, err
 	}
 
+	// Credentials come only from config layers (global → project → overlay); the
+	// compiled artifact carries references, never resolved values.
+	creds := policy.CredentialsFromConfig(mergeCredentials(in.global.Credentials, in.project.Credentials, in.overlay.Credentials))
+
+	// Fail closed on an inject that names no defined credential. The per-layer Parse
+	// only validates within a document, and the compiler bypasses Loader.Load's
+	// merged-view check, so this is where the cross-reference is enforced before the
+	// proxy ever reads the policy.
+	if err := validateInjectRefs(rs, creds); err != nil {
+		return Result{}, err
+	}
+
 	compiled := policy.Compiled{
-		Version:   policy.CompiledVersion,
-		InputHash: in.hash,
-		RuleSet:   rs,
+		Version:     policy.CompiledVersion,
+		InputHash:   in.hash,
+		Credentials: creds,
+		RuleSet:     rs,
 	}
 	if err := c.write(in.layout, compiled); err != nil {
 		return Result{}, err
@@ -365,6 +378,43 @@ func (c *Compiler) loadOverlay(path string) (*config.Config, error) {
 		return nil, fmt.Errorf("compile: parse session overlay: %w", err)
 	}
 	return cfg, nil
+}
+
+// mergeCredentials unions the credentials: maps from each config layer, later layers
+// winning on a name collision (global → project → overlay). It returns nil when empty
+// so the compiled artifact omits the block.
+func mergeCredentials(layers ...map[string]config.Credential) map[string]config.Credential {
+	out := map[string]config.Credential{}
+	for _, layer := range layers {
+		for name, cred := range layer {
+			out[name] = cred
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// validateInjectRefs fails the compile closed if any rule injects a credential that no
+// layer defines — the merged-view counterpart to config.ValidateEffective, enforced
+// here because the compiler reads layers separately and bypasses Loader.Load.
+func validateInjectRefs(rs policy.RuleSet, creds map[string]policy.Credential) error {
+	check := func(rules []policy.Rule) error {
+		for _, r := range rules {
+			if r.Inject == "" {
+				continue
+			}
+			if _, ok := creds[r.Inject]; !ok {
+				return fmt.Errorf("compile: rule for host %q injects credential %q, which is not defined in the credentials block", r.Host, r.Inject)
+			}
+		}
+		return nil
+	}
+	if err := check(rs.Allow); err != nil {
+		return err
+	}
+	return check(rs.DenyAlways)
 }
 
 // mergeGenerators unions the global and project generator lists (global first), deduping
@@ -594,13 +644,19 @@ func dedupe(rules []policy.Rule) []policy.Rule {
 }
 
 func ruleKey(r policy.Rule) string {
+	// The auth axis (inject/in_cage) is part of a rule's identity — two otherwise
+	// identical rules that inject differently (or one injects, one is in-cage) are
+	// behaviourally distinct and must not collapse. Source/lower-trust stay excluded
+	// (pure provenance).
 	k := struct {
 		Host    string   `json:"h"`
 		Paths   []string `json:"p"`
 		Methods []string `json:"m"`
 		Mode    string   `json:"o"`
 		Reason  string   `json:"r"`
-	}{r.Host, r.Paths, r.Methods, r.Mode, r.Reason}
+		Inject  string   `json:"i"`
+		InCage  bool     `json:"c"`
+	}{r.Host, r.Paths, r.Methods, r.Mode, r.Reason, r.Inject, r.InCage}
 	b, _ := json.Marshal(k)
 	return string(b)
 }

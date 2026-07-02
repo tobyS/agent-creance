@@ -18,17 +18,22 @@ import (
 var update = flag.Bool("update", false, "regenerate golden files")
 
 // fixture mirrors internal/policy/compile/testdata/policy.golden: it exercises a
-// passthrough (global) allow, an explicit host+path+method allow, two generated
-// react rules, a lower-trust generated rule, a session (once) rule, a host-wide
-// global deny, and an **/.env explicit deny with a reason.
+// passthrough (global) allow, an explicit host+path+method allow that injects a
+// credential, an in-cage allow, two generated react rules, a lower-trust generated
+// rule, a session (once) rule, a host-wide global deny, an **/.env explicit deny with
+// a reason, and a top-level credentials: block (reference only, AC-0068b).
 func fixture() policy.Compiled {
 	return policy.Compiled{
 		Version:   1,
 		InputHash: "02c3f8990f8181bf49c2d3aa767927779a03598387edb3cb6097a91840ffecd8",
+		Credentials: map[string]policy.Credential{
+			"github-token": {Source: "op://Private/GitHub PAT/token", Header: "Authorization", Template: "Bearer {token}"},
+		},
 		RuleSet: policy.RuleSet{
 			Allow: []policy.Rule{
 				{Host: "api.anthropic.com", Mode: "passthrough", Source: "global"},
-				{Host: "api.github.com", Paths: []string{"/repos/tobyS/x/"}, Methods: []string{"GET", "POST"}, Mode: "intercept", Source: "explicit"},
+				{Host: "api.github.com", Paths: []string{"/repos/tobyS/x/"}, Methods: []string{"GET", "POST"}, Mode: "intercept", Inject: "github-token", Source: "explicit"},
+				{Host: "s3.eu-central-1.amazonaws.com", Mode: "intercept", InCage: true, Source: "explicit"},
 				{Host: "react.dev", Mode: "intercept", Source: "generated:package_json:react"},
 				{Host: "github.com", Paths: []string{"/facebook/react/"}, Mode: "intercept", Source: "generated:package_json:react"},
 				{Host: "objects.githubusercontent.com", Mode: "intercept", Source: "generated:package_json:react", LowerTrust: true},

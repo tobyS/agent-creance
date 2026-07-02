@@ -80,8 +80,10 @@ func representativeFiles() map[string]string {
 			"network:\n  egress:\n    allow:\n      - host: api.anthropic.com\n        mode: passthrough\n" +
 			"    deny_always:\n      - host: w3schools.com\n        reason: low quality\n",
 		projDir + "/.agent-creance.yaml": "" +
+			"credentials:\n  github-token:\n    source: op://Private/GitHub PAT/token\n    template: \"Bearer {token}\"\n" +
 			"network:\n  egress:\n    generators:\n      - package_json\n" +
-			"    allow:\n      - host: api.github.com\n        paths: [\"/repos/tobyS/x/\"]\n        methods: [GET, POST]\n" +
+			"    allow:\n      - host: api.github.com\n        paths: [\"/repos/tobyS/x/\"]\n        methods: [GET, POST]\n        inject: github-token\n" +
+			"      - host: s3.eu-central-1.amazonaws.com\n        in_cage: true\n" +
 			"    deny_always:\n      - host: \"*\"\n        paths: [\"**/.env\"]\n        reason: secrets\n",
 		projDir + "/package.json": `{"dependencies":{"react":"^18"}}`,
 	}

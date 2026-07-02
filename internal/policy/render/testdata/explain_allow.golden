@@ -1,3 +1,3 @@
 Request:   github.com GET /facebook/react/pull/1
 Decision:  allow (intercept)
-Matched:   allow[3]  [generated:package_json:react]  github.com /facebook/react/
+Matched:   allow[4]  [generated:package_json:react]  github.com /facebook/react/

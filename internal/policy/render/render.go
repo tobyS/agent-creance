@@ -89,12 +89,29 @@ func renderAllow(rules []policy.Rule, sty *style.Styler) string {
 		if m := methodField(r.Methods); m != "" {
 			b.WriteString("  " + sty.Dim(m))
 		}
+		if a := authField(r); a != "" {
+			b.WriteString("  " + sty.Dim(a))
+		}
 		for _, mk := range markers(r) {
 			b.WriteString("  " + sty.Warn(mk))
 		}
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// authField renders the auth axis (AC-0068b) for an allow rule: the credential it
+// injects, or that it is marked in-cage. Empty when the rule uses neither (today's
+// default). It is informational, so it is dimmed rather than warned.
+func authField(r policy.Rule) string {
+	switch {
+	case r.Inject != "":
+		return "inject:" + r.Inject
+	case r.InCage:
+		return "in-cage"
+	default:
+		return ""
+	}
 }
 
 // renderDeny renders the deny block. Deny rules carry no meaningful mode column

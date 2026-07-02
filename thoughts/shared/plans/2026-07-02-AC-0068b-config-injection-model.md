@@ -362,12 +362,12 @@ runtime injector), mirroring the existing dual-implementation matcher pattern.
 - `make test-enforcer` includes the new Python load test.
 
 ### Success criteria
-- [ ] `policy.json` carries the top-level `credentials` map (references only) and
+- [x] `policy.json` carries the top-level `credentials` map (references only) and
       per-rule `inject`/`in_cage`; **no secret value present** (asserted by golden).
-- [ ] Compile fails closed when an `inject` names an undefined credential.
-- [ ] `Decide` outcomes unchanged; the decision-vector corpus and matcher parity
+- [x] Compile fails closed when an `inject` names an undefined credential.
+- [x] `Decide` outcomes unchanged; the decision-vector corpus and matcher parity
       tests still pass (Go + Python).
-- [ ] `make golden` diff reviewed and intentional; `make test` and
+- [x] `make golden` diff reviewed and intentional; `make test` and
       `make test-enforcer` green.
 
 ---
