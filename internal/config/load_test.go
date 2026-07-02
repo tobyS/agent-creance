@@ -534,3 +534,46 @@ func allowHosts(c *Config) []string {
 	}
 	return hosts
 }
+
+// TestLoad_CrossLayerCredentialResolves proves an inject in the project layer resolves
+// a credential defined in the global baseline: cross-layer references must validate on
+// the merged view, not per document (AC-0068b).
+func TestLoad_CrossLayerCredentialResolves(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		globalPath:                  "credentials:\n  gh:\n    source: env://GH_TOKEN\n    template: \"Bearer {token}\"\n",
+		"/proj/.agent-creance.yaml": "network:\n  egress:\n    allow:\n      - host: api.github.com\n        inject: gh\n",
+	})
+	cfg, err := l.Load("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("Warnings = %v, want none (gh defined in global, injected in project)", cfg.Warnings)
+	}
+}
+
+// TestLoad_UndefinedInjectFails shows the merged-view inject → credential check fails
+// the load closed when no layer defines the credential.
+func TestLoad_UndefinedInjectFails(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "network:\n  egress:\n    allow:\n      - host: api.github.com\n        inject: missing\n",
+	})
+	if _, err := l.Load("/proj/.agent-creance.yaml"); err == nil {
+		t.Fatal("Load accepted an inject referencing an undefined credential; want error")
+	}
+}
+
+// TestLoad_DanglingCredentialWarns shows a defined-but-never-injected credential rides
+// out as a non-fatal warning on the effective config.
+func TestLoad_DanglingCredentialWarns(t *testing.T) {
+	l, _ := newLoader(map[string]string{
+		"/proj/.agent-creance.yaml": "credentials:\n  gh:\n    source: env://GH_TOKEN\n    template: \"{token}\"\n",
+	})
+	cfg, err := l.Load("/proj/.agent-creance.yaml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "never injected") {
+		t.Errorf("Warnings = %v, want one 'never injected' warning", cfg.Warnings)
+	}
+}

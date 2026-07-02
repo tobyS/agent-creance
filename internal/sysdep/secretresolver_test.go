@@ -72,3 +72,38 @@ func TestParseEnvRef(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSecretRefSyntax(t *testing.T) {
+	cases := []struct {
+		name    string
+		ref     string
+		wantErr bool
+	}{
+		{name: "op ok", ref: "op://Private/GitHub PAT/token"},
+		{name: "keychain service only", ref: "keychain://Claude Code-credentials"},
+		{name: "keychain service and account", ref: "keychain://GitHub/octocat"},
+		{name: "env ok", ref: "env://GH_TOKEN"},
+		{name: "op empty remainder", ref: "op://", wantErr: true},
+		{name: "op blank remainder", ref: "op://   ", wantErr: true},
+		{name: "keychain empty service", ref: "keychain://", wantErr: true},
+		{name: "env empty name", ref: "env://", wantErr: true},
+		{name: "unknown scheme", ref: "https://example.com/x", wantErr: true},
+		{name: "bare string", ref: "vault/item/field", wantErr: true},
+		{name: "case sensitive", ref: "OP://x/y/z", wantErr: true},
+		{name: "empty", ref: "", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSecretRefSyntax(tc.ref)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ValidateSecretRefSyntax(%q) = nil, want error", tc.ref)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ValidateSecretRefSyntax(%q) = %v, want nil", tc.ref, err)
+			}
+		})
+	}
+}

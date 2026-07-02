@@ -177,6 +177,11 @@ func runRun(ctx context.Context, app *App, dir string, quiet bool) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w (check your .agent-creance.yaml)", err)
 	}
+	// Non-fatal config problems (e.g. a defined-but-never-injected credential) are
+	// surfaced but never block the launch.
+	for _, w := range cfg.Warnings {
+		fmt.Fprintf(app.Stderr, "warning: %s\n", w)
+	}
 
 	// 8. (Re)generate network.sb — the deny-all baseline. Exempt from the policy
 	//    cache by design; cheap, always regenerated.

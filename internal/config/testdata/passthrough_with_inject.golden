@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - egress allow rule for host "api.github.com" uses mode: passthrough with inject "gh", but a passthrough tunnel is never TLS-terminated so the proxy cannot inject a credential (use mode: intercept)

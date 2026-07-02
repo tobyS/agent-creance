@@ -26,6 +26,10 @@ func TestGoldenErrors(t *testing.T) {
 		"bad_host_service_port",
 		"unknown_top_key",
 		"unknown_nested_key",
+		"inject_and_in_cage",
+		"passthrough_with_inject",
+		"credential_bad_source",
+		"credential_bad_template",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {

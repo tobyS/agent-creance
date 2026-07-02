@@ -1,0 +1,11 @@
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        mode: passthrough
+        inject: gh
+
+credentials:
+  gh:
+    source: env://GH_TOKEN
+    template: "{token}"

@@ -30,7 +30,22 @@ Status: done (commit pending)
   placeholder; accept the valid forms. Green.
 
 ## Phase 3 — Validation: local structural + cross-reference + warning tier
-Status: not started
+Status: done (commit pending)
+
+- sysdep: exported pure ValidateSecretRefSyntax(ref) (op/keychain/env scheme + non-
+  empty remainder, no resolution) + table test.
+- config validate.go: per-rule auth checks (inject+in_cage exclusive; inject+
+  passthrough) via validateRuleAuth; validateCredentials (source scheme, template,
+  header) + validateHeaderName; ValidateEffective (post-merge: inject→defined = hard
+  error; dangling credential + username-without-{user} = warnings, sorted).
+- Loader.Load runs ValidateEffective on the merged view, stores Config.Warnings.
+- run.go surfaces cfg.Warnings to stderr (non-blocking). doctor doesn't load the
+  effective config, so run is the surface; a full run testscript isn't hermetic
+  (needs real safehouse), so the warning population is covered by Load unit tests.
+- Tests: 4 new golden-error fixtures (inject_and_in_cage, passthrough_with_inject,
+  credential_bad_source, credential_bad_template); Load cross-layer resolves,
+  undefined-inject fails, dangling warns; ValidateEffective unit test. Green; lint
+  clean.
 
 ## Phase 4 — Policy pipeline: compile, render, golden, enforcer
 Status: not started

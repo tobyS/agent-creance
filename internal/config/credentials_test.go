@@ -5,6 +5,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -103,5 +104,39 @@ func TestMergeCredentials_OverWins(t *testing.T) {
 func TestMergeCredentials_EmptyIsNil(t *testing.T) {
 	if got := mergeCredentials(nil, nil); got != nil {
 		t.Errorf("mergeCredentials(nil, nil) = %#v, want nil", got)
+	}
+}
+
+func TestValidateEffective(t *testing.T) {
+	// Undefined inject is a hard error.
+	bad := &Config{
+		Network: Network{Egress: Egress{Allow: []Rule{{Host: "h", Inject: "missing"}}}},
+	}
+	if _, err := bad.ValidateEffective(); err == nil {
+		t.Errorf("undefined inject: want error, got nil")
+	}
+
+	// A referenced credential whose template lacks {user} despite a username, plus a
+	// dangling credential, produce two warnings and no error.
+	cfg := &Config{
+		Network: Network{Egress: Egress{Allow: []Rule{{Host: "h", Inject: "used"}}}},
+		Credentials: map[string]Credential{
+			"used":   {Source: "env://X", Template: "{token}", Username: "u"},
+			"unused": {Source: "env://Y", Template: "{token}"},
+		},
+	}
+	warns, err := cfg.ValidateEffective()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(warns) != 2 {
+		t.Fatalf("warnings = %v, want 2", warns)
+	}
+	joined := strings.Join(warns, "\n")
+	if !strings.Contains(joined, `"unused" is defined but never injected`) {
+		t.Errorf("missing dangling-credential warning in %v", warns)
+	}
+	if !strings.Contains(joined, `"used" sets a username`) {
+		t.Errorf("missing username-without-placeholder warning in %v", warns)
 	}
 }

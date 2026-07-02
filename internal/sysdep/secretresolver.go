@@ -62,6 +62,31 @@ const (
 	envScheme      = "env://"
 )
 
+// ValidateSecretRefSyntax reports whether ref is a syntactically well-formed secret
+// reference of a supported scheme (op:// / keychain:// / env://) with a non-empty
+// remainder — without resolving it. It is the pure, side-effect-free check the config
+// loader uses to validate a credentials: source at parse time (resolution is
+// host-side and happens only at inject time). It returns ErrUnknownSecretScheme for an
+// unknown scheme or an empty/blank remainder. op:// grammar beyond "non-empty" is left
+// to `op` itself at resolve time, matching resolveOp.
+func ValidateSecretRefSyntax(ref string) error {
+	switch {
+	case strings.HasPrefix(ref, opScheme):
+		if strings.TrimSpace(ref[len(opScheme):]) == "" {
+			return ErrUnknownSecretScheme
+		}
+		return nil
+	case strings.HasPrefix(ref, keychainScheme):
+		_, _, err := parseKeychainRef(ref[len(keychainScheme):])
+		return err
+	case strings.HasPrefix(ref, envScheme):
+		_, err := parseEnvRef(ref[len(envScheme):])
+		return err
+	default:
+		return ErrUnknownSecretScheme
+	}
+}
+
 // op CLI invocation. `op read` takes the whole op:// reference as a single
 // argument and prints only the secret to stdout; --no-newline suppresses the
 // trailing newline it would otherwise append.

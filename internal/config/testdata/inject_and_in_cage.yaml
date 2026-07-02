@@ -1,0 +1,11 @@
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        inject: gh
+        in_cage: true
+
+credentials:
+  gh:
+    source: env://GH_TOKEN
+    template: "{token}"

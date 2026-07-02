@@ -287,11 +287,11 @@ runtime injector), mirroring the existing dual-implementation matcher pattern.
   credential prints the `warning:` line to stderr but the command still succeeds.
 
 ### Success criteria
-- [ ] Hard errors reject: `inject`+`in_cage`; `passthrough`+`inject`; `inject` →
+- [x] Hard errors reject: `inject`+`in_cage`; `passthrough`+`inject`; `inject` →
       undefined credential (post-merge); malformed `source`/`template`.
-- [ ] `in_cage` on a passthrough rule is accepted.
-- [ ] A dangling credential produces a non-fatal warning surfaced to stderr.
-- [ ] Cross-layer `inject`→credential references validate correctly.
+- [x] `in_cage` on a passthrough rule is accepted.
+- [x] A dangling credential produces a non-fatal warning surfaced to stderr.
+- [x] Cross-layer `inject`→credential references validate correctly.
 
 ---
 

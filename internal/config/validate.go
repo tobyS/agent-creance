@@ -2,18 +2,23 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
-// validate checks cross-field schema constraints, recording every problem on verr
-// (it does not stop at the first). It runs after applyDefaults, so every rule Mode is
-// already non-empty.
+// validate checks cross-field schema constraints local to one document, recording
+// every problem on verr (it does not stop at the first). It runs after applyDefaults,
+// so every rule Mode is already non-empty and every credential Header is defaulted.
+// Cross-layer checks (inject → defined credential) run later, in ValidateEffective.
 func (c *Config) validate(verr *ValidationError) {
 	validateRules(c.Network.Egress.Allow, "allow", verr)
 	validateRules(c.Network.Egress.DenyAlways, "deny_always", verr)
+	validateCredentials(c.Credentials, verr)
 }
 
 // validateRules checks one allow/deny list. The mode is validated uniformly across
@@ -43,7 +48,113 @@ func validateRules(rules []Rule, list string, verr *ValidationError) {
 		default:
 			verr.add("egress %s rule %s has unknown mode %q (want %q or %q)", list, ref, r.Mode, ModeIntercept, ModePassthrough)
 		}
+		validateRuleAuth(r, list, ref, verr)
 	}
+}
+
+// validateRuleAuth checks the auth axis (AC-0068) local to one rule: inject and
+// in_cage are mutually exclusive, and inject requires an intercepted host (a
+// passthrough tunnel is never TLS-terminated, so the proxy cannot inject a header).
+// in_cage on a passthrough rule is fine — the discussion's "Anthropic API key on the
+// passthrough host is necessarily in-cage". The inject → defined-credential check is
+// cross-layer and lives in ValidateEffective.
+func validateRuleAuth(r Rule, list, ref string, verr *ValidationError) {
+	if r.Inject != "" && r.InCage {
+		verr.add("egress %s rule %s sets both inject and in_cage (a host is either injected or in-cage, not both)", list, ref)
+	}
+	if r.Inject != "" && r.Mode == ModePassthrough {
+		verr.add("egress %s rule %s uses mode: passthrough with inject %q, but a passthrough tunnel is never TLS-terminated so the proxy cannot inject a credential (use mode: intercept)", list, ref, r.Inject)
+	}
+}
+
+// validateCredentials checks each credentials: entry is well-formed on its own: a
+// known-scheme source reference (op:// / keychain:// / env://, not resolved here), a
+// valid value-template, and a sane target header. Whether an entry is referenced by a
+// rule is a cross-layer concern (ValidateEffective).
+func validateCredentials(creds map[string]Credential, verr *ValidationError) {
+	// Sort names so accumulated messages are deterministic (map order is random).
+	names := make([]string, 0, len(creds))
+	for name := range creds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		cred := creds[name]
+		if name == "" {
+			verr.add("credentials has an entry with an empty name")
+		}
+		if cred.Source == "" {
+			verr.add("credential %q is missing a source (an op:// , keychain:// , or env:// reference)", name)
+		} else if err := sysdep.ValidateSecretRefSyntax(cred.Source); err != nil {
+			verr.add("credential %q has an invalid source %q (want an op:// , keychain:// , or env:// reference)", name, cred.Source)
+		}
+		if cred.Template == "" {
+			verr.add("credential %q is missing a template (e.g. \"Bearer {token}\")", name)
+		} else if err := validateTemplate(cred.Template, cred.Username); err != nil {
+			verr.add("credential %q has an invalid template: %v", name, err)
+		}
+		if err := validateHeaderName(cred.Header); err != nil {
+			verr.add("credential %q has an invalid header %q: %v", name, cred.Header, err)
+		}
+	}
+}
+
+// validateHeaderName checks a credential's target header is a plausible HTTP field
+// name: non-empty, no control characters, no whitespace or ':' (which would break the
+// header the proxy writes).
+func validateHeaderName(h string) error {
+	if h == "" {
+		return fmt.Errorf("empty")
+	}
+	if strings.IndexFunc(h, isControlRune) >= 0 {
+		return fmt.Errorf("contains a control character")
+	}
+	if strings.ContainsAny(h, " \t:") {
+		return fmt.Errorf("contains whitespace or ':'")
+	}
+	return nil
+}
+
+// ValidateEffective runs the cross-layer credential checks that only make sense on the
+// fully-merged config — a rule may inject a credential defined in a different layer
+// (e.g. a team-shared global). Every inject must name a defined credential (a hard
+// error, returned as a *ValidationError); a defined-but-never-injected credential, and
+// a username with no {user} placeholder, are non-fatal warnings. The Loader calls this
+// after merging global + project and stores the warnings on Config.Warnings.
+func (c *Config) ValidateEffective() ([]string, error) {
+	verr := &ValidationError{}
+	referenced := map[string]bool{}
+
+	checkList := func(rules []Rule, list string) {
+		for i, r := range rules {
+			if r.Inject == "" {
+				continue
+			}
+			referenced[r.Inject] = true
+			if _, ok := c.Credentials[r.Inject]; !ok {
+				verr.add("egress %s rule %s injects credential %q, which is not defined in credentials:", list, ruleRef(i, r), r.Inject)
+			}
+		}
+	}
+	checkList(c.Network.Egress.Allow, "allow")
+	checkList(c.Network.Egress.DenyAlways, "deny_always")
+
+	var warnings []string
+	for name, cred := range c.Credentials {
+		if !referenced[name] {
+			warnings = append(warnings, fmt.Sprintf("credential %q is defined but never injected by any rule", name))
+		}
+		if cred.Username != "" && !strings.Contains(cred.Template, userPlaceholder) {
+			warnings = append(warnings, fmt.Sprintf("credential %q sets a username but its template %q has no %s placeholder", name, cred.Template, userPlaceholder))
+		}
+	}
+	sort.Strings(warnings) // map iteration is random; keep output stable
+
+	if len(verr.Issues) > 0 {
+		return warnings, verr
+	}
+	return warnings, nil
 }
 
 // ruleRef names a rule for an error message: by host when it has one, else by its

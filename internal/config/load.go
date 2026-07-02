@@ -66,6 +66,16 @@ func (l *Loader) Load(projectPath string) (*Config, error) {
 	}
 	eff = merge(eff, *project)
 
+	// Cross-layer checks run only on the merged view: a project rule may inject a
+	// credential defined in the global baseline, so inject → credential resolution
+	// must wait until both layers are fused. Hard errors fail the load; warnings ride
+	// along on the effective config for the caller to surface.
+	warnings, err := eff.ValidateEffective()
+	if err != nil {
+		return nil, err
+	}
+	eff.Warnings = warnings
+
 	eff.Include = nil
 	return &eff, nil
 }

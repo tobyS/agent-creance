@@ -1,0 +1,2 @@
+invalid .agent-creance.yaml:
+  - egress allow rule for host "api.github.com" sets both inject and in_cage (a host is either injected or in-cage, not both)
