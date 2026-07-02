@@ -36,7 +36,8 @@ func merge(base, over Config) Config {
 				DenyAlways: dedupeRules(concatRules(base.Network.Egress.DenyAlways, over.Network.Egress.DenyAlways)),
 			},
 		},
-		Env: mergeEnv(base.Env, over.Env),
+		Env:         mergeEnv(base.Env, over.Env),
+		Credentials: mergeCredentials(base.Credentials, over.Credentials),
 	}
 }
 
@@ -198,6 +199,23 @@ func mergeEnv(base, over map[string]string) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
+}
+
+// mergeCredentials overlays over onto a copy of base, with over winning on a name
+// collision (a project may redefine a credential the global baseline declared). Like
+// mergeEnv it returns nil when empty to keep reflect.DeepEqual stable.
+func mergeCredentials(base, over map[string]Credential) map[string]Credential {
+	if len(base) == 0 && len(over) == 0 {
+		return nil
+	}
+	out := make(map[string]Credential, len(base)+len(over))
 	for k, v := range base {
 		out[k] = v
 	}

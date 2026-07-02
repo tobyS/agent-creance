@@ -27,11 +27,18 @@ import (
 // Every top-level section is optional: a project config may carry only deltas and a
 // global baseline may be include:-only.
 type Config struct {
-	Agent     Agent
-	Safehouse Safehouse
-	Include   []string
-	Network   Network
-	Env       map[string]string
+	Agent       Agent
+	Safehouse   Safehouse
+	Include     []string
+	Network     Network
+	Env         map[string]string
+	Credentials map[string]Credential
+
+	// Warnings holds non-fatal problems found during effective-config validation
+	// (see ValidateEffective) — e.g. a defined-but-never-injected credential. It is
+	// populated by the Loader on the merged config and surfaced to the user; it is
+	// never a parse input and is not carried by merge.
+	Warnings []string
 }
 
 // Agent is how the caged coding agent is launched.
@@ -86,11 +93,21 @@ type Generator struct {
 // key (nil) is distinguishable from an explicit empty list — the passthrough
 // validation rejects a rule that *sets* paths/methods, which length alone cannot
 // detect.
+//
+// Inject and InCage are the auth axis (AC-0068), orthogonal to the transport axis
+// (Mode) and meaningful only on intercepted hosts: Inject names a credentials: entry
+// the proxy will later resolve host-side and inject (overwrite + fail-closed;
+// AC-0068c); InCage marks that the proxy must never add/strip/modify any auth header
+// because the agent authenticates with a credential it holds in-cage (the honest,
+// lint-able marker for cases injection cannot serve — SigV4, op, SDK-minted). At most
+// one of them may be set. AC-0068b models and validates them; no injection happens.
 type Rule struct {
 	Host    string    `yaml:"host"`
 	Paths   *[]string `yaml:"paths"`
 	Methods *[]string `yaml:"methods"`
 	Mode    string    `yaml:"mode"`
+	Inject  string    `yaml:"inject"`
+	InCage  bool      `yaml:"in_cage"`
 	Reason  string    `yaml:"reason"`
 }
 
@@ -100,15 +117,40 @@ const (
 	ModePassthrough = "passthrough"
 )
 
+// DefaultCredentialHeader is the header a Credential targets when its Header field is
+// left empty — the overwhelmingly common case (Bearer / token / Basic all ride on
+// Authorization). Custom-header services (x-api-key, PRIVATE-TOKEN, …) set Header.
+const DefaultCredentialHeader = "Authorization"
+
+// Credential is one entry in the top-level credentials: block: a named, indirected
+// reference the proxy will later resolve host-side and inject (AC-0068c). It carries
+// only a reference, never a value — the resolved secret never appears here or in the
+// compiled policy.json.
+//
+//   - Source is an AC-0068a reference: op:// / keychain:// / env://.
+//   - Header is the target header name; empty defaults to DefaultCredentialHeader.
+//   - Template is the value-template (see template.go): Bearer {token} | token
+//     {token} | {token} | Basic base64({user}:{token}) | any custom string with a
+//     {token} placeholder.
+//   - Username is the sentinel used only by the Basic base64({user}:{token}) form
+//     (git x-access-token, PyPI __token__, GitLab oauth2, Jira email).
+type Credential struct {
+	Source   string `yaml:"source"`
+	Header   string `yaml:"header"`
+	Template string `yaml:"template"`
+	Username string `yaml:"username"`
+}
+
 // rawConfig mirrors Config for strict decoding. It differs from the public types in
 // exactly one place — host_services decodes as []string — and carries the yaml tags.
 // It deliberately has no custom UnmarshalYAML so KnownFields stays effective.
 type rawConfig struct {
-	Agent     rawAgent          `yaml:"agent"`
-	Safehouse rawSafehouse      `yaml:"safehouse"`
-	Include   []string          `yaml:"include"`
-	Network   rawNetwork        `yaml:"network"`
-	Env       map[string]string `yaml:"env"`
+	Agent       rawAgent              `yaml:"agent"`
+	Safehouse   rawSafehouse          `yaml:"safehouse"`
+	Include     []string              `yaml:"include"`
+	Network     rawNetwork            `yaml:"network"`
+	Env         map[string]string     `yaml:"env"`
+	Credentials map[string]Credential `yaml:"credentials"`
 }
 
 type rawAgent struct {
@@ -165,7 +207,8 @@ func Parse(data []byte) (*Config, error) {
 				DenyAlways: raw.Network.Egress.DenyAlways,
 			},
 		},
-		Env: raw.Env,
+		Env:         raw.Env,
+		Credentials: raw.Credentials,
 	}
 
 	verr := &ValidationError{}
@@ -201,12 +244,26 @@ func (c *Config) applyDefaults(raw rawConfig, verr *ValidationError) {
 
 	defaultRuleModes(c.Network.Egress.Allow)
 	defaultRuleModes(c.Network.Egress.DenyAlways)
+
+	defaultCredentialHeaders(c.Credentials)
 }
 
 func defaultRuleModes(rules []Rule) {
 	for i := range rules {
 		if rules[i].Mode == "" {
 			rules[i].Mode = ModeIntercept
+		}
+	}
+}
+
+// defaultCredentialHeaders fills an empty credential Header with the Authorization
+// default in place, so validation and the compiled policy always see a concrete
+// header name.
+func defaultCredentialHeaders(creds map[string]Credential) {
+	for name, cred := range creds {
+		if cred.Header == "" {
+			cred.Header = DefaultCredentialHeader
+			creds[name] = cred
 		}
 	}
 }

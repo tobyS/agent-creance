@@ -169,8 +169,8 @@ enforcer load test. Each phase is independently testable and committed.
   adding another; assert key-wise merge and over-wins.
 
 ### Success criteria
-- [ ] `go test ./internal/config/...` green.
-- [ ] Round-trip parse of the new fields covered; strict unknown-key rejection
+- [x] `go test ./internal/config/...` green.
+- [x] Round-trip parse of the new fields covered; strict unknown-key rejection
       inside `credentials:` covered.
 
 ---

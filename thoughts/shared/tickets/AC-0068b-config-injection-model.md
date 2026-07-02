@@ -1,9 +1,9 @@
 # AC-0068b: Config model — transport×auth two-axis, credentials indirection, value-template
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-02
 
 > Sub-ticket of **AC-0068** (Credential injection, Phase 1). Pure schema +
 > validation; no live injection. No dependencies (pairs with AC-0068a). Read the
