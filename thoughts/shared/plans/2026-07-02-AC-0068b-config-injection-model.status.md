@@ -20,7 +20,14 @@ Status: done (commit pending)
   unchanged — new policy fields land in Phase 4).
 
 ## Phase 2 — Value-template rendering (pure)
-Status: not started
+Status: done (commit pending)
+
+- internal/config/template.go: RenderCredentialValue + validateTemplate. Substitutes
+  {token}/{user}, applies an optional single non-nested base64(…) wrapper. Reference
+  spec for the Python injector (AC-0068c).
+- template_test.go: table-driven, placeholder token only — all five shapes render;
+  reject missing {token}, {user} without username, unbalanced/double base64, unknown
+  placeholder; accept the valid forms. Green.
 
 ## Phase 3 — Validation: local structural + cross-reference + warning tier
 Status: not started

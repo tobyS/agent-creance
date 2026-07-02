@@ -209,8 +209,8 @@ runtime injector), mirroring the existing dual-implementation matcher pattern.
 - Error cases: missing `{token}`; `{user}` without username; unbalanced `base64(`.
 
 ### Success criteria
-- [ ] All five shapes render correctly with a placeholder; no real secret in tests.
-- [ ] `validateTemplate` rejects the malformed cases (table-driven).
+- [x] All five shapes render correctly with a placeholder; no real secret in tests.
+- [x] `validateTemplate` rejects the malformed cases (table-driven).
 
 ---
 
