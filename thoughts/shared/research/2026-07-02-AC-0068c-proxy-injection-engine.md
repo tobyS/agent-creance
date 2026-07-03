@@ -257,10 +257,17 @@ signal to WebFetch; `X-Cage-Injected` only helps header-visible clients (curl, `
   header** on inject-hosts, the phantom's exact scheme/shape is immaterial to
   security; any non-empty placeholder primes `gh`. Recommend `GH_TOKEN` with a
   clearly-fake, plausibly-shaped value in the config `env:` block (documented, not
-  code). *Confidence: high from documented `gh`/go-gh behavior; live confirmation is
-  AC-0068e (out-of-cage). The web-search sub-agent for this did not return in time;
-  the conclusion rests on the ticket's own references + established `gh` behavior and
-  is safe because overwrite makes the phantom non-load-bearing.*
+  code). **Confirmed by the go-gh source** (`pkg/auth/auth.go`, `pkg/api/http_client.go`):
+  `tokenForHost` returns the raw env value with no prefix/length/charset check (only a
+  non-empty/non-whitespace requirement), `GH_TOKEN` outranks `GITHUB_TOKEN` and bypasses
+  the keyring, and `gh` makes no startup auth call. `gh` emits `Authorization: token
+  <TOKEN>` (classic scheme) for **both** REST and GraphQL via one shared transport —
+  but because the proxy overwrites the whole header, the phantom's scheme/shape is
+  cosmetic and the credential's own `template` (Bearer/token) governs the upstream
+  value. Live `gh`+GraphQL confirmation remains AC-0068e (out-of-cage). One AC-0068e
+  topology note: go-gh only attaches the header when the request host matches the
+  configured GitHub host (`isSameDomain`), so all `gh` egress must reach canonical
+  GitHub hostnames through the proxy.
 - **How the addon reads the inherited fd / secret lifetime:** read fd 3 once during
   the first `configure` (or at `running` before serving) to EOF, `json.loads` into an
   in-memory dict held for the proxy's lifetime; Go writes the payload in a goroutine
