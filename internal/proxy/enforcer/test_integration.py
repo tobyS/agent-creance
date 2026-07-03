@@ -135,11 +135,12 @@ def _wait_until_ready(proc, port, ca_cert, timeout=20.0):
     raise RuntimeError("mitmdump did not become ready in time")
 
 
-def _curl(proxy, url, *, use_mitm_ca, http1=False, timeout=20):
+def _curl(proxy, url, *, use_mitm_ca, http1=False, timeout=20, extra=()):
     """Drive curl through the proxy. Returns (returncode, http_code, headers, body).
 
     http1=True forces HTTP/1.1 to the origin so the status line carries the reason
-    phrase (HTTP/2 drops reason phrases entirely)."""
+    phrase (HTTP/2 drops reason phrases entirely). ``extra`` appends verbatim curl
+    args (e.g. a client-supplied ``-H`` header for the overwrite test)."""
     with tempfile.TemporaryDirectory() as d:
         body_path = os.path.join(d, "body")
         hdr_path = os.path.join(d, "hdr")
@@ -155,6 +156,7 @@ def _curl(proxy, url, *, use_mitm_ca, http1=False, timeout=20):
             cmd.append("--http1.1")
         if use_mitm_ca:
             cmd += ["--cacert", proxy.ca_cert]
+        cmd += list(extra)
         res = subprocess.run(cmd, capture_output=True, text=True)
         http_code = res.stdout.strip()
         headers = _read(hdr_path)
@@ -451,3 +453,145 @@ def test_response_streams_incrementally():
     # The audit must still fire for the streamed response, with its status.
     assert entry is not None, "no allow audit entry appeared for the streamed response"
     assert entry["status"] == 200
+
+
+# --- credential injection end-to-end (AC-0068c) --------------------------------
+
+
+class _EchoHandler(BaseHTTPRequestHandler):
+    """A local plaintext-HTTP origin for the injection tests: /echo returns the
+    Authorization header it received (so the test sees what the proxy forwarded);
+    /reject401 and /reject403 return those statuses (to drive upstream rejection)."""
+
+    def do_GET(self):  # noqa: N802 (BaseHTTPRequestHandler API)
+        if self.path.startswith("/reject401"):
+            self.send_response(401)
+            self.end_headers()
+            return
+        if self.path.startswith("/reject403"):
+            self.send_response(403)
+            self.end_headers()
+            return
+        body = json.dumps(
+            {"authorization": self.headers.get("Authorization", "")}
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):  # silence the default stderr access log
+        pass
+
+
+@contextmanager
+def _echo_origin():
+    srv = HTTPServer(("127.0.0.1", 0), _EchoHandler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield srv.server_address[1]
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        thread.join(timeout=5)
+
+
+@contextmanager
+def running_proxy_with_secret(policy_obj, secret_obj):
+    """Like running_proxy, but also delivers secret_obj (a {name: token} dict) to the
+    addon over an inherited fd — the real end-to-end delivery path. The child inherits
+    the pipe read end (kept open via pass_fds) and is told its number via
+    creance_secret_fd, mirroring the Go launcher's SpawnWithSecret (which uses fd 3)."""
+    _require_tooling()
+    tmp = tempfile.mkdtemp(prefix="creance-enforcer-inj-it-")
+    confdir = os.path.join(tmp, "conf")
+    policy_path = os.path.join(tmp, "policy.json")
+    audit_path = os.path.join(tmp, "egress.jsonl")
+    _write_policy(policy_path, policy_obj)
+    port = _free_port()
+
+    r, w = os.pipe()
+    os.write(w, json.dumps(secret_obj).encode())
+    os.close(w)  # EOF for the child's read
+
+    proc = subprocess.Popen(
+        [
+            _MITMDUMP,
+            "--set", f"confdir={confdir}",
+            "-p", str(port),
+            "-s", _ENFORCER,
+            "--set", f"creance_policy={policy_path}",
+            "--set", f"creance_audit_log={audit_path}",
+            "--set", f"creance_secret_fd={r}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        pass_fds=(r,),
+    )
+    os.close(r)  # the child holds its own copy
+    ca_cert = os.path.join(confdir, "mitmproxy-ca-cert.pem")
+    try:
+        _wait_until_ready(proc, port, ca_cert)
+        yield _Proxy(port, ca_cert, policy_path, audit_path)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        import shutil
+
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+_INJECT_POLICY = {
+    "version": 1,
+    "credentials": {
+        # source is resolved host-side by Go; here the token arrives over the fd, so
+        # source is a placeholder and only header/template matter to the addon.
+        "gh": {"source": "env://IGNORED", "header": "Authorization", "template": "Bearer {token}"},
+    },
+    "allow": [{"host": "127.0.0.1", "mode": "intercept", "inject": "gh"}],
+    "deny_always": [],
+}
+
+
+def test_injection_overwrites_client_header_e2e():
+    with _echo_origin() as origin_port:
+        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
+            rc, code, headers, body = _curl(
+                p,
+                f"http://127.0.0.1:{origin_port}/echo",
+                use_mitm_ca=False,
+                extra=["-H", "Authorization: token gho_PHANTOM"],
+            )
+    assert rc == 0, f"curl failed: {headers}{body}"
+    assert code == "200"
+    # The origin saw the injected value, not the client-supplied phantom.
+    assert json.loads(body)["authorization"] == "Bearer REALTOKEN"
+
+
+def test_injection_unavailable_472_e2e():
+    with _echo_origin() as origin_port:
+        with running_proxy_with_secret(_INJECT_POLICY, {}) as p:  # nothing resolved
+            rc, code, headers, body = _curl(
+                p, f"http://127.0.0.1:{origin_port}/echo", use_mitm_ca=False
+            )
+    assert rc == 0, f"curl failed: {headers}{body}"
+    assert code == "472"
+    assert "x-cage-reason: injection-unavailable" in headers.lower()
+    assert "x-cage-injected: gh" in headers.lower()
+    assert json.loads(body)["error"] == "agent_cage_injection_unavailable"
+
+
+def test_upstream_401_annotated_with_x_cage_injected_e2e():
+    with _echo_origin() as origin_port:
+        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
+            rc, code, headers, body = _curl(
+                p, f"http://127.0.0.1:{origin_port}/reject401", use_mitm_ca=False
+            )
+    assert rc == 0, f"curl failed: {headers}{body}"
+    assert code == "401"  # the upstream owns the status
+    assert "x-cage-injected: gh" in headers.lower()

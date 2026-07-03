@@ -446,11 +446,13 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
   a client-supplied one; (b) a missing secret yields a real **472** with the body/header
   contract; (c) an origin returning 401/403 for the injected request gets
   `X-Cage-Injected`. Under `make test-enforcer-integration`.
-- **Go `//go:build integration`** (`internal/proxy`): spawn a real `mitmdump` via
-  `SpawnWithSecret` and assert the addon received the payload (e.g. an inject route to
-  the local origin echoing the received header). Under `make test-integration`.
-- If a 472 verify-battery vector was stubbed in Phase 5, realize it here against the
-  live proxy.
+- **Go `//go:build integration`** (`internal/proxy`): NOT added — the `SpawnWithSecret`
+  fd-delivery mechanism is already proven hermetically by the Phase 1 `/bin/sh` real-fd
+  test, and the end-to-end injection *behavior* through a real proxy is covered by the
+  enforcer integration above (which delivers the secret over a real inherited fd). A Go
+  test spawning real `mitmdump` would only re-exercise those two already-covered halves.
+- 472 verify-battery vector: still deferred; the enforcer integration's real-proxy 472
+  test covers the same ground without a fragile battery-vector addition.
 
 ### Success criteria
 
