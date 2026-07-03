@@ -1,6 +1,6 @@
 # AC-0068c: Proxy injection engine — in-memory delivery, overwrite, fail-closed, 472
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** High
 **Created:** 2026-06-29
 **Updated:** 2026-07-03
@@ -50,22 +50,31 @@ see an actionable signal — requiring a distinct status code.
 
 ## Acceptance Criteria
 
-- [ ] The proxy resolves the configured credential at spawn and delivers it to the
+- [x] The proxy resolves the configured credential at spawn and delivers it to the
       addon over an inherited fd; the value never appears in argv, env, disk, or
-      logs (asserted).
-- [ ] On an inject-host, an agent-supplied `Authorization`/auth header is replaced
-      by the injected value (test).
-- [ ] A non-resolvable secret yields **472** and the request is not forwarded.
-- [ ] 472 is wired into the refusal machinery alongside 470/471 (reason phrase,
-      `X-Cage-Reason`/body for header-visible clients), clear of ALB's 460/463/464.
-- [ ] An injected credential rejected upstream returns the upstream 401/403 plus
-      `X-Cage-Injected: <name>`.
-- [ ] On an `in-cage` host the proxy provably leaves auth headers untouched.
-- [ ] Phantom priming via the `env:` block lets `gh` issue a request that the proxy
-      then authenticates.
-- [ ] `SKILL.md` and `briefing.md` document 472 and the human-recoverable action.
-- [ ] `make test` green; addon behavior covered by enforcer tests; secret-handling
-      paths unit-tested with the AC-0068a fake. Real-tool paths behind `integration`.
+      logs (asserted). — `SpawnWithSecret` (fd 3) + `resolveInjectionSecrets` (lazy,
+      spawn-path only); hygiene asserted in the fake + resolver tests; real-fd delivery
+      proven by the `/bin/sh` test.
+- [x] On an inject-host, an agent-supplied `Authorization`/auth header is replaced
+      by the injected value (test). — enforcer overwrite test (+ e2e integration).
+- [x] A non-resolvable secret yields **472** and the request is not forwarded. —
+      enforcer 472 test (+ e2e integration).
+- [x] 472 is wired into the refusal machinery alongside 470/471 (reason phrase,
+      `X-Cage-Reason`/body for header-visible clients), clear of ALB's 460/463/464. —
+      `responses.injection_unavailable` + golden + tests.
+- [x] An injected credential rejected upstream returns the upstream 401/403 plus
+      `X-Cage-Injected: <name>`. — `responseheaders` annotation test (+ e2e integration).
+- [x] On an `in-cage` host the proxy provably leaves auth headers untouched. —
+      enforcer in-cage test.
+- [x] Phantom priming via the `env:` block lets `gh` issue a request that the proxy
+      then authenticates. — mechanism proven by the overwrite test (a client-supplied
+      phantom header is clobbered); the config `env:` block already delivers the phantom
+      with no new code; live `gh`+GraphQL is AC-0068e.
+- [x] `SKILL.md` and `briefing.md` document 472 and the human-recoverable action. —
+      plus the `docs/design.md` refusal taxonomy (per the planning checkpoint).
+- [x] `make test` green; addon behavior covered by enforcer tests; secret-handling
+      paths unit-tested with the AC-0068a fake. Real-tool paths behind `integration`
+      (written; run out-of-cage via `make test-enforcer-integration`).
 
 ## Out of Scope
 
@@ -113,3 +122,27 @@ None blocking.
 Created as the core-mechanism sub-ticket of AC-0068. 472 and the SKILL/briefing
 updates live here (not a separate ticket) because the desired agent action only
 becomes meaningful once injection can fail.
+
+### 2026-07-03
+Implemented in six phases (plan
+`thoughts/shared/plans/2026-07-03-AC-0068c-proxy-injection-engine.md`): (1) a new
+`ProcessManager.SpawnWithSecret` delivering the secret over inherited fd 3; (2)
+`run.go` resolving injection secrets host-side lazily on the proxy spawn path (first
+consumer of `App.SecretResolver`); (3) `policy.py` reading inject/in_cage/credentials
++ `inject.py` porting the value-template; (4) the enforcer's fd intake, request-hook
+overwrite / in-cage / 472 and the `responseheaders` `X-Cage-Injected` annotation, plus
+`responses.injection_unavailable` (472); (5) 472 + `X-Cage-Injected` documented in
+`SKILL.md`, `briefing.md`, and the `docs/design.md` refusal taxonomy; (6) three
+enforcer injection e2e integration probes.
+
+Planning checkpoint decisions: add the 472 entry to `docs/design.md` now; deliver via
+`ExtraFiles` (fd 3). Phantom priming needs no new code — the config `env:` block
+already reaches the cage; the overwrite test proves a client-supplied phantom header
+is clobbered.
+
+Verified: in-cage gate green (`make test`, `make test-enforcer`, `make lint`,
+`make build`); `make test-enforcer-integration` 15/15 including the 3 new injection
+e2e tests against a real `mitmdump` fed a secret over a real fd. `make test-integration`
+shows only pre-existing `kc-read`/`kc-write` battery failures — confirmed identical at
+the pre-code commit, unrelated to this ticket (all proxy/credential vectors pass).
+Status → Done.
