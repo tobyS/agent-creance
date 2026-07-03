@@ -69,6 +69,12 @@ class Rule:
     methods: Optional[list[str]] = None
     mode: str = ""
     reason: str = ""
+    # Auth axis (AC-0068). ``inject`` names the credential the proxy injects on this
+    # host; ``in_cage`` marks a host whose auth the proxy must never touch. Both are
+    # ignored by ``decide`` (they do not affect matching) and consumed only by the
+    # enforcer's request hook after a decision.
+    inject: str = ""
+    in_cage: bool = False
 
     @staticmethod
     def from_dict(d: dict) -> "Rule":
@@ -78,21 +84,56 @@ class Rule:
             methods=d.get("methods"),
             mode=d.get("mode", "") or "",
             reason=d.get("reason", "") or "",
+            inject=d.get("inject", "") or "",
+            in_cage=bool(d.get("in_cage", False)),
+        )
+
+
+@dataclass(frozen=True)
+class Credential:
+    """One entry in the top-level ``credentials`` block (AC-0068b).
+
+    Carries only the *reference* and the shape, never a resolved value: ``source`` is
+    the op:///keychain:///env:// reference (resolved host-side by Go, delivered over
+    the inherited fd), ``header`` the target request header (defaulted to
+    ``Authorization`` by the compiler), ``template`` the value-template rendered by
+    ``inject.render_credential_value``, and ``username`` the sentinel used only by the
+    ``Basic base64({user}:{token})`` shape.
+    """
+
+    source: str
+    header: str = "Authorization"
+    template: str = ""
+    username: str = ""
+
+    @staticmethod
+    def from_dict(d: dict) -> "Credential":
+        return Credential(
+            source=d.get("source", "") or "",
+            header=d.get("header", "") or "Authorization",
+            template=d.get("template", "") or "",
+            username=d.get("username", "") or "",
         )
 
 
 @dataclass(frozen=True)
 class RuleSet:
-    """The compiled, in-memory policy: the unioned allow and deny_always lists."""
+    """The compiled, in-memory policy: the unioned allow and deny_always lists plus
+    the credentials map an inject rule dereferences by name."""
 
     allow: list[Rule] = field(default_factory=list)
     deny_always: list[Rule] = field(default_factory=list)
+    credentials: dict[str, Credential] = field(default_factory=dict)
 
     @staticmethod
     def from_dict(d: dict) -> "RuleSet":
         return RuleSet(
             allow=[Rule.from_dict(r) for r in (d.get("allow") or [])],
             deny_always=[Rule.from_dict(r) for r in (d.get("deny_always") or [])],
+            credentials={
+                name: Credential.from_dict(c)
+                for name, c in (d.get("credentials") or {}).items()
+            },
         )
 
 
@@ -436,10 +477,11 @@ def host_disposition(rs: RuleSet, host: str) -> HostDisposition:
 
 
 def load_policy(path: str) -> RuleSet:
-    """Load a compiled policy.json ({version, input_hash, allow, deny_always}).
+    """Load a compiled policy.json ({version, input_hash, credentials, allow,
+    deny_always}).
 
     ``input_hash`` is ignored (it keys the compiler's cache). Missing allow/
-    deny_always lists tolerate as empty.
+    deny_always/credentials tolerate as empty.
     """
     with open(path, "rb") as f:
         data = json.load(f)

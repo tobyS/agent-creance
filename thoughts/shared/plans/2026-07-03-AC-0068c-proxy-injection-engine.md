@@ -296,11 +296,11 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
 ### Success criteria
 
 #### Automated
-- [ ] `make test-enforcer` green — new fields parsed, template parity holds.
-- [ ] Matcher decisions unchanged (Go/Python decision-vector parity still green).
+- [x] `make test-enforcer` green — new fields parsed, template parity holds.
+- [x] Matcher decisions unchanged (Go/Python decision-vector parity still green).
 
 #### Manual
-- [ ] `render_credential_value` output matches `RenderCredentialValue` for every shape
+- [x] `render_credential_value` output matches `RenderCredentialValue` for every shape
       (same expected strings in both test suites).
 
 ---

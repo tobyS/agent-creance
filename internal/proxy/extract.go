@@ -3,9 +3,9 @@
 // constant — users never install or version the Python themselves; they just see
 // "mitmproxy is running". AC-0020 starts mitmproxy with the extracted enforcer.py.
 //
-// The runtime addon is four modules, not one: enforcer.py imports the siblings
-// policy, audit and responses, so all four must be extracted together into one
-// directory (mitmproxy puts a -s script's parent dir on sys.path, which is how
+// The runtime addon is five modules, not one: enforcer.py imports the siblings
+// policy, audit, responses and inject, so all five must be extracted together into
+// one directory (mitmproxy puts a -s script's parent dir on sys.path, which is how
 // those imports resolve). The pytest suite, conftest, requirements.txt and
 // golden testdata that live alongside them are dev-only and are not shipped.
 package proxy
@@ -23,11 +23,11 @@ import (
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
-// enforcerFS holds the embedded addon. The directive enumerates the four runtime
+// enforcerFS holds the embedded addon. The directive enumerates the five runtime
 // modules explicitly because `enforcer/*.py` would also embed the pytest suite
 // (the embed directive has no exclude/negation).
 //
-//go:embed enforcer/enforcer.py enforcer/policy.py enforcer/audit.py enforcer/responses.py
+//go:embed enforcer/enforcer.py enforcer/policy.py enforcer/audit.py enforcer/responses.py enforcer/inject.py
 var enforcerFS embed.FS
 
 const (
@@ -44,7 +44,7 @@ const (
 
 // enforcerModules are the embedded addon files, relative to embedDir. enforcer.py
 // is the entrypoint; the rest are the siblings it imports.
-var enforcerModules = []string{"enforcer.py", "policy.py", "audit.py", "responses.py"}
+var enforcerModules = []string{"enforcer.py", "policy.py", "audit.py", "responses.py", "inject.py"}
 
 // Extractor writes the embedded enforcer addon to the constant, cross-project
 // enforcer dir through the injected filesystem seam.

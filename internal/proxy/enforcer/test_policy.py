@@ -107,11 +107,11 @@ def test_empty_paths_list_matches_nothing():
     got = policy.decide(rs, policy.Request("react.dev", "/learn", "GET"))
     assert got.decision == policy.DECISION_SOFT_DENY
 
-def test_auth_fields_and_credentials_carried_but_ignored_by_matcher():
-    """AC-0068b: per-rule inject/in_cage and the top-level credentials block are
-    carried in policy.json but are annotations the matcher ignores. Rule.from_dict /
-    RuleSet.from_dict must load a policy carrying them without error, and decide must be
-    unchanged (no secret value is present — only references)."""
+def test_auth_fields_and_credentials_parsed_but_ignored_by_matcher():
+    """AC-0068c: per-rule inject/in_cage and the top-level credentials block are now
+    parsed onto Rule / RuleSet (the enforcer's request hook consumes them), but they
+    are still annotations the matcher ignores — decide is unchanged and no secret value
+    is present (only references)."""
     data = {
         "version": 1,
         "input_hash": "x",
@@ -137,12 +137,26 @@ def test_auth_fields_and_credentials_carried_but_ignored_by_matcher():
 
     rs = policy.RuleSet.from_dict(data)
 
-    # The unknown top-level 'credentials' key and the inject/in_cage rule keys are
-    # ignored on load; the rules still decide purely by host/path/method.
+    # The credentials block and the inject/in_cage rule fields are parsed onto the
+    # in-memory model...
+    assert rs.credentials["github-token"].source == "op://Private/GitHub PAT/token"
+    assert rs.credentials["github-token"].template == "Bearer {token}"
+    assert rs.credentials["github-token"].header == "Authorization"
+    assert rs.allow[0].inject == "github-token"
+    assert rs.allow[0].in_cage is False
+    assert rs.allow[1].in_cage is True
+    assert rs.allow[1].inject == ""
+
+    # ...but the matcher still decides purely by host/path/method: the decision and
+    # the matched allow index are unchanged, and matched is reachable so the request
+    # hook can look up the rule's inject/in_cage.
     allowed = policy.decide(rs, policy.Request("api.github.com", "/graphql", "POST"))
     assert allowed.decision == policy.DECISION_ALLOW
+    assert allowed.matched.list == "allow" and allowed.matched.index == 0
+    assert rs.allow[allowed.matched.index].inject == "github-token"
 
     in_cage = policy.decide(
         rs, policy.Request("s3.eu-central-1.amazonaws.com", "/bucket/key", "GET")
     )
     assert in_cage.decision == policy.DECISION_ALLOW
+    assert rs.allow[in_cage.matched.index].in_cage is True
