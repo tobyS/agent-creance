@@ -369,13 +369,14 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
 ### Success criteria
 
 #### Automated
-- [ ] `make test-enforcer` green — overwrite, 472, in-cage-untouched, annotation, and
+- [x] `make test-enforcer` green — overwrite, 472, in-cage-untouched, annotation, and
       fd-intake covered.
-- [ ] `make test` green (Go side unaffected).
+- [x] `make test` green (Go side unaffected).
 
 #### Manual
-- [ ] The resolved token appears in no log line; a `curl -v` 472 shows the reason
-      phrase + `X-Cage-Reason` (verified in Phase 6 integration).
+- [x] The resolved token appears in no log line (only counts/exception type logged);
+      a `curl -v` 472 showing the reason phrase + `X-Cage-Reason` is verified in
+      Phase 6 integration.
 
 ---
 

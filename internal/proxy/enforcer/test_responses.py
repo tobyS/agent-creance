@@ -22,6 +22,10 @@ _HARD = dict(
     url="https://w3schools.com/html/default.asp",
     reason="Known low-quality source. Use MDN or official docs instead.",
 )
+_INJECT = dict(
+    url="https://api.github.com/graphql",
+    credential="github-token",
+)
 
 
 def _assert_golden(name: str, got: bytes, update: bool):
@@ -44,6 +48,11 @@ def test_hard_deny_body_golden(update_golden):
     _assert_golden("hard_deny_body.json.golden", r.body, update_golden)
 
 
+def test_injection_unavailable_body_golden(update_golden):
+    r = responses.injection_unavailable(**_INJECT)
+    _assert_golden("injection_unavailable_body.json.golden", r.body, update_golden)
+
+
 def test_soft_deny_envelope():
     r = responses.soft_deny(**_SOFT)
     assert r.status == 470
@@ -58,6 +67,17 @@ def test_hard_deny_envelope():
     assert r.headers[responses.X_CAGE_REASON] == "hard-deny"
     assert r.headers["Content-Type"] == "application/json"
     assert r.reason_phrase == "agent-creance hard-deny (blocked)"
+
+
+def test_injection_unavailable_envelope():
+    r = responses.injection_unavailable(**_INJECT)
+    assert r.status == 472
+    assert r.headers[responses.X_CAGE_REASON] == "injection-unavailable"
+    assert r.headers[responses.X_CAGE_INJECTED] == "github-token"
+    assert r.headers["Content-Type"] == "application/json"
+    assert r.reason_phrase == (
+        "agent-creance injection-unavailable (credential could not be resolved)"
+    )
 
 
 def test_allow_command_suggestion_uses_host_and_path():

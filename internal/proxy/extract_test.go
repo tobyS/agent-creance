@@ -40,7 +40,7 @@ func TestEmbedContainsAllRuntimeModules(t *testing.T) {
 	// enforcer.py must keep importing its three siblings; if someone trims the
 	// module set, this guards against shipping an addon that ImportErrors at load.
 	src := string(embedded(t, "enforcer.py"))
-	for _, imp := range []string{"import audit", "import policy", "import responses"} {
+	for _, imp := range []string{"import audit", "import inject", "import policy", "import responses"} {
 		if !strings.Contains(src, imp) {
 			t.Errorf("enforcer.py missing %q — embedded module set is incomplete", imp)
 		}

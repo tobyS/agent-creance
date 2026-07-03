@@ -3,9 +3,14 @@
 This is the runtime enforcer: a mitmproxy addon that reads the compiled policy.json
 and turns each egress attempt into one of the three outcomes the agent understands.
 
-  - allow      -> forward upstream untouched.
+  - allow      -> forward upstream untouched, unless the matched rule carries the auth
+                  axis (AC-0068c): ``inject`` overwrites the credential's header with a
+                  value rendered from a host-side-resolved token (472 if it did not
+                  resolve), ``in_cage`` leaves auth untouched by contract.
   - soft-deny  -> 470 + X-Cage-Reason: soft-deny + the agent_cage_not_allowlisted body.
   - hard-deny  -> 471 + X-Cage-Reason: hard-deny + the agent_cage_hard_deny body.
+  - injection-unavailable -> 472 + X-Cage-Reason: injection-unavailable + the
+                  agent_cage_injection_unavailable body (fail-closed, human-recoverable).
 
 Per-host modes:
 
@@ -40,6 +45,7 @@ lifecycle/lock/port (AC-0020). The policy path is supplied as a mitmproxy option
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Optional
@@ -47,6 +53,7 @@ from typing import Optional
 from mitmproxy import ctx, http, tls
 
 import audit
+import inject
 import policy
 import responses
 
@@ -89,6 +96,11 @@ class Enforcer:
         self._task: Optional[asyncio.Task] = None
         self._audit_path: str = ""
         self._audit: Optional[audit.AuditLog] = None
+        # Injection secrets: {credential-name: raw-token}, resolved host-side and
+        # delivered once over the inherited fd. Held in memory for the proxy's
+        # lifetime; never logged or written to disk (AC-0068c). Read at most once.
+        self._secrets: dict[str, str] = {}
+        self._secrets_read = False
 
     # --- addon lifecycle -------------------------------------------------------
 
@@ -105,6 +117,12 @@ class Enforcer:
             default="",
             help="Path to the egress.jsonl audit log the enforcer appends to ('' disables).",
         )
+        loader.add_option(
+            name="creance_secret_fd",
+            typespec=int,
+            default=0,
+            help="Inherited fd carrying the injection payload (0 disables injection).",
+        )
 
     def configure(self, updated) -> None:
         if "creance_policy" in updated:
@@ -117,6 +135,12 @@ class Enforcer:
             self._audit = (
                 audit.AuditLog(self._audit_path) if self._audit_path else None
             )
+        if "creance_secret_fd" in updated:
+            fd = ctx.options.creance_secret_fd
+            if fd > 0 and not self._secrets_read:
+                # Read once, at startup, before any request is served.
+                self._secrets_read = True
+                self._read_secrets(fd)
 
     def running(self) -> None:
         # Two settings make the enforcer a true egress gate — the proxy must never
@@ -185,6 +209,40 @@ class Enforcer:
         while True:
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
             self._maybe_reload()
+
+    # --- injection secrets -----------------------------------------------------
+
+    def _read_secrets(self, fd: int) -> None:
+        """Read the injection payload the Go launcher wrote to the inherited fd.
+
+        The payload is JSON {credential-name: raw-token}, written to the write end of
+        a pipe whose read end the child inherited at ``fd`` (sysdep.SecretFD). Read to
+        EOF, parse, hold in memory, then close the fd. The secret values are never
+        logged. A read/parse failure leaves the map empty, so inject-hosts fail closed
+        (472) rather than the secret leaking into a log or the proxy refusing to start.
+        """
+        try:
+            chunks = []
+            while True:
+                b = os.read(fd, 65536)
+                if not b:
+                    break
+                chunks.append(b)
+            raw = b"".join(chunks)
+            if raw:
+                loaded = json.loads(raw)
+                self._secrets = {str(k): str(v) for k, v in loaded.items()}
+            logger.info("loaded %d injection credential(s)", len(self._secrets))
+        except (OSError, ValueError, TypeError) as exc:
+            # Note: never interpolate the payload — only the exception type/message,
+            # which carries no secret value.
+            logger.error("failed to read injection secrets (fd %d): %s", fd, exc)
+            self._secrets = {}
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
     # --- enforcement hooks -----------------------------------------------------
 
@@ -255,7 +313,8 @@ class Enforcer:
             }
 
             if result.decision == policy.DECISION_ALLOW:
-                return  # forward upstream untouched
+                self._apply_injection(flow, result)
+                return  # forward upstream (with the injected header, or a 472)
 
             url = flow.request.pretty_url
             if result.decision == policy.DECISION_SOFT_DENY:
@@ -277,6 +336,42 @@ class Enforcer:
                 responses.hard_deny(_safe_url(flow), "internal enforcer error")
             )
 
+    def _apply_injection(self, flow: http.HTTPFlow, result: policy.Result) -> None:
+        """Apply the matched allow rule's auth axis to an allowed request (AC-0068c).
+
+        - ``in_cage``: leave auth untouched — the proxy guarantees it never adds,
+          strips, or modifies an auth header on an in-cage host.
+        - ``inject``: overwrite the credential's header with the rendered value. If the
+          credential is unknown or its secret did not resolve host-side, fail closed
+          with 472 instead of forwarding unauthenticated or with the phantom.
+        - neither: today's default — the proxy does not touch auth.
+
+        Runs inside the ``request`` hook's try/except, so an unexpected error (e.g. a
+        malformed template that slipped past compile-time validation) falls through to
+        the fail-closed hard-deny there.
+        """
+        if result.matched is None or result.matched.list != "allow":
+            return
+        rule = self._ruleset.allow[result.matched.index]
+        if rule.in_cage:
+            return
+        if not rule.inject:
+            return
+        cred = self._ruleset.credentials.get(rule.inject)
+        token = self._secrets.get(rule.inject)
+        if cred is None or token is None:
+            flow.response = _make_response(
+                responses.injection_unavailable(flow.request.pretty_url, rule.inject)
+            )
+            return
+        value = inject.render_credential_value(cred.template, cred.username, token)
+        # Overwrite: header assignment replaces any client-supplied value(s) of this
+        # name (including the phantom), so the cage cannot exceed the injected scope
+        # against this host even if a prompt-injected agent set the header itself.
+        flow.request.headers[cred.header] = value
+        # Remember the credential so responseheaders can annotate an upstream 401/403.
+        flow.metadata["creance_injected"] = rule.inject
+
     def responseheaders(self, flow: http.HTTPFlow) -> None:
         """Stream every upstream response body to the client incrementally.
 
@@ -293,9 +388,20 @@ class Enforcer:
         afterwards (once the body has fully streamed) with ``status_code`` intact, so
         the single audit entry is unaffected. Refusals synthesized in ``request``
         short-circuit before upstream is contacted, so this hook never runs for them.
+
+        This is also the only place a genuine upstream response is visible, so it is
+        where an injected credential rejected upstream (a real 401/403) is annotated
+        with X-Cage-Injected — the upstream owns the status, we only name the
+        credential so the agent blames it rather than its phantom (AC-0068c). The
+        header is set before streaming (mutating headers is fine; only the body is
+        off-limits once ``stream`` is on).
         """
-        if flow.response is not None:
-            flow.response.stream = True
+        if flow.response is None:
+            return
+        injected = flow.metadata.get("creance_injected")
+        if injected and flow.response.status_code in (401, 403):
+            flow.response.headers[responses.X_CAGE_INJECTED] = injected
+        flow.response.stream = True
 
     def response(self, flow: http.HTTPFlow) -> None:
         """Audit an intercepted request once its response status is known.

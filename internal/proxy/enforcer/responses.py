@@ -2,9 +2,11 @@
 
 These are what the *agent* receives over the wire when a request is refused. The
 shapes are fixed by docs/design.md ("Network refusal handling"): a soft-deny ("not
-allowlisted, could be added", HTTP 470) and a hard-deny ("permanently blocked, find
-another way", HTTP 471), each with an ``X-Cage-Reason`` header and a structured JSON
-body whose ``error`` carries the ``agent_cage_`` prefix the shipped skill activates on.
+allowlisted, could be added", HTTP 470), a hard-deny ("permanently blocked, find
+another way", HTTP 471), and an injection-unavailable ("allowlisted, but a credential
+the proxy injects could not be resolved — the human must unlock the secret store",
+HTTP 472), each with an ``X-Cage-Reason`` header and a structured JSON body whose
+``error`` carries the ``agent_cage_`` prefix the shipped skill activates on.
 
 The status codes are deliberately custom (AC-0047): body-blind HTTP clients such as
 Claude Code's WebFetch surface only the status line of a non-2xx response to the
@@ -22,14 +24,21 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-# Header name + the two values, byte-for-byte what the skill keys on.
+# Header name + the reason values, byte-for-byte what the skill keys on.
 X_CAGE_REASON = "X-Cage-Reason"
 REASON_SOFT_DENY = "soft-deny"
 REASON_HARD_DENY = "hard-deny"
+REASON_INJECTION_UNAVAILABLE = "injection-unavailable"
+
+# X-Cage-Injected names the injected credential — set on a synthesized 472 and on a
+# real upstream 401/403 for an injected request, so a header-visible client (curl,
+# gh) can tell the agent blamed the injected credential, not its phantom (AC-0068c).
+X_CAGE_INJECTED = "X-Cage-Injected"
 
 # The agent_cage_ error enums (skill activates on the prefix).
 ERROR_SOFT_DENY = "agent_cage_not_allowlisted"
 ERROR_HARD_DENY = "agent_cage_hard_deny"
+ERROR_INJECTION_UNAVAILABLE = "agent_cage_injection_unavailable"
 
 # Fixed how_to_proceed guidance. The soft-deny copy is the wording agreed at the
 # AC-0017 planning checkpoint (deliberately NOT "route around silently"). The
@@ -44,11 +53,23 @@ HOW_TO_PROCEED_HARD = (
     "Permanently blocked. Do NOT ask the user to allow it. Do NOT retry. Find an "
     "alternative source."
 )
+HOW_TO_PROCEED_INJECTION = (
+    "A credential the proxy injects for this host could not be resolved, so the "
+    "request was refused rather than sent unauthenticated. This is recoverable by "
+    "the HUMAN, not you: ask the user to unlock the secret store (e.g. 1Password, or "
+    "`security unlock-keychain` for the login keychain) so the credential resolves, "
+    "then retry. Do NOT run `agent-creance allow` — the host is already allowlisted, "
+    "the credential is the problem — and do NOT retry until the user has acted."
+)
 
 # The custom refusal status codes (see module docstring). Exported: the tests and
-# the verify battery key on these numbers.
+# the verify battery key on these numbers. 472 is the third refusal category
+# (AC-0068c): allowlisted, transient, recoverable by the HUMAN not the agent —
+# distinct from 470 (agent-recoverable via `allow`) and 471 (permanent). Still clear
+# of AWS ALB's 460/463/464.
 STATUS_SOFT_DENY = 470
 STATUS_HARD_DENY = 471
+STATUS_INJECTION_UNAVAILABLE = 472
 
 # Self-describing HTTP reason phrases for the two refusal codes. mitmproxy defaults
 # the reason to "" for unregistered codes, so without these the 470/471 status line
@@ -58,6 +79,9 @@ STATUS_HARD_DENY = 471
 # debugging the cage with curl -v.
 REASON_PHRASE_SOFT_DENY = "agent-creance soft-deny (not allowlisted)"
 REASON_PHRASE_HARD_DENY = "agent-creance hard-deny (blocked)"
+REASON_PHRASE_INJECTION_UNAVAILABLE = (
+    "agent-creance injection-unavailable (credential could not be resolved)"
+)
 
 _CONTENT_TYPE = "application/json"
 
@@ -116,4 +140,31 @@ def hard_deny(url: str, reason: str) -> CageResponse:
         headers={"Content-Type": _CONTENT_TYPE, X_CAGE_REASON: REASON_HARD_DENY},
         body=body,
         reason_phrase=REASON_PHRASE_HARD_DENY,
+    )
+
+
+def injection_unavailable(url: str, credential: str) -> CageResponse:
+    """472 for an inject-host whose credential could not be resolved host-side.
+
+    Fail-closed: the request is refused rather than sent unauthenticated or with the
+    phantom. ``credential`` names the configured credential so a header-visible client
+    can diagnose it (X-Cage-Injected); the resolved value is never involved here.
+    """
+    body = _encode(
+        {
+            "error": ERROR_INJECTION_UNAVAILABLE,
+            "url": url,
+            "credential": credential,
+            "how_to_proceed": HOW_TO_PROCEED_INJECTION,
+        }
+    )
+    return CageResponse(
+        status=STATUS_INJECTION_UNAVAILABLE,
+        headers={
+            "Content-Type": _CONTENT_TYPE,
+            X_CAGE_REASON: REASON_INJECTION_UNAVAILABLE,
+            X_CAGE_INJECTED: credential,
+        },
+        body=body,
+        reason_phrase=REASON_PHRASE_INJECTION_UNAVAILABLE,
     )

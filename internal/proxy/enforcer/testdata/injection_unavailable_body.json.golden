@@ -1,0 +1,6 @@
+{
+  "error": "agent_cage_injection_unavailable",
+  "url": "https://api.github.com/graphql",
+  "credential": "github-token",
+  "how_to_proceed": "A credential the proxy injects for this host could not be resolved, so the request was refused rather than sent unauthenticated. This is recoverable by the HUMAN, not you: ask the user to unlock the secret store (e.g. 1Password, or `security unlock-keychain` for the login keychain) so the credential resolves, then retry. Do NOT run `agent-creance allow` — the host is already allowlisted, the credential is the problem — and do NOT retry until the user has acted."
+}
