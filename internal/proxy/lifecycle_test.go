@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/tobyS/agent-creance/internal/proxy"
 	"github.com/tobyS/agent-creance/internal/state"
+	"github.com/tobyS/agent-creance/internal/sysdep"
 	"github.com/tobyS/agent-creance/internal/sysdep/sysdeptest"
 )
 
@@ -439,4 +441,88 @@ func TestLockPathIsOutOfTree(t *testing.T) {
 	assert.True(t, strings.HasPrefix(locked, "/cache/agent-creance/projects/"),
 		"lock must live under the out-of-tree state dir (C4), got %q", locked)
 	assert.NotContains(t, locked, h.lay.Canonical, "lock must not live in the project tree")
+}
+
+func TestAttachDeliversInjectionSecretOnSpawn(t *testing.T) {
+	h := newHarness()
+	h.ports.AllocPort = 8080
+	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
+
+	cfg := h.cfg(222)
+	called := false
+	cfg.Secrets = func(context.Context) ([]byte, error) {
+		called = true
+		return []byte(`{"gh":"tok3n"}`), nil
+	}
+	_, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err)
+
+	require.True(t, called, "Secrets must be resolved on the spawn path")
+	require.Len(t, h.proc.Spawned, 1)
+	require.Len(t, h.proc.Secrets, 1, "the proxy was spawned via SpawnWithSecret")
+	assert.Equal(t, `{"gh":"tok3n"}`, string(h.proc.Secrets[0]))
+	assert.Contains(t, h.proc.Spawned[0].Args, "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
+	// Hygiene: the payload never rides argv.
+	for _, a := range h.proc.Spawned[0].Args {
+		assert.NotContains(t, a, "tok3n", "secret must not appear in argv")
+	}
+}
+
+func TestAttachReuseDoesNotResolveSecret(t *testing.T) {
+	h := newHarness()
+	h.seedLock(lockJSON{ProxyPID: 111, Port: 8080, PolicyHash: "hash-v1", Agents: agentRefs(555)})
+	h.proc.AlivePIDs[111] = true
+	h.agentAlive(555)
+	h.ports.Listening[8080] = true
+
+	cfg := h.cfg(666)
+	called := false
+	cfg.Secrets = func(context.Context) ([]byte, error) {
+		called = true
+		return []byte(`{"gh":"tok3n"}`), nil
+	}
+	_, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err)
+
+	assert.False(t, called, "reuse path must not resolve secrets (no Touch ID re-prompt)")
+	assert.Empty(t, h.proc.Spawned, "no proxy spawned on reuse")
+	assert.Empty(t, h.proc.Secrets)
+}
+
+func TestAttachNoSecretsSpawnsPlain(t *testing.T) {
+	h := newHarness()
+	h.ports.AllocPort = 8080
+	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
+
+	cfg := h.cfg(222)
+	cfg.Secrets = func(context.Context) ([]byte, error) { return nil, nil } // nothing to inject
+	_, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err)
+
+	require.Len(t, h.proc.Spawned, 1)
+	assert.Empty(t, h.proc.Secrets, "no secret delivered when the payload is empty")
+	for _, a := range h.proc.Spawned[0].Args {
+		assert.NotContains(t, a, "creance_secret_fd", "no fd option without a payload")
+	}
+}
+
+func TestAttachSecretResolverErrorSpawnsPlain(t *testing.T) {
+	h := newHarness()
+	h.ports.AllocPort = 8080
+	h.proc.SpawnPID = 111
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
+
+	cfg := h.cfg(222)
+	cfg.Secrets = func(context.Context) ([]byte, error) { return nil, assert.AnError }
+	_, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err, "a resolver error must not fail the attach (fail-closed at request time)")
+
+	require.Len(t, h.proc.Spawned, 1)
+	assert.Empty(t, h.proc.Secrets)
+	assert.Contains(t, h.warn.String(), "resolving injection credentials")
 }

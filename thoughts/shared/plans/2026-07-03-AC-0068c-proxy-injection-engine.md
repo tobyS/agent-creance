@@ -248,11 +248,11 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
 ### Success criteria
 
 #### Automated
-- [ ] `make test` green (race).
-- [ ] `make lint` clean; `go build ./...`.
+- [x] `make test` green (race).
+- [x] `make lint` clean; `go build ./...`.
 
 #### Manual
-- [ ] Reuse path never resolves (no Touch ID re-prompt); `App.SecretResolver` now has a
+- [x] Reuse path never resolves (no Touch ID re-prompt); `App.SecretResolver` now has a
       real consumer (grep shows `run.go`/`inject.go`).
 
 ---

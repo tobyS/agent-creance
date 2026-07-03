@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"github.com/tobyS/agent-creance/internal/configwatch"
 	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/pluginmkt"
+	"github.com/tobyS/agent-creance/internal/policy"
 	compile "github.com/tobyS/agent-creance/internal/policy/compile"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/profile"
@@ -217,12 +219,30 @@ func runRun(ctx context.Context, app *App, dir string, quiet bool) error {
 	//    the session overlay (proxy.Manager owns that logic).
 	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
 	selfPID := os.Getpid()
+
+	// Load the compiled policy so injection can resolve the credentials it references.
+	// Parsing here is cheap and hermetic; the expensive/prompting op:// resolution is
+	// deferred into the Secrets closure, which proxy.Attach invokes only when it
+	// actually spawns the proxy (never on reuse).
+	var compiledForInject *policy.Compiled
+	if data, rerr := app.FS.ReadFile(layout.PolicyJSON()); rerr == nil {
+		var c policy.Compiled
+		if json.Unmarshal(data, &c) == nil {
+			compiledForInject = &c
+		}
+	}
+
 	prog.StepStart("Starting egress proxy")
 	att, err := mgr.Attach(ctx, proxy.StartConfig{
 		Layout:     layout,
 		EnforcerPy: enforcerPy,
 		PolicyHash: polRes.InputHash,
 		SelfPID:    selfPID,
+		Secrets: func(ctx context.Context) ([]byte, error) {
+			return resolveInjectionSecrets(ctx, app.SecretResolver, compiledForInject, func(msg string) {
+				fmt.Fprintf(app.Stderr, "warning: %s\n", msg)
+			})
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("start proxy: %w", err)

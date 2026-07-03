@@ -5,7 +5,7 @@ Plan: `thoughts/shared/plans/2026-07-03-AC-0068c-proxy-injection-engine.md`
 ## Phases
 
 - [x] Phase 1 — ProcessManager seam: inherited-fd secret delivery (in-cage) — done 2026-07-03
-- [ ] Phase 2 — Resolve-at-spawn + delivery wiring, Go (in-cage)
+- [x] Phase 2 — Resolve-at-spawn + delivery wiring, Go (in-cage) — done 2026-07-03
 - [ ] Phase 3 — Python: read new policy fields + port value-template (in-cage)
 - [ ] Phase 4 — Python: secret intake, injection/overwrite/in-cage/472, annotation (in-cage)
 - [ ] Phase 5 — Docs + status-code surface (472 + X-Cage-Injected) (in-cage)

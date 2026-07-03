@@ -1,9 +1,12 @@
 package proxy
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/tobyS/agent-creance/internal/state"
+	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
 func TestMitmArgsShape(t *testing.T) {
@@ -11,7 +14,7 @@ func TestMitmArgsShape(t *testing.T) {
 		Layout:     state.Layout{Root: "/cache/agent-creance/projects/abc"},
 		EnforcerPy: "/enforcer/enforcer.py",
 	}
-	args := mitmArgs(7777, cfg)
+	args := mitmArgs(7777, cfg, false)
 
 	// Must carry the listen port, the addon script, and both --set options.
 	assertContainsPair(t, args, "--listen-port", "7777")
@@ -19,6 +22,12 @@ func TestMitmArgsShape(t *testing.T) {
 	assertContains(t, args, "creance_policy="+cfg.Layout.PolicyJSON())
 	assertContains(t, args, "creance_audit_log="+cfg.Layout.EgressJSONL())
 	assertContains(t, args, "--listen-host")
+	// Without secrets there is no fd option.
+	assertNotContainsPrefix(t, args, "creance_secret_fd=")
+
+	// With secrets the addon is told which inherited fd to read.
+	withSecret := mitmArgs(7777, cfg, true)
+	assertContains(t, withSecret, "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
 }
 
 func TestAddRemoveRef(t *testing.T) {
@@ -59,6 +68,15 @@ func assertContains(t *testing.T, args []string, want string) {
 		}
 	}
 	t.Errorf("args %v missing %q", args, want)
+}
+
+func assertNotContainsPrefix(t *testing.T, args []string, prefix string) {
+	t.Helper()
+	for _, a := range args {
+		if strings.HasPrefix(a, prefix) {
+			t.Errorf("args %v unexpectedly contain %q", args, prefix)
+		}
+	}
 }
 
 func assertContainsPair(t *testing.T, args []string, flag, val string) {

@@ -105,6 +105,14 @@ type StartConfig struct {
 	PolicyHash string
 	// SelfPID is this invocation's PID (os.Getpid()), added to the agents array.
 	SelfPID int
+	// Secrets, when non-nil, resolves the credential-injection payload host-side —
+	// the JSON {credential-name: raw-token} handed to the addon over fd
+	// sysdep.SecretFD. It is invoked ONLY when this Attach actually spawns the proxy
+	// (never on reuse), because resolving an op:// reference can prompt for Touch ID
+	// and must not re-prompt every time an agent attaches to an already-running
+	// proxy. A best-effort resolver: an individual unresolvable credential is omitted
+	// (the addon then answers 472 for requests needing it), not a hard error.
+	Secrets func(ctx context.Context) ([]byte, error)
 }
 
 // Attachment is what Attach reports back to its caller.
@@ -162,7 +170,25 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 			// Seatbelt profile only allows the old port. Warn, do NOT signal them.
 			m.warnPortChanged(port, cur.Port, pids(alive))
 		}
-		pid, err := m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg)...)
+		// Resolve the injection payload only now, on the spawn path — never on the
+		// reuse branch above — so op:// resolution can't re-prompt for Touch ID each
+		// time an agent attaches to a running proxy. A resolver error is non-fatal:
+		// spawn plain, and the addon fails closed (472) for inject-hosts.
+		var secret []byte
+		if cfg.Secrets != nil {
+			s, serr := cfg.Secrets(ctx)
+			if serr != nil {
+				fmt.Fprintf(m.warn, "warning: resolving injection credentials: %v\n", serr)
+			} else {
+				secret = s
+			}
+		}
+		var pid int
+		if len(secret) > 0 {
+			pid, err = m.proc.SpawnWithSecret(ctx, secret, proxyBin, mitmArgs(port, cfg, true)...)
+		} else {
+			pid, err = m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg, false)...)
+		}
 		if err != nil {
 			return Attachment{}, fmt.Errorf("proxy: start mitmproxy: %w (try `agent-creance doctor`)", err)
 		}
@@ -462,16 +488,22 @@ func (m *Manager) warnPortChanged(newPort, oldPort int, agents []int) {
 }
 
 // mitmArgs builds the mitmdump command for the enforcer addon. The option names
-// (creance_policy, creance_audit_log) are the ones enforcer.py declares.
-func mitmArgs(port int, cfg StartConfig) []string {
-	return []string{
+// (creance_policy, creance_audit_log, creance_secret_fd) are the ones enforcer.py
+// declares. withSecret adds creance_secret_fd so the addon reads the injection
+// payload from the inherited descriptor; it is set only when the proxy is spawned
+// via SpawnWithSecret.
+func mitmArgs(port int, cfg StartConfig, withSecret bool) []string {
+	args := []string{
 		"--listen-host", "127.0.0.1",
 		"--listen-port", strconv.Itoa(port),
 		"-s", cfg.EnforcerPy,
 		"--set", "creance_policy=" + cfg.Layout.PolicyJSON(),
 		"--set", "creance_audit_log=" + cfg.Layout.EgressJSONL(),
-		"-q",
 	}
+	if withSecret {
+		args = append(args, "--set", "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
+	}
+	return append(args, "-q")
 }
 
 // readLock reads and unmarshals the lock contents from the held descriptor. An
