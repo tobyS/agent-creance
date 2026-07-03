@@ -1,9 +1,9 @@
 # AC-0068c: Proxy injection engine — in-memory delivery, overwrite, fail-closed, 472
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** High
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-03
 
 > Sub-ticket of **AC-0068** (Credential injection, Phase 1). The core mechanism and
 > the only place real secrets flow. **Depends on AC-0068a + AC-0068b.** Read the

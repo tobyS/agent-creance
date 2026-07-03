@@ -31,8 +31,11 @@ type FakeProcessManager struct {
 	StartTimes map[int]int64
 	// StartTimeErr, if set, is returned by StartTime regardless of pid.
 	StartTimeErr error
-	// Spawned records each Spawn call, in order.
+	// Spawned records each Spawn / SpawnWithSecret call, in order (name + args).
 	Spawned []StartedCommand
+	// Secrets records the secret payload of each SpawnWithSecret call, in order. A
+	// plain Spawn appends nothing here, so len(Secrets) counts fd-delivery spawns.
+	Secrets [][]byte
 	// Signaled records each Signal call, in order.
 	Signaled []SignaledPID
 
@@ -56,6 +59,17 @@ func (f *FakeProcessManager) Spawn(_ context.Context, name string, args ...strin
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Spawned = append(f.Spawned, StartedCommand{Name: name, Args: args})
+	if f.SpawnErr != nil {
+		return 0, f.SpawnErr
+	}
+	return f.SpawnPID, nil
+}
+
+func (f *FakeProcessManager) SpawnWithSecret(_ context.Context, secret []byte, name string, args ...string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Spawned = append(f.Spawned, StartedCommand{Name: name, Args: args})
+	f.Secrets = append(f.Secrets, append([]byte(nil), secret...))
 	if f.SpawnErr != nil {
 		return 0, f.SpawnErr
 	}

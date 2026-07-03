@@ -181,12 +181,12 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
 ### Success criteria
 
 #### Automated
-- [ ] `go build ./...` — both implementers satisfy the widened interface.
-- [ ] `make test` green (race) — existing `Spawn` callers/fakes unaffected.
-- [ ] `make lint` clean.
+- [x] `go build ./...` — both implementers satisfy the widened interface.
+- [x] `make test` green (race) — existing `Spawn` callers/fakes unaffected.
+- [x] `make lint` clean.
 
 #### Manual
-- [ ] The real-fd test proves fd-3 delivery; the secret never appears in argv/env.
+- [x] The real-fd test proves fd-3 delivery; the secret never appears in argv/env.
 
 ---
 

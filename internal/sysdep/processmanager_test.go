@@ -3,6 +3,7 @@ package sysdep
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -49,6 +50,35 @@ func TestOSProcessManagerSpawnAndSignal(t *testing.T) {
 	}
 	if pm.Alive(pid) {
 		t.Errorf("process %d still alive after SIGKILL", pid)
+	}
+}
+
+func TestOSProcessManagerSpawnWithSecret(t *testing.T) {
+	var pm OSProcessManager
+	out := filepath.Join(t.TempDir(), "received")
+	const secret = "s3cr3t-value\nwith-newline"
+	// The child copies its inherited fd 3 (the pipe read end) into a file — proving
+	// the secret reaches it over the descriptor, not via argv/env.
+	pid, err := pm.SpawnWithSecret(context.Background(), []byte(secret), "/bin/sh", "-c", "cat <&3 > "+out)
+	if err != nil {
+		t.Fatalf("SpawnWithSecret: %v", err)
+	}
+	if pid <= 0 {
+		t.Fatalf("SpawnWithSecret pid = %d, want > 0", pid)
+	}
+	// Wait for the detached child to finish writing.
+	deadline := time.Now().Add(2 * time.Second)
+	var got []byte
+	for time.Now().Before(deadline) {
+		_, _ = syscall.Wait4(pid, nil, syscall.WNOHANG, nil)
+		if b, rerr := os.ReadFile(out); rerr == nil && len(b) == len(secret) {
+			got = b
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if string(got) != secret {
+		t.Errorf("child received %q over fd 3, want %q", string(got), secret)
 	}
 }
 

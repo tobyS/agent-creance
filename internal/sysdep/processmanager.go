@@ -31,6 +31,14 @@ type ProcessManager interface {
 	// are discarded — the proxy writes its own audit log. A non-nil error means
 	// the process could not be started.
 	Spawn(ctx context.Context, name string, args ...string) (pid int, err error)
+	// SpawnWithSecret is Spawn plus one inherited pipe: the child receives secret
+	// on fd SecretFD (the read end of a pipe), and secret is written to the write
+	// end and then closed (EOF) — never on argv, env, or disk. It is how a resolved
+	// credential reaches the mitmdump addon without a same-uid process reading it
+	// from ps/KERN_PROCARGS2. The caller passes SecretFD to the child out of band
+	// (an addon option), since the payload must not ride argv. On a start error the
+	// pipe is torn down and a non-nil error returned.
+	SpawnWithSecret(ctx context.Context, secret []byte, name string, args ...string) (pid int, err error)
 	// Alive reports whether pid is a live process, via kill(pid, 0): a nil error
 	// means alive; ESRCH means dead; EPERM means alive-but-not-ours (treated as
 	// alive — something is there).
@@ -47,6 +55,12 @@ type ProcessManager interface {
 	// callers treat as "not the recorded process".
 	StartTime(pid int) (int64, error)
 }
+
+// SecretFD is the file descriptor the child inherits the secret-pipe read end on
+// when spawned via SpawnWithSecret. It is 3 because exec's ExtraFiles[0] maps to fd
+// 3 in the child (after stdin/stdout/stderr). The addon is told this number via an
+// out-of-band option (never argv-embedding the secret itself).
+const SecretFD = 3
 
 // OSProcessManager is the production ProcessManager.
 type OSProcessManager struct{}
@@ -66,6 +80,38 @@ func (OSProcessManager) Spawn(ctx context.Context, name string, args ...string) 
 	}
 	pid := cmd.Process.Pid
 	// Release our handle so no zombie accumulates; the daemon is reparented to init.
+	_ = cmd.Process.Release()
+	return pid, nil
+}
+
+func (OSProcessManager) SpawnWithSecret(ctx context.Context, secret []byte, name string, args ...string) (int, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return 0, fmt.Errorf("sysdep: spawn %q: pipe: %w", name, err)
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	// ExtraFiles[0] becomes fd SecretFD in the child; it inherits the read end.
+	cmd.ExtraFiles = []*os.File{r}
+	if err := cmd.Start(); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		return 0, fmt.Errorf("sysdep: spawn %q: %w", name, err)
+	}
+	// The child now holds its own copy of the read end; close ours so only the child
+	// keeps it open (its read sees EOF once we close the write end below).
+	_ = r.Close()
+	// Write the secret and close the write end (EOF) off the spawn path: a goroutine
+	// avoids any deadlock if the payload ever exceeds the pipe buffer before the child
+	// reads. The secret never touches argv, env, or disk.
+	go func() {
+		_, _ = w.Write(secret)
+		_ = w.Close()
+	}()
+	pid := cmd.Process.Pid
 	_ = cmd.Process.Release()
 	return pid, nil
 }
