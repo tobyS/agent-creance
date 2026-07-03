@@ -177,7 +177,7 @@ func TestBuildCageBriefing(t *testing.T) {
 		inv, err := cage.Build(fixtureInputs())
 		require.NoError(t, err)
 		text := argValue(t, inv.Args, "--append-system-prompt")
-		for _, marker := range []string{"470", "471", "WebFetch", "curl", "subagent"} {
+		for _, marker := range []string{"470", "471", "472", "WebFetch", "curl", "subagent"} {
 			require.Contains(t, text, marker)
 		}
 	})

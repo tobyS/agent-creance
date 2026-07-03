@@ -91,15 +91,18 @@ func assertNotClaudeMD(t *testing.T, path string) {
 }
 
 // TestSkillContentMentionsTriggers asserts the embedded skill carries the markers
-// the agent activates on: the three egress response types, the in-cage
+// the agent activates on: the four egress response types, the in-cage
 // authentication-failure case (AC-0045), and the body-blind fetch case (AC-0049).
 func TestSkillContentMentionsTriggers(t *testing.T) {
 	for _, marker := range []string{
 		"X-Cage-Reason",
 		"soft-deny",
 		"hard-deny",
+		"injection-unavailable",
 		"agent_cage_not_allowlisted",
 		"agent_cage_hard_deny",
+		"agent_cage_injection_unavailable",
+		"X-Cage-Injected",
 		"Failed to start OAuth callback server",
 		"log in",
 		"on the host",
@@ -109,6 +112,7 @@ func TestSkillContentMentionsTriggers(t *testing.T) {
 		"Do NOT try mirrors",
 		"470",
 		"471",
+		"472",
 	} {
 		if !strings.Contains(skillMD, marker) {
 			t.Errorf("embedded SKILL.md is missing required marker %q", marker)

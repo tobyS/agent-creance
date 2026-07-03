@@ -1,12 +1,12 @@
 ---
 name: agent-creance
-description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns status 470 or 471 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = 470 = soft-deny, agent_cage_hard_deny = 471 = hard-deny), OR when a fetch tool such as WebFetch fails with a bare 470 or 471 — "response body was not retrieved", no headers or body visible — while running inside the cage, OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the three egress response types — allowed, soft-deny, hard-deny — plus the body-blind fetch case and the authentication-failure case, and the right action for each.
+description: Explains how to react to agent-creance network egress refusals and in-cage authentication failures. Use when an HTTP request returns status 470, 471, or 472 with an "X-Cage-Reason" header or a JSON body whose "error" starts with "agent_cage_" (agent_cage_not_allowlisted = 470 = soft-deny, agent_cage_hard_deny = 471 = hard-deny, agent_cage_injection_unavailable = 472 = injection-unavailable), OR when a fetch tool such as WebFetch fails with a bare 470, 471, or 472 — "response body was not retrieved", no headers or body visible — while running inside the cage, OR when Claude Code inside the cage shows a login/onboarding prompt or an OAuth error like "Failed to start OAuth callback server" / "Is port 0 in use?". Covers the four egress response types — allowed, soft-deny, hard-deny, injection-unavailable — plus the body-blind fetch case and the authentication-failure case, and the right action for each.
 ---
 
 # Reacting to agent-creance network refusals
 
 agent-creance runs you inside an egress-filtered cage. Outbound HTTP requests pass
-through a proxy that returns one of three response types. Recognize a refusal by the
+through a proxy that returns one of four response types. Recognize a refusal by the
 `X-Cage-Reason` response header and the `error` field of the JSON body (it starts
 with `agent_cage_`).
 
@@ -36,21 +36,41 @@ HTTP `471` with header `X-Cage-Reason: hard-deny`. JSON body fields: `error`
 **What to do:** Treat it as final. Do NOT ask the user to allow it. Do NOT retry.
 Find an alternative source, or tell the user no authoritative source could be found.
 
-## 4. Body-blind clients — WebFetch hides the refusal
+## 4. Injection unavailable — a credential could not be resolved
+
+HTTP `472` with header `X-Cage-Reason: injection-unavailable`. JSON body fields:
+`error` (`agent_cage_injection_unavailable`), `url`, `credential` (the name of the
+credential involved), `how_to_proceed`. The host **is** allowlisted — the proxy
+injects a credential for it that it could not resolve from the host-side secret store
+(1Password / Keychain), so it refused the request rather than send it unauthenticated.
+This is recoverable by the **human, not you**.
+
+**What to do:** Do NOT run `agent-creance allow` (the host is already allowed — the
+credential is the problem) and do NOT retry blindly. Tell the user to unlock the
+secret store on the host (e.g. unlock 1Password, or run `security unlock-keychain`)
+so the credential resolves, then retry once they confirm. Separately, if a request to
+an injected host returns a normal `401`/`403` carrying an `X-Cage-Injected: <name>`
+header, the injected credential itself was rejected upstream (e.g. expired or
+insufficient scope) — tell the user to refresh/rescope that credential; it is not a
+phantom or an allowlist problem.
+
+## 5. Body-blind clients — WebFetch hides the refusal
 
 Some fetch tools (notably Claude Code's WebFetch) discard the body and headers
 of non-2xx responses: you see only something like "The server returned HTTP
 470 Unknown Status. The response body was not retrieved." Inside the cage, a
-bare 470 is always a soft-deny and a bare 471 a hard-deny (the two refusals
-above) — NOT the website blocking you, and NOT an authentication problem.
+bare 470 is always a soft-deny, a bare 471 a hard-deny, and a bare 472 an
+injection-unavailable (the three refusals above) — NOT the website blocking you, and
+NOT an authentication problem.
 
 **What to do:** Do NOT conclude the site blocks direct fetches or requires
 auth. Do NOT try mirrors or alternative URLs for the same content. Fetch the
 same URL with curl in the shell instead — the cage already exports the proxy
 environment and CA, so a plain `curl '<url>'` shows the structured JSON
-refusal — then follow section 2 (soft-deny) or section 3 (hard-deny).
+refusal — then follow section 2 (soft-deny), section 3 (hard-deny), or section 4
+(injection-unavailable).
 
-## 5. Authentication failure — log in on the host, never in the cage
+## 6. Authentication failure — log in on the host, never in the cage
 
 Symptoms: a login/onboarding prompt appears inside the caged session, or an OAuth
 error like `Failed to start OAuth callback server` / `Is port 0 in use?`. The cage

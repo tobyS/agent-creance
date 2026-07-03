@@ -287,7 +287,7 @@ network:
 
 ## Network refusal handling
 
-The proxy distinguishes three response types so the agent can react appropriately without being trained to ask about every block:
+The proxy distinguishes four response types so the agent can react appropriately without being trained to ask about every block:
 
 **Allowed.** Normal HTTP response from the upstream server. The URL matched an `allow` rule (or a rule emitted by a generator) and no `deny_always` rule shadowed it. Header: none. The agent proceeds as usual.
 
@@ -320,11 +320,24 @@ The agent's instructions (via the shipped skill, see below) say: ignore the reso
 
 The agent's instructions say: never escalate hard-denies, treat them as final, find an alternative source or tell the user no authoritative source could be found.
 
-The refusal status codes are deliberately custom (AC-0047). Body-blind HTTP clients — Claude Code's WebFetch foremost — surface only the status line of a non-2xx response to the model, discarding headers and body; a generic 403 is then indistinguishable from site-side blocking or an auth failure. A distinct code per refusal type is the one marker every client shows. 470/471 are unregistered (clients treat unknown 4xx as a generic client error per RFC 9110, with no retry semantics) and avoid AWS ALB's 460/463/464. Anything scripted against the old 403 contract must key on 470/471 instead. The responses also carry a self-describing HTTP reason phrase (`agent-creance soft-deny (not allowlisted)` / `agent-creance hard-deny (blocked)`, AC-0050) for HTTP/1.1 clients and logs that echo it — but not for WebFetch, which renders unknown codes as "Unknown Status" regardless and which often negotiates HTTP/2, where reason phrases do not exist on the wire.
+**Injection-unavailable** — *"allowlisted, but a credential the proxy injects for this host could not be resolved."* HTTP 472 with `X-Cage-Reason: injection-unavailable` and a JSON body:
 
-The skill explains all three response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 470/471 status from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
+```json
+{
+  "error": "agent_cage_injection_unavailable",
+  "url": "https://api.github.com/graphql",
+  "credential": "github-token",
+  "how_to_proceed": "A credential the proxy injects for this host could not be resolved, so the request was refused rather than sent unauthenticated. This is recoverable by the HUMAN, not you: ask the user to unlock the secret store (e.g. 1Password, or `security unlock-keychain` for the login keychain) so the credential resolves, then retry. Do NOT run `agent-creance allow` — the host is already allowlisted, the credential is the problem — and do NOT retry until the user has acted."
+}
+```
 
-Complementing the skill, `run` injects a launch-time cage briefing into the agent invocation via `--append-system-prompt` (AC-0047, embedded in `internal/cage/briefing.md`): the agent knows up front that it is caged, that 470/471 are policy refusals whose bodies WebFetch-style clients hide, and that curl shows the structured refusal. The flag is appended only when `agent.command`'s first element has basename `claude` — the command is arbitrary user config, and an unknown flag would break wrappers or other agents. Appended system-prompt text is not inherited by subagents (Claude Code gives them their own system prompts), so the briefing instructs the main agent to relay the cage notice into subagent task prompts.
+This is the third refusal category, and a deliberately distinct one (AC-0068c): the host **is** allowlisted (so 470's `allow` is wrong) and the block is **not** permanent (so 471's "give up" is wrong) — it is transient and recoverable by the *human*, not the agent, by unlocking the host-side secret store. The proxy fails closed here rather than forward the request unauthenticated or with the phantom placeholder. Separately, when a resolved credential is *rejected upstream* (a real `401`/`403`), the proxy does not invent a status — the upstream owns it — but annotates the response with `X-Cage-Injected: <name>` so the agent blames the injected credential (expired/insufficient scope), not its phantom.
+
+The refusal status codes are deliberately custom (AC-0047). Body-blind HTTP clients — Claude Code's WebFetch foremost — surface only the status line of a non-2xx response to the model, discarding headers and body; a generic 403 is then indistinguishable from site-side blocking or an auth failure. A distinct code per refusal type is the one marker every client shows. 470/471/472 are unregistered (clients treat unknown 4xx as a generic client error per RFC 9110, with no retry semantics) and avoid AWS ALB's 460/463/464. Anything scripted against the old 403 contract must key on 470/471/472 instead. The responses also carry a self-describing HTTP reason phrase (`agent-creance soft-deny (not allowlisted)` / `agent-creance hard-deny (blocked)` / `agent-creance injection-unavailable (credential could not be resolved)`, AC-0050/AC-0068c) for HTTP/1.1 clients and logs that echo it — but not for WebFetch, which renders unknown codes as "Unknown Status" regardless and which often negotiates HTTP/2, where reason phrases do not exist on the wire.
+
+The skill explains all four response types to Claude. It activates automatically when Claude sees the `X-Cage-Reason` header or the `agent_cage_` JSON error prefix — or, for body-blind fetch tools like Claude Code's WebFetch, which surface only the status line of a non-2xx response, a bare 470/471/472 status from a fetch attempt inside the cage (the skill then says: curl the URL to see the structured refusal). It's installed once by `agent-creance setup` into `~/.claude/skills/agent-creance/SKILL.md`. We don't touch the project's `CLAUDE.md`.
+
+Complementing the skill, `run` injects a launch-time cage briefing into the agent invocation via `--append-system-prompt` (AC-0047, embedded in `internal/cage/briefing.md`): the agent knows up front that it is caged, that 470/471/472 are policy refusals whose bodies WebFetch-style clients hide, and that curl shows the structured refusal. The flag is appended only when `agent.command`'s first element has basename `claude` — the command is arbitrary user config, and an unknown flag would break wrappers or other agents. Appended system-prompt text is not inherited by subagents (Claude Code gives them their own system prompts), so the briefing instructs the main agent to relay the cage notice into subagent task prompts.
 
 ## Config compilation
 

@@ -422,12 +422,12 @@ integration (6). Phases 1-5 are the in-cage hermetic gate; Phase 6 is out-of-cag
 ### Success criteria
 
 #### Automated
-- [ ] `internal/setup/skill_test.go` and `internal/cage/cage_test.go` pass with the new
+- [x] `internal/setup/skill_test.go` and `internal/cage/cage_test.go` pass with the new
       472 markers.
-- [ ] `make test`, `make lint`, `make golden` green; `make build` runs.
+- [x] `make test`, `make lint`, `make golden` green; `make build` runs.
 
 #### Manual
-- [ ] SKILL.md/briefing.md/design.md consistently describe 472 as allowlisted,
+- [x] SKILL.md/briefing.md/design.md consistently describe 472 as allowlisted,
       transient, human-recoverable (unlock the secret store), distinct from 470/471.
 
 ---
