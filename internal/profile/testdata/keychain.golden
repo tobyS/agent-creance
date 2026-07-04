@@ -1,7 +1,8 @@
 ;; agent-creance keychain.sb — appended after safehouse's base via --append-profile (AC-0045).
-;; Exactly the S2-validated grant for the shared Claude Code-credentials login-Keychain
-;; item: securityd reachability for reads, plus the legacy SecKeychain file-write for
-;; token refresh (login.keychain-db and its -wal/-shm sidecars). Nothing broader.
+;; The grant for the shared Claude Code-credentials login-Keychain item: securityd
+;; reachability, plus file-level RW on the login keychain db (and its -wal/-shm
+;; sidecars) and the AtomicFile .fl* lock files — the legacy SecKeychain stack
+;; (security CLI, keytar) opens, locks, and rewrites these client-side. Nothing broader.
 ;; Generated; do not edit.
 (allow mach-lookup (global-name "com.apple.SecurityServer"))
-(allow file-write* (regex #"^/home/test/Library/Keychains/login\.keychain-db"))
+(allow file-read* file-write* (regex #"^/home/test/Library/Keychains/(login\.keychain-db|\.fl)"))

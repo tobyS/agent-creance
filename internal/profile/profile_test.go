@@ -273,10 +273,12 @@ func TestRenderKeychainFragment_Golden(t *testing.T) {
 	}
 }
 
-// TestRenderKeychainFragment_ExactlyTheS2Grant pins least privilege: the fragment
-// is the S2 spike's two allowances and nothing broader — no read grants, no
-// subpath, no rules beyond the one mach-lookup and the one scoped file-write.
-func TestRenderKeychainFragment_ExactlyTheS2Grant(t *testing.T) {
+// TestRenderKeychainFragment_ExactlyTheValidatedGrant pins least privilege: the
+// fragment is the battery-validated two allowances and nothing broader — the one
+// mach-lookup plus one file rule scoped to the two name prefixes the legacy
+// SecKeychain stack touches (login.keychain-db* and the .fl* lock files). No
+// subpath, no dir-wide grant.
+func TestRenderKeychainFragment_ExactlyTheValidatedGrant(t *testing.T) {
 	got, err := RenderKeychainFragment("/home/test")
 	if err != nil {
 		t.Fatalf("RenderKeychainFragment: %v", err)
@@ -287,10 +289,10 @@ func TestRenderKeychainFragment_ExactlyTheS2Grant(t *testing.T) {
 	if !strings.Contains(got, `(allow mach-lookup (global-name "com.apple.SecurityServer"))`) {
 		t.Errorf("missing the securityd mach-lookup grant:\n%s", got)
 	}
-	if !strings.Contains(got, `(allow file-write* (regex #"^/home/test/Library/Keychains/login\.keychain-db"))`) {
-		t.Errorf("missing the scoped keychain-db write grant:\n%s", got)
+	if !strings.Contains(got, `(allow file-read* file-write* (regex #"^/home/test/Library/Keychains/(login\.keychain-db|\.fl)"))`) {
+		t.Errorf("missing the scoped keychain-db + lock-file RW grant:\n%s", got)
 	}
-	for _, bad := range []string{"file-read", "subpath", "file*"} {
+	for _, bad := range []string{"subpath", "file*"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("keychain fragment must not contain %q:\n%s", bad, got)
 		}
@@ -352,7 +354,7 @@ func TestHomeFragments_RegexEscaping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderKeychainFragment: %v", err)
 	}
-	if !strings.Contains(kc, `#"^/home/j\.doe/Library/Keychains/login\.keychain-db"`) {
+	if !strings.Contains(kc, `#"^/home/j\.doe/Library/Keychains/(login\.keychain-db|\.fl)"`) {
 		t.Errorf("keychain regex must escape the home-dir dot:\n%s", kc)
 	}
 	cs, err := RenderClaudeStateFragment("/home/j.doe")

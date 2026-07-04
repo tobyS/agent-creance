@@ -52,9 +52,10 @@ const (
 		";; python) trust the proxy in-cage; the sibling CA private key stays unreadable.\n" +
 		";; Generated; do not edit.\n"
 	keychainHeader = ";; agent-creance keychain.sb — appended after safehouse's base via --append-profile (AC-0045).\n" +
-		";; Exactly the S2-validated grant for the shared Claude Code-credentials login-Keychain\n" +
-		";; item: securityd reachability for reads, plus the legacy SecKeychain file-write for\n" +
-		";; token refresh (login.keychain-db and its -wal/-shm sidecars). Nothing broader.\n" +
+		";; The grant for the shared Claude Code-credentials login-Keychain item: securityd\n" +
+		";; reachability, plus file-level RW on the login keychain db (and its -wal/-shm\n" +
+		";; sidecars) and the AtomicFile .fl* lock files — the legacy SecKeychain stack\n" +
+		";; (security CLI, keytar) opens, locks, and rewrites these client-side. Nothing broader.\n" +
 		";; Generated; do not edit.\n"
 	claudeStateHeader = ";; agent-creance claude.sb — appended after safehouse's base via --append-profile (AC-0045).\n" +
 		";; v0.1 config-cage deferral (AC-0046): the caged agent uses the host's real Claude\n" +
@@ -144,16 +145,24 @@ func RenderCAReadFragment(caCertPath string) (string, error) {
 	return b.String(), nil
 }
 
-// RenderKeychainFragment renders the keychain.sb append fragment: exactly the
-// S2-scoped grant that lets the caged agent read and refresh the one shared
-// login-Keychain credential item (spike S2, 2026-06-04-s2-keychain.md):
+// RenderKeychainFragment renders the keychain.sb append fragment: the grant that
+// lets the caged agent read and refresh the one shared login-Keychain credential
+// item (spike S2, 2026-06-04-s2-keychain.md; completed 2026-07-04 — the spike's
+// baseline profile allowed ALL file reads, which masked the legacy stack's
+// client-side read/lock needs):
 //
 //   - (allow mach-lookup (global-name "com.apple.SecurityServer")) — securityd
-//     reachability, necessary and sufficient for the read path;
-//   - (allow file-write* (regex #"^<home>/Library/Keychains/login\.keychain-db"))
-//     — the legacy SecKeychain/keytar refresh write path needs file-level write to
-//     the keychain db and its SQLite -wal/-shm sidecars (the regex prefix covers
-//     all three).
+//     reachability; unlock/decrypt are brokered, and the modern SecItem API
+//     needs nothing more;
+//   - (allow file-read* file-write* (regex #"^<home>/Library/Keychains/(login\.keychain-db|\.fl)"))
+//     — the legacy SecKeychain stack (/usr/bin/security, keytar) opens the
+//     keychain db client-side: it reads the db bytes to find the search-list
+//     entry and the item, rewrites the db atomically (create+rename+unlink of
+//     login.keychain-db and its -wal/-shm sidecars — the first name prefix), and
+//     creates+flocks the AtomicFile ".fl<hash>" lock files in the same directory
+//     (the second prefix). Metadata-only read is not enough; each piece was
+//     verified necessary in-cage by the AC-0033 battery's kc-read/kc-write
+//     vectors.
 //
 // home must be an absolute, symlink-resolved home directory (Seatbelt regexes
 // match the kernel-resolved path; see internal/cage Prepare). The path is
@@ -165,7 +174,7 @@ func RenderKeychainFragment(home string) (string, error) {
 	var b strings.Builder
 	b.WriteString(keychainHeader)
 	b.WriteString(`(allow mach-lookup (global-name "com.apple.SecurityServer"))` + "\n")
-	fmt.Fprintf(&b, "(allow file-write* (regex #\"^%s/Library/Keychains/login\\.keychain-db\"))\n",
+	fmt.Fprintf(&b, "(allow file-read* file-write* (regex #\"^%s/Library/Keychains/(login\\.keychain-db|\\.fl)\"))\n",
 		sbplRegexEscape(home))
 	return b.String(), nil
 }

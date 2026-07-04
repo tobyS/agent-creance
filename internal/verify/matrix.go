@@ -134,20 +134,22 @@ var Vectors = []Vector{
 		Desc: "python trusts the injected env-var CA file and gets 200 through the proxy in-cage",
 	},
 	{
-		// AC-0045: the keychain.sb mach-lookup grant — reading a generic-password
-		// item via securityd works in-cage. Probed against a THROWAWAY item the
-		// harness plants (never the real Claude Code-credentials). ALLOWED, so a
-		// profile regression that breaks credential reads fails the battery.
+		// AC-0045: the keychain.sb read path — mach-lookup to securityd plus the
+		// file-read on login.keychain-db the legacy client-side stack needs.
+		// Probed against a THROWAWAY item the harness plants (never the real
+		// Claude Code-credentials). ALLOWED, so a profile regression that breaks
+		// credential reads fails the battery.
 		ID: "kc-read", Label: LabelAllowed, Expected: "found",
 		Keyword: "Keychain", DesignRef: "design.md:466 / AC-0045",
-		Desc: "security find-generic-password on the throwaway item succeeds in-cage (securityd mach-lookup)",
+		Desc: "security find-generic-password on the throwaway item succeeds in-cage (securityd mach-lookup + keychain-db read)",
 	},
 	{
-		// AC-0045: the keychain.sb login.keychain-db file-write grant — the legacy
-		// SecKeychain update path token refresh uses. Same throwaway item.
+		// AC-0045: the keychain.sb write path — file-level RW on login.keychain-db*
+		// and the AtomicFile .fl* lock files, which the legacy SecKeychain update
+		// path token refresh uses. Same throwaway item.
 		ID: "kc-write", Label: LabelAllowed, Expected: "updated",
 		Keyword: "Keychain", DesignRef: "design.md:466 / AC-0045",
-		Desc: "security add-generic-password -U on the throwaway item succeeds in-cage (keychain-db write)",
+		Desc: "security add-generic-password -U on the throwaway item succeeds in-cage (keychain-db + lock-file RW)",
 	},
 	{
 		// AC-0045: the claude.sb file-level grant — a ~/.claude.json-prefixed file

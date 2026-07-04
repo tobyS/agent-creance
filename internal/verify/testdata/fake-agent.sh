@@ -132,8 +132,9 @@ fi
 
 # AC-0045: the keychain.sb grants, probed against the THROWAWAY item the harness
 # planted (CREANCE_KC_SERVICE/CREANCE_KC_ACCOUNT) — never the real Claude
-# credential. Read = securityd mach-lookup; write (-U update) = the legacy
-# SecKeychain login.keychain-db file-write path token refresh uses.
+# credential. Read = securityd mach-lookup + client-side keychain-db read; write
+# (-U update) = the legacy SecKeychain path token refresh uses (file-level RW on
+# login.keychain-db* and the AtomicFile .fl* lock files).
 if security find-generic-password -a "$CREANCE_KC_ACCOUNT" -s "$CREANCE_KC_SERVICE" -w >/dev/null 2>&1; then
 	emit kc-read found
 else

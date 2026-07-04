@@ -132,9 +132,11 @@ These were surfaced while building the automated battery and affect manual runs:
 2. **The real `~/.claude` is mounted read-write and the credential is reached via
    scoped Seatbelt grants** (since AC-0045; the AC-0035 ephemeral config dir is
    gone). `cage.Build` adds `~/.claude` to safehouse's `--add-dirs`, and two
-   generated fragments carry the rest: `keychain.sb` (exactly the S2 grant —
-   mach-lookup `com.apple.SecurityServer` + `file-write*` on
-   `login.keychain-db*`, guarded by the `kc-read`/`kc-write` vectors against a
+   generated fragments carry the rest: `keychain.sb` (the completed S2 grant —
+   mach-lookup `com.apple.SecurityServer` + file-level RW on
+   `login.keychain-db*` and the `.fl*` AtomicFile lock files, which the legacy
+   `SecKeychain` stack opens/locks/rewrites client-side; guarded by the
+   `kc-read`/`kc-write` vectors against a
    throwaway item) and `claude.sb` (file-level RW on `~/.claude.json*`, guarded
    by `claude-json-rw`). `CLAUDE_CONFIG_DIR` is **not** set — redirecting it
    changes the Keychain service name Claude Code derives and breaks the shared
