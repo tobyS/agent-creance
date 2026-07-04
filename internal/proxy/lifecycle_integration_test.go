@@ -66,8 +66,13 @@ func TestLifecycleStartAttachTeardownRealProxy(t *testing.T) {
 		return sysdep.OSPortAllocator{}.Probe(att1.Port)
 	}, 10*time.Second, 100*time.Millisecond, "proxy did not come up")
 
-	// Invocation 2 attaches — no second proxy.
-	att2, err := mgr.Attach(context.Background(), cfg(os.Getpid()+1))
+	// Invocation 2 attaches — no second proxy. Its SelfPID must be a LIVE process:
+	// Attach records the caller's (pid, start time) identity in the lock, so a
+	// fabricated pid like os.Getpid()+1 only works when that pid happens to be
+	// occupied (sequential pid allocation made that true often enough to look
+	// flaky rather than broken). Stand in a real second process instead.
+	self2 := spawnSecondInvocation(t)
+	att2, err := mgr.Attach(context.Background(), cfg(self2))
 	require.NoError(t, err)
 	require.Equal(t, att1.ProxyPID, att2.ProxyPID, "second invocation must share the proxy")
 	require.Equal(t, att1.Port, att2.Port)
@@ -82,7 +87,7 @@ func TestLifecycleStartAttachTeardownRealProxy(t *testing.T) {
 	// still reports alive — an artifact of the harness (in production the
 	// short-lived spawner exits and launchd reaps it). The closed socket is the
 	// true liveness signal. Mirrors doctor_fix_integration_test.go.
-	require.NoError(t, mgr.Detach(lay, os.Getpid()+1))
+	require.NoError(t, mgr.Detach(lay, self2))
 	require.Eventually(t, func() bool {
 		return !sysdep.OSPortAllocator{}.Probe(att1.Port)
 	}, 10*time.Second, 100*time.Millisecond, "proxy was not torn down on last-out")
@@ -92,4 +97,19 @@ func TestLifecycleStartAttachTeardownRealProxy(t *testing.T) {
 	// C4: the lock lives under the out-of-tree cache, not the project tree.
 	require.True(t, strings.HasPrefix(lay.ProxyLock(), cache))
 	require.False(t, strings.HasPrefix(lay.ProxyLock(), projectDir))
+}
+
+// spawnSecondInvocation stands in for a second agent-creance invocation: a live
+// process whose pid the lock can record with a resolvable start time. It sleeps
+// past any plausible test duration and is killed (and reaped, so the pid is not
+// left as a zombie the OS could still resolve) on cleanup.
+func spawnSecondInvocation(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("/bin/sleep", "300")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+	return cmd.Process.Pid
 }
