@@ -392,7 +392,9 @@ func TestSetupCommandPrintsNextStep(t *testing.T) {
 	f := newSetupFixture() // already-trusted happy path
 
 	cmd := newSetupCmd(f.app)
-	cmd.SetArgs(nil)
+	// Not SetArgs(nil): cobra treats nil as "parse os.Args[1:]", which makes this
+	// test swallow go-test flags — `make golden`'s -update broke it that way.
+	cmd.SetArgs([]string{})
 	cmd.SetOut(f.out)
 	cmd.SetErr(f.out)
 	if err := cmd.Execute(); err != nil {
