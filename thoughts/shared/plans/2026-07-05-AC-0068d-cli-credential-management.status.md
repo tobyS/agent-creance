@@ -7,8 +7,11 @@ Plan: `thoughts/shared/plans/2026-07-05-AC-0068d-cli-credential-management.md`
 - [x] Phase 1: Config-package writers (auth-axis render, SetRuleAuth, AppendCredential/RemoveCredential)
 - [x] Phase 2: `credential` command group (add/list/remove)
 - [x] Phase 3: `allow --inject` / `--in-cage` binding
-- [ ] Phase 4: Help/docs polish + final verification
+- [x] Phase 4: Help/docs polish + final verification
 
 ## Notes
 
-(Updated as phases complete.)
+All four phases complete. `make test`, `make lint`, `make golden` (no diff),
+`make build` green. End-to-end verified by hand: credential add → allow --inject
+→ credential list → remove-blocked-while-bound → unbind → remove. Ticket set to
+Done.

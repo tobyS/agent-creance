@@ -1,6 +1,6 @@
 # AC-0068d: CLI — credential management and --inject binding
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
 **Updated:** 2026-07-05
@@ -41,15 +41,19 @@ The config-mutation command family (today `allow`/`mutate`/`edit` →
 
 ## Acceptance Criteria
 
-- [ ] `credential add` / `list` / `rm` create, show, and remove entries in the
+- [x] `credential add` / `list` / `rm` create, show, and remove entries in the
       `credentials:` block (AC-0068b); `list` never prints a resolved secret value.
-- [ ] `allow <host/path> --inject <name>` writes an inject binding; binding to an
-      undefined credential is rejected with a clear error.
-- [ ] A way to mark a host `in-cage` exists and is documented.
-- [ ] Mutations go through the existing recompile + hot-reload path; a running cage
-      picks up the change (covered by a testscript `.txtar`).
-- [ ] Every new command has Long + Example help (AC-0064 style).
-- [ ] `make test` green; CLI behavior covered by `.txtar` scripts with stubbed
+      (`rm` is an alias for `remove`, matching the codebase's noun-verb groups.)
+- [x] `allow <host/path> --inject <name>` writes an inject binding; binding to an
+      undefined credential is rejected with a clear error. Binding an already-allowed
+      host/path updates that rule in place (config.SetRuleAuth) rather than no-op'ing.
+- [x] A way to mark a host `in-cage` exists and is documented (`allow <host>
+      --in-cage`, with Long/Example help).
+- [x] Mutations go through the existing recompile + hot-reload path (applyAndRecompile);
+      a running cage picks up the change (covered by testscript `.txtar` + Go tests
+      asserting the reference/binding reaches `policy.json`).
+- [x] Every new command has Long + Example help (AC-0064 style).
+- [x] `make test` green; CLI behavior covered by `.txtar` scripts with stubbed/absent
       tools (no real `op`/`security`/network).
 
 ## Out of Scope
@@ -64,11 +68,15 @@ None blocking.
 
 ## Questions for Research/Planning
 
-- [ ] Whether `credential add` validates the source by attempting a resolve at
-      add-time (fail-fast) or defers to spawn (the discussion favors resolve at
-      spawn; add-time validation could be opt-in).
-- [ ] Flag surface for shape selection (`--bearer` vs `--header NAME` vs
-      `--token`/bare/`--basic`) and the username sentinel for Basic.
+- [x] Whether `credential add` validates the source by attempting a resolve at
+      add-time (fail-fast) or defers to spawn. **Resolved:** syntax-check only at
+      add-time (`sysdep.ValidateSecretRefSyntax`); resolution is deferred to proxy
+      spawn (a live resolve would need host-side `op`/keychain and break the
+      dogfooding cage).
+- [x] Flag surface for shape selection and the username sentinel for Basic.
+      **Resolved:** mutually-exclusive `--bearer`/`--token`/`--raw`/`--basic`
+      (Bearer default), orthogonal `--header NAME`, `--username SENTINEL` for Basic,
+      and a `--template` escape hatch.
 
 ## References
 
@@ -80,10 +88,25 @@ None blocking.
 
 ## Implementation Plan
 
-(Filled when planned.)
+- Research: `thoughts/shared/research/2026-07-05-AC-0068d-cli-credential-management.md`
+- Plan: `thoughts/shared/plans/2026-07-05-AC-0068d-cli-credential-management.md`
 
 ## Notes & Updates
 
 ### 2026-06-29
 Created as the CLI sub-ticket of AC-0068. Can proceed in parallel with AC-0068c once
 AC-0068b lands.
+
+### 2026-07-05
+Implemented via `/tce:work`. Four phases, all committed and verified:
+1. Config-package splice writers — `renderRuleItem` now emits `inject`/`in_cage`;
+   new `SetRuleAuth` (upsert the auth axis, update-in-place) and
+   `AppendCredential`/`RemoveCredential` for the `credentials:` map block.
+2. `credential add`/`list`/`remove` (`rm` alias) command group.
+3. `allow --inject <name>` / `--in-cage` binding, routed through `SetRuleAuth`.
+4. Help/docs polish + final verification.
+
+Checkpoint decisions: convenience shape flags with Bearer default (`--template`
+escape hatch); binding updates in place; add-time source syntax-check only,
+resolution deferred to spawn. `make test`/`lint`/`golden`/`build` green. Status →
+Done.

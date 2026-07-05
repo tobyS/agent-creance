@@ -492,15 +492,15 @@ Run the full gate and review.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` green (race).
-- [ ] `make lint` clean; `make fmt` applied.
-- [ ] `make golden` diff reviewed and intentional (expected: none).
-- [ ] `make build` — `bin/agent-creance` reflects the final commit.
+- [x] `make test` green (race).
+- [x] `make lint` clean; `make fmt` applied.
+- [x] `make golden` diff reviewed and intentional (expected: none).
+- [x] `make build` — `bin/agent-creance` reflects the final commit.
 
 #### Manual Verification:
-- [ ] `agent-creance credential --help` lists `add`/`list`/`remove` under the
+- [x] `agent-creance credential --help` lists `add`/`list`/`remove` under the
       Configure group; `agent-creance --help` shows `credential` in that group.
-- [ ] End-to-end by hand: `credential add github --source op://… --bearer` →
+- [x] End-to-end by hand: `credential add github --source op://… --bearer` →
       `allow api.github.com/graphql --inject github` → `credential list` shows the
       binding target; config comments intact; no secret value printed anywhere.
 
