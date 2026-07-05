@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,7 +22,9 @@ import (
 )
 
 // domainAddOpts carries the resolved flags for an add. once is set only by the allow
-// alias (the domain command itself never writes the session overlay).
+// alias (the domain command itself never writes the session overlay). inject/inCage
+// are the auth axis (AC-0068d): inject names a credential the proxy injects on this
+// host, inCage marks a host whose auth headers the proxy must never touch.
 type domainAddOpts struct {
 	paths    []string
 	methods  []string
@@ -31,6 +34,8 @@ type domainAddOpts struct {
 	reason   string
 	global   bool
 	once     bool
+	inject   string
+	inCage   bool
 }
 
 func newDomainCmd(app *App) *cobra.Command {
@@ -73,6 +78,8 @@ func newDomainAddCmd(app *App) *cobra.Command {
 	f.BoolVar(&opts.deny, "deny", false, "write a deny_always rule instead of an allow")
 	f.StringVar(&opts.reason, "reason", "", "explanation recorded with the rule (shown to the agent)")
 	f.BoolVar(&opts.global, "global", false, "edit ~/.config/agent-creance.yaml instead of the project config")
+	f.StringVar(&opts.inject, "inject", "", "inject the named credential's secret into requests to this host (see: credential add)")
+	f.BoolVar(&opts.inCage, "in-cage", false, "mark this host in-cage: the proxy never touches its auth headers")
 	return cmd
 }
 
@@ -125,6 +132,26 @@ func runDomainAdd(ctx context.Context, app *App, dir, host string, opts domainAd
 	if err := config.ValidateHost(host); err != nil {
 		return fmt.Errorf("invalid host %q: %w", host, err)
 	}
+	if opts.inject != "" && opts.inCage {
+		return errors.New("cannot combine --inject and --in-cage: a host is either injected or in-cage, not both")
+	}
+	if (opts.inject != "" || opts.inCage) && opts.deny {
+		return errors.New("--inject and --in-cage are not valid with --deny (a deny rule is never sent, so nothing is injected)")
+	}
+	if opts.inject != "" && mode == config.ModePassthrough {
+		return errors.New("--inject is not valid with --mode passthrough (a raw tunnel is never TLS-terminated, so the proxy cannot inject)")
+	}
+	// Reject a binding to an undefined credential before writing, so the mutation never
+	// strands a dangling inject that the subsequent recompile would fail closed on. The
+	// merged (project + global) config is checked because the credential may live in a
+	// different layer than the rule.
+	if opts.inject != "" {
+		if cfg, lerr := config.NewLoader(app.FS, app.Paths).Load(filepath.Join(dir, configFile)); lerr == nil {
+			if _, ok := cfg.Credentials[opts.inject]; !ok {
+				return fmt.Errorf("no credential named %q is defined; add it first with 'agent-creance credential add %s --source <ref>'", opts.inject, opts.inject)
+			}
+		}
+	}
 
 	paths := opts.paths
 	allPaths := opts.allPaths
@@ -172,6 +199,8 @@ func runDomainAdd(ctx context.Context, app *App, dir, host string, opts domainAd
 	if mode != "" && mode != config.ModeIntercept {
 		rule.Mode = mode
 	}
+	rule.Inject = opts.inject
+	rule.InCage = opts.inCage
 
 	path, label, err := mutationTarget(app, dir, opts.once, opts.global)
 	if err != nil {
@@ -180,6 +209,11 @@ func runDomainAdd(ctx context.Context, app *App, dir, host string, opts domainAd
 	list, verb := config.AllowList, "allowed"
 	if opts.deny {
 		list, verb = config.DenyList, "denied"
+	}
+	// A binding (--inject/--in-cage) must update a matching rule in place rather than
+	// no-op when the host/path is already allowed, so it goes through SetRuleAuth.
+	if opts.inject != "" || opts.inCage {
+		return setRuleAuthAndRecompile(ctx, app, dir, path, label, list, rule, verb)
 	}
 	return mutateAndRecompile(ctx, app, dir, path, label, list, rule, verb)
 }

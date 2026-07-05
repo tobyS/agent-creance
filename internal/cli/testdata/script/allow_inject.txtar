@@ -1,0 +1,53 @@
+# `agent-creance allow --inject <name>` / `--in-cage` bind the per-rule auth axis and
+# recompile. Binding an already-allowed host/path updates that rule in place rather
+# than being a no-op. Runs offline (no op/network); HOME/XDG_CACHE_HOME under $WORK and
+# PATH pinned to $CREANCE_BIN keep it hermetic (AC-0068d).
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# --help documents the binding flags.
+agent-creance allow --help
+stdout '--inject'
+stdout '--in-cage'
+stdout 'agent-creance allow api.github.com/graphql --inject github'
+
+# A credential must exist to bind to it.
+agent-creance credential add github --source op://Private/GitHub/token --bearer
+stdout 'added credential "github"'
+
+# Binding to an undefined credential is rejected before any write.
+! agent-creance allow api.github.com/other --inject nope
+stderr 'no credential named "nope" is defined'
+! grep 'other' .agent-creance.yaml
+
+# --inject on a fresh path appends a rule carrying the binding.
+agent-creance allow api.github.com/graphql --inject github
+stdout 'allowed api\.github\.com/graphql'
+grep 'inject: github' .agent-creance.yaml
+agent-creance policy show
+stdout 'api\.github\.com'
+
+# Binding an already-allowed host/path updates that rule in place (not a duplicate);
+# the Go test asserts there is still exactly one foo.example rule.
+agent-creance allow foo.example/api
+stdout 'allowed foo.example/api'
+agent-creance allow foo.example/api --inject github
+stdout 'allowed foo.example/api'
+grep 'inject: github' .agent-creance.yaml
+
+# --in-cage marks a host the proxy must leave alone.
+agent-creance allow bedrock.example --in-cage
+stdout 'allowed bedrock.example'
+grep 'in_cage: true' .agent-creance.yaml
+
+# Conflicting bindings and --inject with --deny are rejected.
+! agent-creance allow x.example --inject github --in-cage
+stderr 'cannot combine --inject and --in-cage'
+
+-- .agent-creance.yaml --
+network:
+  egress:
+    allow:
+      - host: seed.example

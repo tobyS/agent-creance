@@ -441,18 +441,18 @@ for `allow api.github.com/graphql --inject github` and `allow <host> --in-cage`.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` green.
-- [ ] `make lint` clean; `go build ./...`.
-- [ ] `allow --help` asserts the `--inject`/`--in-cage` `Long:`/`Example:` lines.
+- [x] `make test` green.
+- [x] `make lint` clean; `go build ./...`.
+- [x] `allow --help` asserts the `--inject`/`--in-cage` `Long:`/`Example:` lines.
 
 #### Manual Verification:
-- [ ] `allow api.github.com/graphql --inject github` on a fresh path appends a rule
+- [x] `allow api.github.com/graphql --inject github` on a fresh path appends a rule
       with `inject:`; run again after the path is already allowed → the existing
       rule gains `inject:` (update-in-place, not a silent no-op).
-- [ ] `allow <host> --inject undefined` is rejected before writing with the
+- [x] `allow <host> --inject undefined` is rejected before writing with the
       "run credential add" hint; `--inject` + `--in-cage` and `--inject` + `--deny`
       are rejected.
-- [ ] `allow <host> --in-cage` writes `in_cage: true`; "policy recompiled".
+- [x] `allow <host> --in-cage` writes `in_cage: true`; "policy recompiled".
 
 ### Tests (Phase 3)
 - `internal/cli/testdata/script/allow_inject.txtar` (or fold into

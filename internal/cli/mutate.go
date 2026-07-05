@@ -83,6 +83,16 @@ func mutateAndRecompile(ctx context.Context, app *App, dir, path, label string, 
 		func(src []byte) ([]byte, bool, error) { return config.AppendRule(src, list, rule) })
 }
 
+// setRuleAuthAndRecompile binds the auth axis (inject/in_cage) on rule via
+// config.SetRuleAuth — updating an identity-matching rule in place, or appending a new
+// one when the host/path is not yet in the list — then recompiles so a running proxy
+// hot-reloads. It backs `allow`/`domain add` with --inject/--in-cage; a rule that
+// already carries exactly this auth axis is a reported no-op.
+func setRuleAuthAndRecompile(ctx context.Context, app *App, dir, path, label string, list config.RuleList, rule config.Rule, verb string) error {
+	return applyAndRecompile(ctx, app, dir, path, label, ruleLabel(rule), verb,
+		func(src []byte) ([]byte, bool, error) { return config.SetRuleAuth(src, list, rule) })
+}
+
 // applyAndRecompile is the read → append → atomic-write → recompile skeleton shared by
 // the config-editing commands (allow/deny via mutateAndRecompile, and include). apply
 // performs the comment-preserving edit and reports whether anything changed; subject is
