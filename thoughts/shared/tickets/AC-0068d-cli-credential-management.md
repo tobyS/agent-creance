@@ -1,9 +1,9 @@
 # AC-0068d: CLI — credential management and --inject binding
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-05
 
 > Sub-ticket of **AC-0068** (Credential injection, Phase 1). **Depends on AC-0068b**
 > (config model), and on AC-0068a for `add --source`. Read the epic and research

@@ -271,16 +271,16 @@ navigation and the re-parse validation-gate pattern.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `go test ./internal/config/...` green.
-- [ ] `make lint` clean; `go build ./...`.
-- [ ] `make golden` produces no unexpected diff (renderRuleItem is not used by the
+- [x] `go test ./internal/config/...` green.
+- [x] `make lint` clean; `go build ./...`.
+- [x] `make golden` produces no unexpected diff (renderRuleItem is not used by the
       JSON compile/render goldens).
 
 #### Manual Verification:
-- [ ] A round-trip test on a comment-rich fixture shows comments/blank lines
+- [x] A round-trip test on a comment-rich fixture shows comments/blank lines
       preserved across `AppendCredential`, `RemoveCredential`, and `SetRuleAuth`
       (append + update-in-place branches).
-- [ ] `SetRuleAuth` on an already-allowed host updates the rule's `inject:` rather
+- [x] `SetRuleAuth` on an already-allowed host updates the rule's `inject:` rather
       than no-op'ing; on a fresh host it appends with `inject:` rendered.
 
 ### Tests (Phase 1)

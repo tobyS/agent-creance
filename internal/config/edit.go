@@ -186,6 +186,12 @@ func renderRuleItem(rule Rule, indent int) []string {
 	if rule.Mode != "" && rule.Mode != ModeIntercept {
 		out = append(out, pad+"  mode: "+scalar(rule.Mode))
 	}
+	if rule.Inject != "" {
+		out = append(out, pad+"  inject: "+scalar(rule.Inject))
+	}
+	if rule.InCage {
+		out = append(out, pad+"  in_cage: true")
+	}
 	if rule.Reason != "" {
 		out = append(out, pad+"  reason: "+strconv.Quote(rule.Reason))
 	}
@@ -249,8 +255,14 @@ func validateAppend(before *Config, candidate []byte, list RuleList, rule Rule) 
 		return fmt.Errorf("edit did not append the rule to %s as expected", list.keyName())
 	}
 	for _, r := range got {
-		if ruleIdentity(r) == ruleIdentity(rule) && r.Reason != rule.Reason {
+		if ruleIdentity(r) != ruleIdentity(rule) {
+			continue
+		}
+		if r.Reason != rule.Reason {
 			return fmt.Errorf("edit recorded the wrong reason for the appended rule")
+		}
+		if r.Inject != rule.Inject || r.InCage != rule.InCage {
+			return fmt.Errorf("edit did not render the auth axis (inject/in_cage) for the appended rule")
 		}
 	}
 	return nil
@@ -282,13 +294,19 @@ func normSlice(p *[]string) string {
 }
 
 func containsRule(rules []Rule, target Rule) bool {
-	id := ruleIdentity(target)
-	for _, r := range rules {
+	return indexOfIdentity(rules, ruleIdentity(target)) >= 0
+}
+
+// indexOfIdentity returns the index of the first rule whose identity (host + path
+// set + method set) equals id, or -1. SetRuleAuth uses it to decide between
+// updating an existing rule in place and appending a new one.
+func indexOfIdentity(rules []Rule, id string) int {
+	for i, r := range rules {
 		if ruleIdentity(r) == id {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func sameIdentities(a, b []Rule) bool {
