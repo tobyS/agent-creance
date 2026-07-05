@@ -367,16 +367,16 @@ No `--json` in v1.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `make test` green (new `.txtar` + Go tests).
-- [ ] `make lint` clean; `go build ./...`.
-- [ ] `credential add/list/remove --help` assert `Examples:` + a distinctive
+- [x] `make test` green (new `.txtar` + Go tests).
+- [x] `make lint` clean; `go build ./...`.
+- [x] `credential add/list/remove --help` assert `Examples:` + a distinctive
       `Long:` line (testscript).
 
 #### Manual Verification:
-- [ ] `credential add … --bearer` then `credential list` shows the entry
+- [x] `credential add … --bearer` then `credential list` shows the entry
       (name/source/shape), never a value; the config file gained a
       comment-preserved `credentials:` block; "policy recompiled".
-- [ ] `credential remove` of a bound credential is blocked with the unbind hint;
+- [x] `credential remove` of a bound credential is blocked with the unbind hint;
       of an absent one exits non-zero with a clear message.
 
 ### Tests (Phase 2)

@@ -186,6 +186,7 @@ func newRootCmd(app *App) *cobra.Command {
 	addCmd(newMountCmd(app), groupConfigure)
 	addCmd(newIncludeCmd(app), groupConfigure)
 	addCmd(newImportCmd(app), groupConfigure)
+	addCmd(newCredentialCmd(app), groupConfigure)
 	// Inspect — read-only state and resolved policy.
 	addCmd(newStatusCmd(app), groupInspect)
 	addCmd(newLogsCmd(app), groupInspect)
