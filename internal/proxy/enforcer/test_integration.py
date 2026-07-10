@@ -140,13 +140,20 @@ def _curl(proxy, url, *, use_mitm_ca, http1=False, timeout=20, extra=()):
 
     http1=True forces HTTP/1.1 to the origin so the status line carries the reason
     phrase (HTTP/2 drops reason phrases entirely). ``extra`` appends verbatim curl
-    args (e.g. a client-supplied ``-H`` header for the overwrite test)."""
+    args (e.g. a client-supplied ``-H`` header for the overwrite test).
+
+    ``--noproxy ""`` empties curl's bypass list, which otherwise defaults to the
+    ambient NO_PROXY. That matters when the suite runs inside an agent-creance cage:
+    the cage exports NO_PROXY=localhost,127.0.0.1,::1 so in-cage tooling can reach
+    host services directly, and curl honours it even when -x is given — silently
+    bypassing the proxy under test and reducing these assertions to nothing."""
     with tempfile.TemporaryDirectory() as d:
         body_path = os.path.join(d, "body")
         hdr_path = os.path.join(d, "hdr")
         cmd = [
             _CURL, "-sS",
             "-x", f"http://127.0.0.1:{proxy.port}",
+            "--noproxy", "",
             "--max-time", str(timeout),
             "-o", body_path, "-D", hdr_path,
             "-w", "%{http_code}",
@@ -400,11 +407,15 @@ def _streaming_origin():
 
 def _curl_stream(proxy, url, timeout=20):
     """Drive ``curl -N`` through the proxy, returning [(elapsed, line), ...] for each
-    non-empty body line as it arrives (elapsed is seconds since the first line)."""
+    non-empty body line as it arrives (elapsed is seconds since the first line).
+
+    ``--noproxy ""`` for the same reason as in _curl: an ambient NO_PROXY would make
+    curl bypass the proxy under test."""
     proc = subprocess.Popen(
         [
             _CURL, "-sS", "-N", "--no-buffer",
             "-x", f"http://127.0.0.1:{proxy.port}",
+            "--noproxy", "",
             "--max-time", str(timeout),
             url,
         ],
@@ -595,3 +606,50 @@ def test_upstream_401_annotated_with_x_cage_injected_e2e():
     assert rc == 0, f"curl failed: {headers}{body}"
     assert code == "401"  # the upstream owns the status
     assert "x-cage-injected: gh" in headers.lower()
+
+
+# --- concurrent per-project scoping (AC-0068e) ---------------------------------
+
+
+def test_concurrent_proxies_hold_distinct_secrets_e2e():
+    """Two simultaneous proxies each inject their own token, with no shared state.
+
+    The multi-project claim ("four repos = four proxies = four scoped tokens"), reduced
+    to its mechanism: the proxy is refcounted per project, and each spawn reads its own
+    payload off its own inherited fd. So N concurrent cages hold N independently scoped
+    tokens, which is what neutralizes the cage-wide keychain read.
+
+    Both proxies are alive at once (nested context managers) and share one policy — the
+    same credential NAME, deliberately, since a per-name collision is exactly the shared
+    state this test must rule out.
+    """
+    with _echo_origin() as origin_a, _echo_origin() as origin_b:
+        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_A"}) as pa, \
+             running_proxy_with_secret(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_B"}) as pb:
+            assert pa.port != pb.port, "the two proxies must be distinct processes"
+
+            rc_a, code_a, hdr_a, body_a = _curl(
+                pa, f"http://127.0.0.1:{origin_a}/echo", use_mitm_ca=False
+            )
+            rc_b, code_b, hdr_b, body_b = _curl(
+                pb, f"http://127.0.0.1:{origin_b}/echo", use_mitm_ca=False
+            )
+            # The secret is bound to the PROXY, not to the origin: origin B reached
+            # through proxy A must see A's token. Without this, the two assertions above
+            # would also pass if each origin somehow selected its own credential.
+            rc_x, code_x, hdr_x, body_x = _curl(
+                pa, f"http://127.0.0.1:{origin_b}/echo", use_mitm_ca=False
+            )
+
+    assert rc_a == 0, f"curl failed: {hdr_a}{body_a}"
+    assert rc_b == 0, f"curl failed: {hdr_b}{body_b}"
+    assert rc_x == 0, f"curl failed: {hdr_x}{body_x}"
+    assert code_a == code_b == code_x == "200"
+
+    assert json.loads(body_a)["authorization"] == "Bearer TOKEN_PROJECT_A"
+    assert json.loads(body_b)["authorization"] == "Bearer TOKEN_PROJECT_B"
+    assert json.loads(body_x)["authorization"] == "Bearer TOKEN_PROJECT_A"
+
+    # No cross-talk: neither proxy's secret map leaked into the other.
+    assert "TOKEN_PROJECT_B" not in body_a
+    assert "TOKEN_PROJECT_A" not in body_b
