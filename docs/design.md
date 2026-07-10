@@ -55,7 +55,7 @@ The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates
 
 **Prevented (proxy-enforced):**
 - Egress to non-allowlisted hosts/paths/methods.
-- *(v0.2)* Credential exfiltration for non-Claude services: once proxy-side secret injection lands, tokens for those services are injected by the proxy at egress and never held in the agent's environment. v0.1 is OAuth-only and does not inject secrets (see "The proxy and the credential story").
+- Credential exfiltration for non-Claude services is addressed by **credential injection**: an injected token is resolved host-side and written into the request at egress, so it never enters the agent's environment, and an agent-set auth header for that host is overwritten. This bounds a compromised agent to the injected token's scope *against injected hosts*. It does not cover hosts you have not bound, credentials you deliberately mark `in_cage`, or Claude's own OAuth token (see "Credential injection").
 - DNS tunneling to unknown nameservers — DNS goes through the proxy's resolver only.
 
 **Not prevented (the honest limits):**
@@ -142,6 +142,23 @@ network:
       - host: api.github.com
         paths: ["/repos/tobyS/this-project/"]
         methods: [GET, POST]
+        # Auth axis (see "Credential injection"): the proxy overwrites this
+        # host's Authorization header with the `github` credential below, so
+        # the agent authenticates without ever holding the token. EVERY rule
+        # for an injected host must carry `inject:` — the auth axis rides the
+        # rule the matcher picks, and the matcher picks the most specific one.
+        inject: github
+      - host: api.github.com
+        paths: ["/graphql"]
+        methods: [POST]
+        inject: github
+        reason: "GraphQL is one endpoint; the repo-scoped token is the boundary"
+      - host: "*.1password.com"
+        # The other auth mode: the agent holds this credential in the cage and
+        # the proxy promises never to add, strip, or modify its auth headers.
+        # The honest marker for what header injection structurally cannot serve
+        # (SigV4 signatures, `op`'s service-account token, SDK-minted auth).
+        in_cage: true
 
     # Hard denies. The agent gets a different response type for these
     # (see "Network refusal handling" below) and is instructed to never
@@ -159,10 +176,20 @@ network:
 
 env:
   GIT_AUTHOR_NAME: "Toby (caged)"
-  # v0.1 sets plain env vars for the agent only. Just-in-time secret
-  # injection (op:// references resolved host-side and injected by the
-  # proxy at egress, never entering the agent's environment) is a v0.2
-  # feature; v0.1 is OAuth-only and does not inject credentials.
+  # Never put a real secret here — this block enters the agent's environment.
+  # Its use with injection is "phantom priming": many clients refuse to send a
+  # request at all when they consider themselves logged out, so the cage gets a
+  # clearly-fake placeholder and the proxy overwrites it at egress.
+  GH_TOKEN: "ghp_phantom_the_proxy_overwrites_this_at_egress"
+
+# Named, indirected references the proxy resolves HOST-SIDE and injects into
+# requests to a bound host. The reference is committed; the secret never is —
+# it is resolved at proxy spawn, lives only in proxy memory, and never touches
+# argv, env, or disk. Manage with `agent-creance credential add|list|remove`.
+credentials:
+  github:
+    source: op://Private/GitHub PAT/token   # or keychain://SERVICE/ACCOUNT, env://NAME
+    template: "Bearer {token}"              # default header: Authorization
 ```
 
 The global file `~/.config/agent-creance.yaml` has the same schema; it holds your "always-allowed" baseline (Claude's API, npm/PyPI/cache.nixos.org registries, GitHub orgs you trust, etc.) and your personal hard-deny list (sources you never want the agent to consult). Per-project configs only declare deltas. `include:` resolution is recursive with cycle detection and a depth limit; later files override earlier ones for scalar fields, while `allow:` and `deny_always:` lists union additively.
@@ -465,7 +492,22 @@ agent-creance run                   # starts the cage and the agent; if setup ha
 agent-creance allow URL             # append a soft-allow rule to .agent-creance.yaml
 agent-creance allow --once URL      # project-session-scoped allow (see "Session-scoped allows")
 agent-creance allow --global URL    # append to ~/.config/agent-creance.yaml instead
+agent-creance allow URL --inject N  # bind the rule to credential N: the proxy overwrites this
+                                    #   host's auth header with N's resolved secret at egress
+                                    #   (see "Credential injection"). Rejected on a passthrough
+                                    #   rule — a raw tunnel is never TLS-terminated
+agent-creance allow URL --in-cage   # mark the rule in-cage: the proxy never adds, strips, or
+                                    #   modifies its auth headers (SigV4, `op`, SDK-minted auth)
 agent-creance deny URL              # append a deny_always rule (optionally with --reason)
+
+agent-creance credential add NAME   # register a credential and its header shape: --source
+                                    #   op://… | keychain://… | env://…, plus --bearer (default),
+                                    #   --token, --raw, --basic --username U, --header H, or a
+                                    #   full --template. --source is only syntax-checked here;
+                                    #   it is resolved at cage start, and a resolve failure fails
+                                    #   closed (HTTP 472), never leaking a value
+agent-creance credential list       # show configured credentials and their shapes — never a value
+agent-creance credential remove NAME # delete one (refused while a rule still injects it)
 agent-creance import FILE           # merge a YAML config fragment (egress allow/deny rules and
                                     #   host_services) into .agent-creance.yaml after review; strict-
                                     #   validates the fragment, shows the merged result, writes on
@@ -530,7 +572,7 @@ mitmproxy writes a JSONL file at `egress.jsonl` in the project's state directory
 
 Mitmproxy is a normal host daemon — installed via Homebrew, runs as your user, no container needed. The first-ever run generates a CA in `~/.mitmproxy/`, which `agent-creance setup` installs into the login keychain (one `sudo` prompt, one time). After that the agent trusts the CA via the system trust store, plus belt-and-suspenders env vars: `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `GIT_SSL_CAINFO`.
 
-**v0.1 is OAuth-only (Claude Pro/Max), and does no credential injection.** Proxy-side secret injection for non-Claude services (`op://` references resolved host-side, tokens added as `Authorization` at egress so the agent never sees them) is a v0.2 feature. In v0.1 the only credential in play is Claude Code's own OAuth token, handled as follows.
+**Proxy-side credential injection ships (see "Credential injection" below); Claude's own OAuth token is deliberately not part of it.** For non-Claude services, `op://`/`keychain://`/`env://` references are resolved host-side and the resulting token is written into the request's auth header at egress, so the agent never sees it. That mechanism cannot serve Claude Code itself: `api.anthropic.com` is **passthrough** (its traffic is never TLS-terminated, so there is no header to rewrite), and the agent is the thing that uses the OAuth token, so it must be able to read it. The one credential in play *for Claude* is therefore handled as follows, and remains readable in the cage.
 
 **Login happens on the host, never in the cage.** The interactive OAuth browser flow (`claude` login) is run normally on the host, outside the sandbox, before the first caged run — a prerequisite, like being logged into `gh`. The cage never opens a browser or handles the callback; it only needs the *resulting* credential plus the ability to *refresh* it, and refresh is a plain HTTPS call to the Anthropic token endpoint, which is on the global allowlist baseline (materialized by `agent-creance setup` since AC-0043: `api.anthropic.com`, `claude.ai`, and `platform.claude.com` as passthrough rules in `~/.config/agent-creance.yaml`) and so traverses the proxy like any other allowed request.
 
@@ -544,9 +586,68 @@ Mitmproxy is a normal host daemon — installed via Homebrew, runs as your user,
 
 **Why not clone the credential per project (the concurrency reason).** OAuth refresh rotates: a successful refresh typically issues a new refresh token and invalidates the old one. If each project cloned the credential into its own config dir and refreshed on its own cycle, the first project to refresh would rotate the token out from under all the others, and a sync-back-on-exit step would be a last-writer-wins race that clobbers good tokens with stale ones. Keeping a single shared Keychain item makes the store itself the synchronization point — whoever refreshes writes the rotated token back to the one place everyone reads. Any residual race (two sessions refreshing in the same instant) is a narrow, pre-existing window identical to running two un-caged Claude sessions at once, not something agent-creance introduces. **Spike [S2](#open-spikes-resolve-before-build) validates both the sandboxed Keychain access and the concurrent-refresh behavior before we build on this.**
 
-**What this does not close (honest).** The token is still *readable* by the agent — it has to be, because the agent uses it (the cage is granted the Keychain item). A prompt injection can therefore still exfiltrate it, but only through an allowlisted destination, since direct egress is blocked — and that means *every* allowlisted host accepting an agent-controlled body (e.g. a `POST` to the GitHub API), not just `api.anthropic.com`. The allowlist **narrows** the exfil surface to your allowed POST targets; it does not eliminate it. For OAuth-in-the-cage there's no way around this short of not giving the agent the token at all — v0.2's proxy-side injection is what removes tokens from the agent's reach for *non-Claude* services, but Claude's own token is fundamentally exposed because the agent is the thing using it.
+**What this does not close (honest).** The token is still *readable* by the agent — it has to be, because the agent uses it (the cage is granted the Keychain item). A prompt injection can therefore still exfiltrate it, but only through an allowlisted destination, since direct egress is blocked — and that means *every* allowlisted host accepting an agent-controlled body (e.g. a `POST` to the GitHub API), not just `api.anthropic.com`. The allowlist **narrows** the exfil surface to your allowed POST targets; it does not eliminate it. For OAuth-in-the-cage there's no way around this short of not giving the agent the token at all — proxy-side injection is what removes tokens from the agent's reach for *non-Claude* services, but Claude's own token is fundamentally exposed because the agent is the thing using it.
 
 **Post-install CA verification.** `security add-trusted-cert` on macOS returns exit code 0 even when the user cancels the auth dialog or the trust policy is set wrong — failure mode where the cert exists in the keychain but isn't actually trusted by clients. After running the install, `agent-creance setup` does a live verification: spawn a short-lived mitmproxy on a random localhost port, make a `curl` request to `https://example.com` through that proxy, and verify the cert chain validates against the system trust store. If verification fails, the user gets an explicit error pointing at the likely cause (cancelled prompt, missing trust setting) instead of a confusing "everything looks fine" followed by mysterious TLS errors during the first `agent-creance run`. The same verification runs as part of `agent-creance doctor` on every invocation, so a keychain change that revokes the CA gets caught immediately. The probe's `curl` deliberately passes no `-k`/`--insecure`, no `--cacert`, and no `--proxy-insecure`: the re-signed leaf is validated against the *system* trust store only — otherwise a lenient probe would report "trusted" even when the CA is not, defeating the whole check. An integration test against a real mitmproxy asserts a system-untrusted CA yields an untrusted verdict (and a trusted one a trusted verdict).
+
+## Credential injection
+
+An agent in the cage needs authenticated services — first of all `gh`. But most `gh` operations go over GraphQL (`POST api.github.com/graphql`), a single endpoint whose real target lives in the request body, and the egress allowlist only ever sees host, path, and method. Allowing `/graphql` while a broad token sits within the agent's reach would hand it the whole account. The finding underneath: **GraphQL access cannot be scoped at the URL layer — it must be scoped at the credential layer.** And the cage's keychain grant is keychain-*wide* by mechanism (`mach-lookup` reaches `securityd`, which gates every item and cannot be narrowed to one), so a prompt-injected agent can read whatever tokens you have. The only model robust against that is to keep the secret host-side and **inject it at the proxy**.
+
+**Two orthogonal axes.** Every allow rule has a transport axis and, on intercepted hosts, an auth axis:
+
+```
+transport:                  intercept | passthrough
+auth (intercept only):      inject: <credential> | in_cage: true | (default)
+```
+
+- **`inject`** — the proxy supplies the credential from a host-side source, with **overwrite** and **fail-closed** semantics. Overwrite is the whole point: even if a compromised agent reads a broad token and sets the header itself, the proxy clobbers it with the scoped one for that host, so the cage cannot exceed the injected scope *against that host*. `inject` on a `passthrough` rule is rejected at validation — a raw tunnel is never TLS-terminated, so there is no header to rewrite.
+- **`in_cage`** — the proxy guarantees it will never add, strip, or modify any auth header; the agent authenticates with a credential it holds, and the proxy enforces only host/path/method. This is the honest, self-documenting marker for what header injection structurally cannot serve: **SigV4** (a client-computed signature breaks if a header is rewritten), **`op`/1Password** (a service-account token, not a plain header), and anything SDK-minted. It also lets tooling lint for "credentialed host with neither `inject` nor `in_cage`" and records in the threat model that a real credential intentionally lives in the cage for that host.
+- **default** — the proxy does not touch auth.
+
+**⚠ Bind every rule for an injected host.** The auth axis rides the rule the matcher *picks*, and the matcher picks the **most specific** match, not the first. So a host-wide `inject` rule is silently shadowed by any narrower rule for the same host, and requests matching the narrower rule are forwarded with whatever the agent sent — in practice the phantom, which the upstream rejects with a genuine 401. If a host is injected, every allow rule for it must say so:
+
+```yaml
+# WRONG — the /repos rule is more specific, wins the match, and carries no
+# `inject:`, so those requests leave the cage with the phantom token.
+- host: api.github.com
+  inject: github
+- host: api.github.com
+  paths: ["/repos/tobyS/agent-creance"]
+
+# RIGHT — every rule for the host is bound.
+- host: api.github.com
+  paths: ["/repos/tobyS/agent-creance"]
+  inject: github
+- host: api.github.com
+  paths: ["/graphql"]
+  methods: [POST]
+  inject: github
+```
+
+**One value template, all shapes.** An injection rule is `(host/path) → header name + value template`, so every shape is one mechanism: `Bearer {token}` (the validated v1 path), `token {token}` and bare `{token}`, `Basic base64({user}:{token})` with a username sentinel (git-over-HTTPS `x-access-token`, PyPI `__token__`, GitLab `oauth2`), and an arbitrary custom header name (Anthropic `x-api-key`, Qdrant `api-key`, GitLab `PRIVATE-TOKEN`). Bearer is gold-plated and validated end-to-end; the others are present via the template but await a real consumer.
+
+**Host-side, in memory, never on disk.** References (`op://`, `keychain://`, `env://`) are resolved on the host through a `SecretResolver` seam **before the sandbox applies**, once per proxy spawn. The resolved value is handed to the `mitmdump` addon over an **inherited file descriptor** — never argv (visible in `ps`), never the environment (readable by same-uid processes via `KERN_PROCARGS2`), never disk (macOS has no `tmpfs`, and an encrypted file is theater unless its key is in the Keychain, at which point you would store the secret there and drop the file). Per-request resolution was rejected: `op read` costs 200–500ms and is rate-limited. Resolution happens **only on the spawn path**, never when an agent attaches to an already-running proxy, because `op://` can prompt for Touch ID and must not re-prompt every attach. The practical consequence: adding an `inject` rule to a *running* cage hot-reloads the rule but not the secret map, so that host answers 472 until the proxy respawns.
+
+**Phantom priming.** Many clients refuse to send a request at all when they consider themselves logged out (`gh` is one). So the cage gets a non-secret placeholder via the config `env:` block — `GH_TOKEN: ghp_phantom_…` — and the proxy overwrites it at egress. `GH_TOKEN` is *not* a security boundary: it is only a default, and the broad keychain token stays readable underneath it. Overwrite is the boundary. `gh` performs no local format check on the token (`go-gh` requires only a non-empty value), so the phantom can be self-describing rather than realistic.
+
+**Failure is legible.** A credential that will not resolve **fails closed**: the request is refused with **HTTP 472 `injection-unavailable`**, never forwarded unauthenticated or with the phantom. 472 exists because the desired human action differs from both other refusals — the host *is* allowlisted (so 470's "run `allow`" is wrong) and the block is *not* permanent (so 471's "give up" is wrong); it is recoverable by unlocking the host-side secret store. See "Network refusal handling" for the response shape. When a resolved credential is *rejected upstream* (a real 401/403), the proxy does not invent a status — the upstream owns it — but annotates the response with `X-Cage-Injected: <name>` so the agent blames the injected credential (expired, insufficient scope) rather than its phantom.
+
+**Per-project scoping falls out of the architecture.** The proxy is a host-side daemon refcounted per project (keyed by state-dir hash), so four concurrent cages on four repos are four proxies with four `policy.json`s. Each resolves and holds only its own project's credential, over its own descriptor. Four repos means four independently scoped tokens with no shared state — which is precisely what neutralizes the shared keychain.
+
+**The GitHub recipe (the validated flagship).** Create a **fine-grained** PAT with repository access limited to the one target repo, and these permissions:
+
+| Permission | Why |
+|---|---|
+| Metadata: Read | mandatory; auto-added to every fine-grained PAT |
+| Issues: Read and write | list, view, create, comment, close, and label *issues* |
+| Contents: Read | `gh issue create`'s GraphQL query selects `defaultBranchRef` ([cli/cli#12798](https://github.com/cli/cli/issues/12798)) |
+
+Fine-grained PATs have supported GraphQL since 2023, provided the token's resource owner matches the repository owner. Two caveats worth knowing: `gh auth status` works but cannot report scopes, because fine-grained PATs do not return the `X-OAuth-Scopes` header classic tokens do; and `gh`'s update notifier calls an `api.github.com` path you probably have not allowlisted, so set `GH_NO_UPDATE_NOTIFIER: "1"` alongside the phantom. Note also that labels on *pull requests* are governed by the Pull requests permission, not Issues.
+
+**Trade-offs accepted.** The addon holds the secret in Python memory, whose zeroization is weak — far better than disk or the cage, and a host-side unix-socket broker (letting Go hold it in `mlock`-able, zeroizable memory) is the planned hardening. Static tokens are repo-scoped but not time-bounded; minted short-lived tokens (GitHub App installation tokens, OAuth2 refresh) are the Phase-2 target. And injection removes *non-Claude* secrets from the agent's reach, not Claude's own — see the section above for why that one is irreducible.
+
+**What this deliberately is not.** Not a GraphQL-aware body-inspecting firewall: that is bypassable (node IDs, `search`, `viewer`, aliases) and foreign to an enforcer that only sees host, path, and method. Not an in-cage token endpoint (IMDS-style): a local credential endpoint reachable through a forwarding proxy is the classic confused-deputy hole that IMDSv2 was hardened against, and header-injection-at-proxy avoids the entire class.
 
 ## Tech stack
 
@@ -581,7 +682,7 @@ This isn't on the v0.1 roadmap — but the schema includes a `plugins:` block fr
 ## v0.1 → v1.0 roadmap
 
 - **v0.1:** core orchestration — Safehouse invocation, mitmproxy lifecycle with refcounting, network `.sb` and `policy.json` compilation, two built-in generators (`package_json`, `composer_json`), per-host enforcement modes (`intercept`/`passthrough`), three-response-type enforcement, skill install, `agent-creance allow`/`deny`/`policy` commands, JSONL audit log with rotation, CA bootstrap with post-install verification, prerequisite check (refuse-and-suggest) with tested-version warnings, `doctor` command, process-group signal forwarding.
-- **v0.2:** secret injection (1Password, env), DNS resolver in the proxy with blocklists (Hagezi, OISD), structured deny-decision log alongside the main audit log, additional ecosystem generators (`pyproject_toml`, `cargo_toml`, etc.) as contributions arrive.
+- **v0.2:** credential injection — Phase 1 (static `op://`/`keychain://`/`env://` references, overwrite + fail-closed, 472, Bearer gold-plated with GitHub as the validated flagship) is done; Phase 2 adds minted short-lived tokens (GitHub App installation tokens, OAuth2 refresh) and a host-side unix-socket secret broker. Also: DNS resolver in the proxy with blocklists (Hagezi, OISD), structured deny-decision log alongside the main audit log, additional ecosystem generators (`pyproject_toml`, `cargo_toml`, etc.) as contributions arrive.
 - **v0.3:** Haiku-as-judge for ambiguous URLs (optional, requires API key; default off so the proxy needs no credentials to operate); agent-driven documentation-host expansion (prompt the user's running agent to enrich each library's allowlist beyond just the registry-stated homepage).
 - **v0.4:** config-driven process plugins (the `~/.config/agent-creance/processes.d/` mechanism above); community policy bundles via `bundle:` references in the schema; per-generator options (transitive-deps, custom paths, etc.).
 - **v0.5:** non-Claude agents (Codex, Gemini, Cursor CLI) — mostly just verifying their behavior under the cage and shipping starter policies.

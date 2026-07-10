@@ -1,9 +1,9 @@
 # AC-0068e: GitHub flagship — open /graphql token-scoped, end-to-end validation, docs
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-10
 
 > Sub-ticket of **AC-0068** (Credential injection, Phase 1). The "ship it"
 > deliverable that closes GH-1. **Depends on AC-0068a–d** — this is the validation
