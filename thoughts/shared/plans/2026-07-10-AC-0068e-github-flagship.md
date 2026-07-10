@@ -390,11 +390,21 @@ origin happens to get the right one".
 
 ### Overview
 
-The deliverable that closes GH-1 for this repo. **This is the last in-cage step**: the
-recompile hot-reloads the new inject rules into the running proxy, which holds no
-`github` secret, so `api.github.com` answers 472 until the cage respawns. That is
-expected and harmless here (this repo's `origin` is SSH, so `git` does not traverse the
-proxy).
+The deliverable that closes GH-1 for this repo.
+
+> **Correction (2026-07-10, during implementation).** The plan assumed this was the last
+> *in-cage* step. It cannot be: the cage renders
+> `(deny file-write* (literal "<project>/.agent-creance.yaml"))`
+> (`internal/profile/profile.go`, `RenderConfigReadOnlyFragment`), so a caged agent may
+> not rewrite its own egress policy — exactly the property AC-0059/AC-0060 exist to
+> preserve. Attempting the edit in-cage fails with `EPERM`. **This phase therefore runs
+> at the start of the out-of-cage batch (Phase 5), not before it.** That is also the
+> better sequencing: it keeps the cage breakout to a single window.
+
+Once applied, the recompile hot-reloads the new inject rules into any *running* proxy,
+which holds no `github` secret, so `api.github.com` answers 472 until that proxy
+respawns. Harmless here (this repo's `origin` is SSH, so `git` does not traverse the
+proxy), but it is why the config edit and the cage restart belong together.
 
 ### Changes Required:
 
@@ -469,12 +479,19 @@ looks like the trap Phase 1 documents.
 ### Overview
 
 Everything that cannot run inside the cage, batched into one breakout as
-`CLAUDE.md` requires. **Nothing is written in this phase** — it executes, observes, and
+`CLAUDE.md` requires. It now **also carries Phase 4's config edit** (see that phase's
+correction note), which is the only thing written here; the rest executes, observes, and
 records results into the plan's status file and the ticket.
 
 **Ask the user to close the cage before starting, and tell them when it can come back up.**
 
 ### Steps:
+
+#### 0. Apply Phase 4's config edit
+
+With the cage down, `.agent-creance.yaml` is writable. Apply the `env:`, `credentials:`,
+and per-rule `inject: github` changes exactly as Phase 4 specifies, then verify with
+`agent-creance policy show` and `agent-creance credential list` before going further.
 
 #### 1. Verify the PAT (prerequisite)
 
