@@ -1,9 +1,9 @@
 # AC-0068: Credential injection (Phase 1) — general substrate, GitHub flagship [EPIC]
 
-**Status:** Open
+**Status:** Done
 **Estimated Complexity:** High
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-11
 
 ## Problem Statement
 
@@ -79,15 +79,19 @@ independently reviewable unit.
 
 ## Acceptance Criteria (epic-level — satisfied when all sub-tickets are Done)
 
-- [ ] All of AC-0068a–e are Done.
-- [ ] `gh` GraphQL operations succeed in-cage against an allowlisted repo with a
-      repo-scoped injected token, with `/graphql` allowlisted.
-- [ ] An auth header set by the agent on an inject-host is overwritten by the proxy
-      (verified by test).
-- [ ] A non-resolvable secret produces a 472, not a forwarded request.
-- [ ] Four concurrent project cages each resolve and hold their own scoped token
-      with no shared state.
-- [ ] `make test` green; the GitHub end-to-end path covered behind `integration`.
+- [x] All of AC-0068a–e are Done.
+- [x] `gh` GraphQL operations succeed in-cage against an allowlisted repo with a
+      repo-scoped injected token, with `/graphql` allowlisted. *(Proven capability —
+      live `POST /graphql → 200` + Go integration test `TestInjectGitHubGraphQLRealUpstream`.
+      Shipped as a documented opt-in, not the default: see the 2026-07-11 note.)*
+- [x] An auth header set by the agent on an inject-host is overwritten by the proxy
+      (verified by test). *(enforcer overwrite test + e2e.)*
+- [x] A non-resolvable secret produces a 472, not a forwarded request. *(enforcer
+      `test_inject_missing_secret_returns_472` + `responses.injection_unavailable`.)*
+- [x] Four concurrent project cages each resolve and hold their own scoped token
+      with no shared state. *(Python `test_concurrent_proxies_hold_distinct_secrets_e2e`.)*
+- [x] `make test` green; the GitHub end-to-end path covered behind `integration`.
+      *(Verified 2026-07-11: `make test` exit 0, 148 enforcer tests pass.)*
 
 ## Out of Scope (Phase 1)
 
@@ -134,3 +138,22 @@ Phase-1 sub-tickets (a–e) building the general substrate bottom-up with Bearer
 GitHub as the single validated flagship. Phase 2 (minted tokens, broker) split into
 sibling epic AC-0069. Complexity mapping for sub-tickets follows the discussion's
 estimates (a: Low/Med, b: Med, c: High, d: Med, e: Med).
+
+### 2026-07-11 — Done (closed after epic-level review)
+All five sub-tickets (a–e) are Done and the substrate ships: `SecretResolver` seam,
+transport×auth config model + `credentials:` block, proxy injection engine
+(inherited-fd delivery, overwrite, fail-closed 472, `X-Cage-Injected` upstream
+annotation), CLI `credential` group + `allow --inject`/`--in-cage`, and the GitHub
+flagship with `docs/design.md` + `README.md`. Verified this pass: `make test` exit 0
+(all packages) and 148 Python enforcer tests pass; real-tool/GitHub paths behind
+`integration`. Review: `thoughts/shared/reviews/2026-07-11-AC-0068-review.md`.
+
+**Capability delivered; conclusion refined.** The epic was framed as "close GH-1 by
+opening `/graphql` token-scoped." The flagship (AC-0068e) validated the mechanism
+end-to-end but surfaced that a repo-scoped PAT does **not** bound *public* reads, so
+opening `/graphql` re-opens the public-repo ingestion vector the cage exists to close.
+Agreed resolution: keep the mechanism, ship **scoped REST** as the safe default and
+treat `/graphql` as a documented opt-in risk (see AC-0068e's 2026-07-11 note,
+`docs/design.md`, `README.md`). So GH-1's original goal ("open `/graphql` safely") is
+*investigated and deliberately not shipped as default*, not literally achieved — the
+substrate it required is complete. Phase 2 (minted tokens, broker) continues in AC-0069.
