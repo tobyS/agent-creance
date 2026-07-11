@@ -38,21 +38,30 @@ Bearer + GitHub is gold-plated and validated as the single Phase-1 flagship:
   `close` to work so that I can manage tickets without the user disabling the cage.
 - As the user, I want the injected GitHub token scoped to the project repo so that a
   compromised agent cannot reach my other repos via `/graphql`.
+  > **Correction (2026-07-11):** a repo-scoped token bounds *writes* and *private*
+  > reads only. It does **not** bound *public* reads — every public repo is
+  > world-readable — so opening `/graphql` still lets the agent read any public repo.
+  > See the 2026-07-11 note; the resolution is to keep `/graphql` closed by default.
 
 ## Acceptance Criteria
 
-- [ ] With `api.github.com` intercepted + `inject(github)` and `/graphql`
+- [x] With `api.github.com` intercepted + `inject(github)` and `/graphql`
       allowlisted, `gh` GraphQL operations succeed in-cage against an allowlisted
-      repo.
-- [ ] The agent never holds the real token; an agent-set auth header is overwritten
-      (carried from AC-0068c, asserted in this end-to-end path).
-- [ ] A revoked/invalid token surfaces the upstream 401/403 + `X-Cage-Injected`
+      repo. *(Validated live: `gh repo view` / `gh issue list` → `POST /graphql -> 200`;
+      Go integration test `TestInjectGitHubGraphQLRealUpstream`. See the 2026-07-11
+      note — this is now documented as an opt-in risk, not a default.)*
+- [x] The agent never holds the real token; an agent-set auth header is overwritten
+      (carried from AC-0068c, asserted in this end-to-end path). *(Go test subtest 1 +
+      live cage run: phantom `Authorization` overwritten, GitHub returned 200.)*
+- [x] A revoked/invalid token surfaces the upstream 401/403 + `X-Cage-Injected`
       annotation; an unresolvable token surfaces 472 (carried from AC-0068c).
-- [ ] Concurrent project cages each authenticate with their own scoped token (no
-      shared state) — validated.
-- [ ] `docs/design.md` has a credential-injection section reflecting the shipped
-      design; `--help` on the new commands references it (AC-0064 style).
-- [ ] End-to-end GitHub path covered behind the `integration` build tag; `make test`
+      *(Go test subtests 2 and 3.)*
+- [x] Concurrent project cages each authenticate with their own scoped token (no
+      shared state) — validated. *(Python `test_concurrent_proxies_hold_distinct_secrets_e2e`.)*
+- [x] `docs/design.md` has a credential-injection section reflecting the shipped
+      design; `--help` on the new commands references it (AC-0064 style). *(Section
+      rewritten risk-first; `--help` doc surfaces shipped in AC-0068d — see 2026-07-11 note.)*
+- [x] End-to-end GitHub path covered behind the `integration` build tag; `make test`
       green; `make build` run so `bin/agent-creance` reflects the final commit.
 
 ## Out of Scope
@@ -84,10 +93,41 @@ None blocking.
 
 ## Implementation Plan
 
-(Filled when planned.)
+`thoughts/shared/plans/2026-07-10-AC-0068e-github-flagship.md` (research:
+`thoughts/shared/research/2026-07-10-AC-0068e-github-flagship.md`).
 
 ## Notes & Updates
 
 ### 2026-06-29
 Created as the validation/flagship sub-ticket of AC-0068. Closing this closes GH-1
 and satisfies the epic's acceptance criteria.
+
+### 2026-07-11 — security finding: `/graphql` cannot be safely opened by default
+Out-of-cage validation surfaced that the epic's central premise was subtly wrong.
+The live `gh` matrix worked (`POST /graphql -> 200`, token injected, phantom
+overwritten), but probing the token showed the flaw: a repo-scoped fine-grained PAT
+bounds **writes** and **private** reads only. Public repos are world-readable, so an
+opened `/graphql` — one endpoint whose target repo lives in the body the enforcer
+cannot see — lets the caged agent read **any** public repo's issues/PRs/files. That
+is the exact "agent ingests attacker-planted content" vector agent-creance exists to
+close, and GitHub is where it would be planted. The repo-scoped token does not offset
+it. (Confirmed empirically: the token read `cli/cli` — outside its grant — because it
+is public; and a non-mutating probe showed `issues:write` only on `agent-creance`,
+403 on other repos.)
+
+**Resolution (agreed with the user):** keep the mechanism — it is valuable and some
+users will accept the risk — but make `/graphql` an informed, opt-in choice, not a
+default. The safe default is **scoped REST** (`/repos/{owner}/{repo}/…`, path-scopable,
+already injectable): `gh api`/`curl` against those endpoints instead of `gh` porcelain,
+steered via `CLAUDE.md`. `gh auth status` does not work either way (it pings the
+un-scopable root `GET /`). Documented in `docs/design.md` ("Credential injection",
+rewritten risk-first) and `README.md` ("Using GitHub in the cage", with a prominent
+warning). The dogfood `.agent-creance.yaml` was **not** changed: this project uses
+tmt (files) for tickets so it needs no GitHub injection, and committing a personal
+`op://` reference to a public repo would 472 every other contributor.
+
+All acceptance criteria are met (the `/graphql` path works when opened; the mechanism,
+tests, and docs are done). The change from the original framing is the conclusion, not
+the capability: the flagship now demonstrates that `/graphql` is *not* safely openable
+and ships the scoped-REST posture as the default, rather than opening `/graphql` in the
+shipped config.

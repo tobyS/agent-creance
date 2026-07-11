@@ -6,11 +6,29 @@
 
 ## Phases
 
-- [x] Phase 1 — `docs/design.md` credential-injection section — `2bd931a`
+- [x] Phase 1 — `docs/design.md` credential-injection section — `2bd931a`, revised risk-first in Phase 5
 - [x] Phase 2 — Go real-GitHub integration test — `57b19ca`
 - [x] Phase 3 — Python concurrent-proxy scoping test — `5370da1`
-- [ ] Phase 4 — dogfooding config: bind GitHub to the injected credential *(blocked: needs the cage down)*
-- [ ] Phase 5 — out-of-cage validation batch *(now also carries Phase 4)*
+- [~] Phase 4 — dogfooding config: **dropped** (see the 2026-07-11 security finding)
+- [x] Phase 5 — out-of-cage validation batch — done; results below
+
+## 2026-07-11 — security finding redirected the ticket
+
+Out-of-cage validation confirmed the injection path works against real GitHub
+(`gh` matrix: `POST /graphql -> 200`, phantom overwritten; Go test 3/3; enforcer
+16/16), but probing the token exposed that a repo-scoped PAT does **not** scope
+*public* reads. Opening `/graphql` therefore lets the agent read any public repo —
+the ingestion vector the cage exists to close. Agreed with the user: keep the
+mechanism, make `/graphql` an opt-in risk, default to scoped REST, and document both
+in `docs/design.md` + `README.md`.
+
+Consequences:
+- **Phase 4 dropped.** The dogfood `.agent-creance.yaml` was reverted to clean — this
+  project uses tmt (not GitHub issues) so needs no injection, and a personal `op://`
+  ref in a public repo would 472 other contributors.
+- **Phase 1 docs revised.** The design section was rewritten risk-first (the hard
+  limit on public reads, the safe scoped-REST posture, the `/graphql` opt-in), and a
+  `README.md` "Using GitHub in the cage" section added.
 
 ## Deviations from the plan
 

@@ -116,6 +116,58 @@ agent-creance import agent-creance.suggested.yaml   # add --yes for non-interact
 `import` strict-validates the fragment, shows the merged result, and writes only
 on confirmation.
 
+## Using GitHub (`gh`) in the cage
+
+agent-creance can inject a GitHub token into the cage's requests so the agent
+authenticates **without ever holding the token** — you register a reference
+(`op://…`, `keychain://…`, or `env://…`), and the proxy resolves it host-side and
+overwrites the `Authorization` header at egress. Register one with:
+
+```sh
+agent-creance credential add github --source op://Private/GitHub/token --bearer
+```
+
+Use a **fine-grained** PAT scoped to the one repo you want the agent to touch
+(Repository access → that repo only; Metadata: Read, Issues: Read and write, and
+Contents: Read). Then bind it to GitHub's REST API, scoped to your repo:
+
+```yaml
+network:
+  egress:
+    allow:
+      - host: api.github.com
+        paths: ["/repos/OWNER/REPO"]
+        methods: [GET, POST, PATCH, PUT, DELETE]
+        inject: github
+env:
+  # gh won't send a request when it thinks it's logged out; the proxy overwrites
+  # this placeholder. It is NOT a secret and NOT a boundary.
+  GH_TOKEN: "ghp_phantom_the_proxy_overwrites_this"
+```
+
+> ### ⚠ Do not casually open `api.github.com/graphql`
+>
+> `gh`'s porcelain (`gh issue`, `gh pr`, `gh repo`) runs over **GraphQL**, a
+> single endpoint (`POST api.github.com/graphql`) whose target repo lives in the
+> request body — which the egress filter cannot see. **A repo-scoped token does
+> not help here:** it bounds *writes* and *private* reads, but every public repo
+> is world-readable, so opening `/graphql` lets the agent read **any** public
+> repo's issues, PRs, and files. That is an unbounded, attacker-controllable
+> content channel — exactly the "read malicious content" vector the cage exists
+> to close, and GitHub is where an attacker would plant it.
+>
+> **The safe way** is the scoped-REST config above: the agent works with issues
+> via REST endpoints under `/repos/OWNER/REPO/…` (call them with
+> `gh api /repos/OWNER/REPO/issues …` or `curl`, and tell your agent to prefer
+> them in `CLAUDE.md`). `gh`'s porcelain commands won't work, and `gh auth
+> status` reports a spurious "token invalid" (it pings an un-scopable root path) —
+> but the agent cannot read repos you didn't allow. Only open `/graphql` if you
+> understand and accept that it removes that guarantee.
+
+The full model — the two auth axes, overwrite/fail-closed semantics, the `472`
+refusal, and per-project scoping — is in
+[`docs/design.md`](docs/design.md) under "Credential injection".
+
 ## Shell completion
 
 `agent-creance` ships tab-completion scripts for bash, zsh, fish, and

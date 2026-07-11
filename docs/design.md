@@ -140,19 +140,18 @@ network:
     # to be hand-added.
     allow:
       - host: api.github.com
-        paths: ["/repos/tobyS/this-project/"]
+        paths: ["/repos/tobyS/this-project/"]   # PATH-SCOPED to one repo
         methods: [GET, POST]
         # Auth axis (see "Credential injection"): the proxy overwrites this
         # host's Authorization header with the `github` credential below, so
         # the agent authenticates without ever holding the token. EVERY rule
         # for an injected host must carry `inject:` — the auth axis rides the
         # rule the matcher picks, and the matcher picks the most specific one.
+        # This path stays scoped to one repo: the agent cannot read others
+        # through it. NOTE: do NOT add a `/graphql` rule casually — GraphQL is
+        # one endpoint that reads ANY public repo, which the token does not
+        # bound (see "Credential injection": the hard limit).
         inject: github
-      - host: api.github.com
-        paths: ["/graphql"]
-        methods: [POST]
-        inject: github
-        reason: "GraphQL is one endpoint; the repo-scoped token is the boundary"
       - host: "*.1password.com"
         # The other auth mode: the agent holds this credential in the cage and
         # the proxy promises never to add, strip, or modify its auth headers.
@@ -592,7 +591,9 @@ Mitmproxy is a normal host daemon — installed via Homebrew, runs as your user,
 
 ## Credential injection
 
-An agent in the cage needs authenticated services — first of all `gh`. But most `gh` operations go over GraphQL (`POST api.github.com/graphql`), a single endpoint whose real target lives in the request body, and the egress allowlist only ever sees host, path, and method. Allowing `/graphql` while a broad token sits within the agent's reach would hand it the whole account. The finding underneath: **GraphQL access cannot be scoped at the URL layer — it must be scoped at the credential layer.** And the cage's keychain grant is keychain-*wide* by mechanism (`mach-lookup` reaches `securityd`, which gates every item and cannot be narrowed to one), so a prompt-injected agent can read whatever tokens you have. The only model robust against that is to keep the secret host-side and **inject it at the proxy**.
+An agent in the cage needs authenticated services — first of all `gh`, whose issue workflow runs over GraphQL (`POST api.github.com/graphql`), a single endpoint whose real target lives in the request body that the egress allowlist never sees (it decides on host, path, and method alone). Two problems compound. The cage's keychain grant is keychain-*wide* by mechanism (`mach-lookup` reaches `securityd`, which gates every item and cannot be narrowed to one), so a prompt-injected agent can read whatever tokens you have; and a token used against a single-endpoint API is bounded by nothing at the URL layer. Credential injection keeps the secret host-side and overwrites the auth header at the proxy, which **fully** solves the first problem — the agent never holds the token, and a scoped token bounds what it can *write* and which *private* data it can read.
+
+It only **partially** solves the second, and the gap is the most important thing in this section: **a token does not scope *public* reads** (see "The hard limit" below). So injection makes it safe to hand the agent a credential — but it does **not**, by itself, make `/graphql` safe to open. The mechanism below is general; whether to point it at `/graphql` is a deliberate risk decision, not a default.
 
 **Two orthogonal axes.** Every allow rule has a transport axis and, on intercepted hosts, an auth axis:
 
@@ -609,7 +610,7 @@ auth (intercept only):      inject: <credential> | in_cage: true | (default)
 
 ```yaml
 # WRONG — the /repos rule is more specific, wins the match, and carries no
-# `inject:`, so those requests leave the cage with the phantom token.
+# `inject:`, so those requests leave the cage with the phantom and get a 401.
 - host: api.github.com
   inject: github
 - host: api.github.com
@@ -620,8 +621,8 @@ auth (intercept only):      inject: <credential> | in_cage: true | (default)
   paths: ["/repos/tobyS/agent-creance"]
   inject: github
 - host: api.github.com
-  paths: ["/graphql"]
-  methods: [POST]
+  paths: ["/user", "/rate_limit"]
+  methods: [GET]
   inject: github
 ```
 
@@ -635,15 +636,49 @@ auth (intercept only):      inject: <credential> | in_cage: true | (default)
 
 **Per-project scoping falls out of the architecture.** The proxy is a host-side daemon refcounted per project (keyed by state-dir hash), so four concurrent cages on four repos are four proxies with four `policy.json`s. Each resolves and holds only its own project's credential, over its own descriptor. Four repos means four independently scoped tokens with no shared state — which is precisely what neutralizes the shared keychain.
 
-**The GitHub recipe (the validated flagship).** Create a **fine-grained** PAT with repository access limited to the one target repo, and these permissions:
+**⚠ The hard limit: an injected token scopes writes and private reads, not public reads.** This is the single most important caveat, and it cuts against the reason `/graphql` is tempting. A fine-grained PAT bounds what the agent can *write* (only the granted repo) and which *private* data it can read (only the granted repo). It does **not** bound *public* reads: every public repo on GitHub is world-readable, so reading one needs no authorization at all — the token is irrelevant. Because `/graphql` is a single endpoint whose target repo lives in the (uninspected) body, opening it lets the caged agent read **any public repo's** issues, PRs, comments, and file contents — an unbounded, fully attacker-controlled corpus. That directly defeats agent-creance's core promise, the per-path read allowlist: the whole point is to stop the agent ingesting attacker-planted content, and GitHub is exactly where an attacker would plant it (it is where an engineering agent looks). **Opening `/graphql` is a real read-scoping downgrade that the token does not offset.** Treat it as an informed, opt-in risk — never a default, and never something `init` emits. (Public reads are the ingestion risk; note the token still contains *writes* to the granted repo, so this is not an exfiltration channel to an attacker.)
+
+**The safe default: scoped REST, not `/graphql`.** The entire issue workflow exists as REST endpoints under `/repos/{owner}/{repo}/…`, which *is* path-scopable to one repo — so the agent physically cannot read another repo through it:
+
+| Operation | REST endpoint |
+|---|---|
+| list / view | `GET /repos/{o}/{r}/issues[/{n}]` |
+| create | `POST /repos/{o}/{r}/issues` |
+| comment | `POST /repos/{o}/{r}/issues/{n}/comments` |
+| close / edit | `PATCH /repos/{o}/{r}/issues/{n}` |
+| label | `POST /repos/{o}/{r}/issues/{n}/labels` |
+
+Bind that one path with `inject`, and the agent authenticates with a token it never holds, scoped to the single repo, with the per-path read allowlist intact:
+
+```yaml
+- host: api.github.com
+  paths: ["/repos/tobyS/agent-creance"]
+  methods: [GET, POST, PATCH, PUT, DELETE]
+  inject: github
+```
+
+The cost is `gh`'s *porcelain*: `gh issue`, `gh pr`, and `gh repo` insist on GraphQL and soft-deny (470) under this config. Drive the REST endpoints directly instead — `gh api /repos/{o}/{r}/issues -f title=…` or plain `curl` — and steer the agent to do so in the project's `CLAUDE.md` or a skill. `gh auth status` also does not work: it pings the un-scopable API root (`GET /`), so it reports a spurious "token invalid" even though every scoped call succeeds.
+
+**The risky opt-in: opening `/graphql`.** Only if you accept the read-scoping loss above — you genuinely need `gh`'s porcelain and trust the agent's instruction sources — allowlist it explicitly and bind it (every `api.github.com` rule must carry `inject`, per "Bind every rule" above):
+
+```yaml
+- host: api.github.com
+  paths: ["/graphql"]
+  methods: [POST]
+  inject: github
+```
+
+Injection still behaves exactly as designed — the token is scoped, the agent never holds it, writes stay bounded to the granted repo — but the agent can now *read* any public repo. Do this knowingly, and lean on the egress audit log (every `POST /graphql` is recorded) to review what was fetched.
+
+**The GitHub credential (fine-grained PAT).** For either posture, create a **fine-grained** PAT with repository access limited to the one target repo:
 
 | Permission | Why |
 |---|---|
 | Metadata: Read | mandatory; auto-added to every fine-grained PAT |
 | Issues: Read and write | list, view, create, comment, close, and label *issues* |
-| Contents: Read | `gh issue create`'s GraphQL query selects `defaultBranchRef` ([cli/cli#12798](https://github.com/cli/cli/issues/12798)) |
+| Contents: Read | `gh issue create`'s GraphQL query selects `defaultBranchRef` ([cli/cli#12798](https://github.com/cli/cli/issues/12798)); harmless for the REST posture |
 
-Fine-grained PATs have supported GraphQL since 2023, provided the token's resource owner matches the repository owner. Two caveats worth knowing: `gh auth status` works but cannot report scopes, because fine-grained PATs do not return the `X-OAuth-Scopes` header classic tokens do; and `gh`'s update notifier calls an `api.github.com` path you probably have not allowlisted, so set `GH_NO_UPDATE_NOTIFIER: "1"` alongside the phantom. Note also that labels on *pull requests* are governed by the Pull requests permission, not Issues.
+Fine-grained PATs have supported GraphQL since 2023, provided the token's resource owner matches the repository owner. Register it with `agent-creance credential add github --source op://… --bearer`; the reference is resolved host-side at spawn and never committed. Note that labels on *pull requests* are governed by the Pull requests permission, not Issues.
 
 **Trade-offs accepted.** The addon holds the secret in Python memory, whose zeroization is weak — far better than disk or the cage, and a host-side unix-socket broker (letting Go hold it in `mlock`-able, zeroizable memory) is the planned hardening. Static tokens are repo-scoped but not time-bounded; minted short-lived tokens (GitHub App installation tokens, OAuth2 refresh) are the Phase-2 target. And injection removes *non-Claude* secrets from the agent's reach, not Claude's own — see the section above for why that one is irreducible.
 
