@@ -198,7 +198,7 @@ The server never logs a token value — only credential names and error kinds.
 
 #### Automated Verification:
 
-- [ ] `make test` passes (`go test -race ./...`)
+- [x] `make test` passes (`go test -race ./...`)
 - [ ] `make lint` passes (`go vet` + golangci-lint)
 - [ ] `go build ./...` succeeds
 - [ ] Table tests cover `Store.Set`/`Get`/`Wipe` including overwrite-wipes-old and
@@ -214,7 +214,29 @@ The server never logs a token value — only credential names and error kinds.
 
 #### Manual Verification:
 
-- [ ] None for this phase (no user-visible surface yet)
+- [x] None for this phase (no user-visible surface yet)
+
+### Implementation log
+
+**Status:** complete
+**Base commit:** 0d00e23
+**Phase commit:** (this commit)
+
+Added `internal/sysdep/memory.go` + `unixsocket.go` (with `sysdeptest` fakes) and
+the `internal/broker` package: `Store` (mlock + wipe-on-replace + wipe-on-shutdown,
+tokens as `[]byte` throughout), the newline-delimited JSON protocol, and `Server`.
+
+Two things the tests caught:
+
+- The `sun_path` guard fires on macOS `t.TempDir()` paths — they embed the test
+  name on top of an already-long `/var/folders/…` TMPDIR and overshoot 104 bytes.
+  Tests use a short `os.MkdirTemp("", "ac")` dir instead. This is *not* only a test
+  artifact: it confirms the production path-length check is load-bearing, and that
+  a long `$HOME` or `XDG_CACHE_HOME` can genuinely overflow it.
+- The readiness `Probe` (dial-and-hang-up) was reaching `handle` and logging
+  "malformed request". An `io.EOF` on the first decode is now a silent drop.
+
+`make test` and `make lint` green.
 
 ---
 
