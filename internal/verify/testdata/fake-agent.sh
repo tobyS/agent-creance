@@ -92,7 +92,14 @@ fi
 # could connect to it would be exactly the in-cage token endpoint the design
 # excludes: the agent could ask for the very secrets injection exists to keep out of
 # its hands. Two ways in — connect, and read the socket file — both must fail.
-if nc -U -w 2 "$CREANCE_BROKER_SOCK" </dev/null >/dev/null 2>&1; then
+#
+# An empty path is emitted as its own result, never as "blocked": the harness plants
+# a LIVE listener at this path precisely so a denial means something, and a probe
+# that "passed" because it had nowhere to connect would keep passing after the
+# sandbox stopped denying it.
+if [ -z "$CREANCE_BROKER_SOCK" ]; then
+	emit broker-socket no-socket-path
+elif nc -U -w 2 "$CREANCE_BROKER_SOCK" </dev/null >/dev/null 2>&1; then
 	emit broker-socket LEAK
 elif cat "$CREANCE_BROKER_SOCK" >/dev/null 2>&1; then
 	emit broker-socket LEAK

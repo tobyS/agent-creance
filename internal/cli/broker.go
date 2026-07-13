@@ -76,6 +76,10 @@ func runBroker(ctx context.Context, app *App, sock string) error {
 	if err != nil {
 		return fmt.Errorf("broker: listen: %w", err)
 	}
+	// Clean up after ourselves even when nobody reaps us: the proxy lifecycle also
+	// removes the socket on teardown, but a broker killed directly should not leave a
+	// dead socket file that the next Listen has to clear.
+	defer func() { _ = app.FS.Remove(sock) }()
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

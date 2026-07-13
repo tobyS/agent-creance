@@ -664,6 +664,44 @@ Decision on delivery-channel evolution is **resolved**.
 - [ ] `docs/design.md` describes the shipped channel accurately, including the
       bounded memory-custody claim
 
+### Implementation log
+
+**Status:** complete (automated criteria; manual items pending user verification)
+**Phase commit:** (this commit)
+
+`broker_integration_test.go` (the real binary, re-executed as the broker, over a
+real socket), the Python integration fixture rewritten onto a stub broker
+(`running_proxy_with_secret` → `running_proxy_with_broker`), and the design doc.
+
+No out-of-cage batch was needed: this session is not caged.
+
+**Results.** `make test`, `make lint`, `make test-enforcer` (159) green.
+`make test-enforcer-integration`: **16 passed** against a live `mitmdump` fetching
+from a real socket — including the concurrent-proxy isolation test, now two proxies
+with two brokers. The new Go broker daemon tests pass (serves from fd 3; socket is
+`0600`; the token is absent from `ps`; SIGTERM exits, wipes, and removes the socket;
+an empty payload still serves and fails closed).
+
+**Two pre-existing integration failures, NOT caused by this work** — both reproduce
+verbatim at `0d00e23` (before any implementation): `TestLiveSafehouseEgressDenied`
+and `TestCageVerificationBattery`. On this host the SBPL `(deny network*)` baseline
+is not being enforced, so every *network* vector leaks (`net-raw-tcp`, `net-dns`,
+`net-localhost-v4/v6`, `net-child`). Worth the user's attention on its own terms; it
+is not in this ticket's scope.
+
+Notably `broker-socket` reported **blocked** even in that weakened cage — the
+filesystem layer (never mounted, denied by path) held when the network layer did
+not, which is exactly why the plan asked for both. The probe was hardened after the
+fact: it emits a distinct `no-socket-path` rather than `blocked` when the path is
+empty, and it was verified to report **LEAK** when run un-sandboxed against the same
+live socket. A probe that passed because it had nowhere to connect would keep
+passing after the sandbox stopped denying it.
+
+Also recorded: a bare `Alive(pid)` reports an exited-but-unreaped child as alive
+(kill(pid,0) sees a zombie). This does not affect the lifecycle, because both
+`ProxyUp` and `BrokerUp` are `Alive() && Probe()` composites — but the integration
+test has to `Wait4` rather than trust `Alive`.
+
 ---
 
 ## Testing Strategy

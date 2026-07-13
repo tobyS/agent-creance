@@ -19,7 +19,9 @@ egress), mirroring the Go integration-test convention.
 
 import json
 import os
+import shutil
 import socket
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -509,12 +511,61 @@ def _echo_origin():
         thread.join(timeout=5)
 
 
+class _BrokerHandler(socketserver.StreamRequestHandler):
+    """One request per connection, newline-delimited JSON — internal/broker's protocol."""
+
+    def handle(self):
+        line = self.rfile.readline()
+        if not line:
+            return  # a readiness probe: connect, hang up
+        credential = json.loads(line).get("credential", "")
+        tokens = self.server.tokens
+        if credential in tokens:
+            resp = {"token": tokens[credential]}
+        else:
+            resp = {"error": "unknown_credential"}
+        self.wfile.write(json.dumps(resp).encode() + b"\n")
+
+
+class _StubBrokerServer(socketserver.ThreadingUnixStreamServer):
+    daemon_threads = True
+
+    def __init__(self, path, tokens):
+        self.tokens = tokens
+        super().__init__(path, _BrokerHandler)
+
+
 @contextmanager
-def running_proxy_with_secret(policy_obj, secret_obj):
-    """Like running_proxy, but also delivers secret_obj (a {name: token} dict) to the
-    addon over an inherited fd — the real end-to-end delivery path. The child inherits
-    the pipe read end (kept open via pass_fds) and is told its number via
-    creance_secret_fd, mirroring the Go launcher's SpawnWithSecret (which uses fd 3)."""
+def _stub_broker(tokens):
+    """A stand-in for the Go credential broker, on a real unix socket.
+
+    The Go daemon has its own end-to-end test (internal/proxy/broker_integration_test.go);
+    what this file is for is proving the *addon* fetches, renders, and fails closed
+    against a real socket under a real mitmdump.
+    """
+    tmp = tempfile.mkdtemp(prefix="cb")  # short: sun_path is 104 bytes
+    path = os.path.join(tmp, "b.sock")
+    srv = _StubBrokerServer(path, tokens)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield path
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        thread.join(timeout=5)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@contextmanager
+def running_proxy_with_broker(policy_obj, tokens):
+    """Like running_proxy, but points the addon at a live credential broker.
+
+    This is the real end-to-end injection path since AC-0069b: the addon holds no
+    secrets, and fetches the token from the broker's unix socket once per injected
+    request. The socket path rides argv (it is not a secret — the socket's 0600 mode
+    and its unreachability from the cage are the access control).
+    """
     _require_tooling()
     tmp = tempfile.mkdtemp(prefix="creance-enforcer-inj-it-")
     confdir = os.path.join(tmp, "conf")
@@ -523,45 +574,38 @@ def running_proxy_with_secret(policy_obj, secret_obj):
     _write_policy(policy_path, policy_obj)
     port = _free_port()
 
-    r, w = os.pipe()
-    os.write(w, json.dumps(secret_obj).encode())
-    os.close(w)  # EOF for the child's read
-
-    proc = subprocess.Popen(
-        [
-            _MITMDUMP,
-            "--set", f"confdir={confdir}",
-            "-p", str(port),
-            "-s", _ENFORCER,
-            "--set", f"creance_policy={policy_path}",
-            "--set", f"creance_audit_log={audit_path}",
-            "--set", f"creance_secret_fd={r}",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        pass_fds=(r,),
-    )
-    os.close(r)  # the child holds its own copy
-    ca_cert = os.path.join(confdir, "mitmproxy-ca-cert.pem")
-    try:
-        _wait_until_ready(proc, port, ca_cert)
-        yield _Proxy(port, ca_cert, policy_path, audit_path)
-    finally:
-        proc.terminate()
+    with _stub_broker(tokens) as sock:
+        proc = subprocess.Popen(
+            [
+                _MITMDUMP,
+                "--set", f"confdir={confdir}",
+                "-p", str(port),
+                "-s", _ENFORCER,
+                "--set", f"creance_policy={policy_path}",
+                "--set", f"creance_audit_log={audit_path}",
+                "--set", f"creance_broker_sock={sock}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        ca_cert = os.path.join(confdir, "mitmproxy-ca-cert.pem")
         try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        import shutil
-
-        shutil.rmtree(tmp, ignore_errors=True)
+            _wait_until_ready(proc, port, ca_cert)
+            yield _Proxy(port, ca_cert, policy_path, audit_path)
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 _INJECT_POLICY = {
     "version": 1,
     "credentials": {
-        # source is resolved host-side by Go; here the token arrives over the fd, so
-        # source is a placeholder and only header/template matter to the addon.
+        # source is resolved host-side by Go; the addon never reads it — it fetches the
+        # value from the broker — so only header/template matter here.
         "gh": {"source": "env://IGNORED", "header": "Authorization", "template": "Bearer {token}"},
     },
     "allow": [{"host": "127.0.0.1", "mode": "intercept", "inject": "gh"}],
@@ -571,7 +615,7 @@ _INJECT_POLICY = {
 
 def test_injection_overwrites_client_header_e2e():
     with _echo_origin() as origin_port:
-        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
+        with running_proxy_with_broker(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
             rc, code, headers, body = _curl(
                 p,
                 f"http://127.0.0.1:{origin_port}/echo",
@@ -586,7 +630,7 @@ def test_injection_overwrites_client_header_e2e():
 
 def test_injection_unavailable_472_e2e():
     with _echo_origin() as origin_port:
-        with running_proxy_with_secret(_INJECT_POLICY, {}) as p:  # nothing resolved
+        with running_proxy_with_broker(_INJECT_POLICY, {}) as p:  # nothing resolved
             rc, code, headers, body = _curl(
                 p, f"http://127.0.0.1:{origin_port}/echo", use_mitm_ca=False
             )
@@ -599,7 +643,7 @@ def test_injection_unavailable_472_e2e():
 
 def test_upstream_401_annotated_with_x_cage_injected_e2e():
     with _echo_origin() as origin_port:
-        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
+        with running_proxy_with_broker(_INJECT_POLICY, {"gh": "REALTOKEN"}) as p:
             rc, code, headers, body = _curl(
                 p, f"http://127.0.0.1:{origin_port}/reject401", use_mitm_ca=False
             )
@@ -615,17 +659,18 @@ def test_concurrent_proxies_hold_distinct_secrets_e2e():
     """Two simultaneous proxies each inject their own token, with no shared state.
 
     The multi-project claim ("four repos = four proxies = four scoped tokens"), reduced
-    to its mechanism: the proxy is refcounted per project, and each spawn reads its own
-    payload off its own inherited fd. So N concurrent cages hold N independently scoped
-    tokens, which is what neutralizes the cage-wide keychain read.
+    to its mechanism: the proxy is refcounted per project, and each one is paired with
+    its own broker on its own socket (AC-0069b; before that, its own inherited fd). So N
+    concurrent cages hold N independently scoped tokens, which is what neutralizes the
+    cage-wide keychain read.
 
     Both proxies are alive at once (nested context managers) and share one policy — the
     same credential NAME, deliberately, since a per-name collision is exactly the shared
     state this test must rule out.
     """
     with _echo_origin() as origin_a, _echo_origin() as origin_b:
-        with running_proxy_with_secret(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_A"}) as pa, \
-             running_proxy_with_secret(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_B"}) as pb:
+        with running_proxy_with_broker(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_A"}) as pa, \
+             running_proxy_with_broker(_INJECT_POLICY, {"gh": "TOKEN_PROJECT_B"}) as pb:
             assert pa.port != pb.port, "the two proxies must be distinct processes"
 
             rc_a, code_a, hdr_a, body_a = _curl(
