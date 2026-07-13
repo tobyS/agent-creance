@@ -59,6 +59,13 @@ type App struct {
 	Flock          sysdep.Flock
 	ProcessManager sysdep.ProcessManager
 	PortAllocator  sysdep.PortAllocator
+	// UnixSocket and Memory are the two seams the credential broker (AC-0069b)
+	// needs: binding/probing its unix socket, and the best-effort memory hygiene
+	// (mlock, no core dumps) it applies to the tokens it custodies. proxy.Manager
+	// takes UnixSocket to probe the broker's readiness, exactly as it takes
+	// PortAllocator to probe the proxy's.
+	UnixSocket sysdep.UnixSocket
+	Memory     sysdep.Memory
 	// TLSProber and Sleeper are the two extra seams setup.Installer needs (beyond
 	// those above) for the live CA verification probe and the CA-generation poll;
 	// the setup command (AC-0028) drives them. Tests wire the sysdeptest fakes.
@@ -194,6 +201,8 @@ func newRootCmd(app *App) *cobra.Command {
 	addCmd(newVersionCmd(app), groupInspect)
 	// Maintenance — teardown (plus the auto-generated help/completion below).
 	addCmd(newCleanCmd(app), groupMaint)
+	// The credential-broker daemon: hidden, spawned by run, never grouped in help.
+	root.AddCommand(newBrokerCmd(app))
 
 	root.SetHelpCommandGroupID(groupMaint)
 	root.SetCompletionCommandGroupID(groupMaint)
@@ -226,6 +235,8 @@ func Main() int {
 		Flock:          sysdep.OSFlock{},
 		ProcessManager: sysdep.OSProcessManager{},
 		PortAllocator:  sysdep.OSPortAllocator{},
+		UnixSocket:     sysdep.OSUnixSocket{},
+		Memory:         sysdep.OSMemory{},
 		TLSProber:      sysdep.OSTLSProber{},
 		Sleeper:        sysdep.OSSleeper{},
 		FSType:         sysdep.OSFilesystemTyper{},

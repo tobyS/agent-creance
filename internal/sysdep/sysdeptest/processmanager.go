@@ -17,8 +17,13 @@ import (
 // PID alive while giving it a StartTime that differs from the one recorded in the
 // lock.
 type FakeProcessManager struct {
-	// SpawnPID is the PID returned by Spawn when SpawnErr is nil.
+	// SpawnPID is the PID returned by Spawn when SpawnErr is nil and SpawnPIDs is
+	// exhausted.
 	SpawnPID int
+	// SpawnPIDs, when non-empty, is consumed one PID per spawn (in order) before
+	// falling back to SpawnPID — so a test that spawns two daemons (the credential
+	// broker and mitmdump) can tell their PIDs apart.
+	SpawnPIDs []int
 	// SpawnErr, if set, makes Spawn fail.
 	SpawnErr error
 	// AlivePIDs is the liveness oracle: Alive(pid) returns AlivePIDs[pid].
@@ -62,7 +67,7 @@ func (f *FakeProcessManager) Spawn(_ context.Context, name string, args ...strin
 	if f.SpawnErr != nil {
 		return 0, f.SpawnErr
 	}
-	return f.SpawnPID, nil
+	return f.nextPID(), nil
 }
 
 func (f *FakeProcessManager) SpawnWithSecret(_ context.Context, secret []byte, name string, args ...string) (int, error) {
@@ -73,7 +78,17 @@ func (f *FakeProcessManager) SpawnWithSecret(_ context.Context, secret []byte, n
 	if f.SpawnErr != nil {
 		return 0, f.SpawnErr
 	}
-	return f.SpawnPID, nil
+	return f.nextPID(), nil
+}
+
+// nextPID pops the next scripted PID, falling back to SpawnPID. The caller holds mu.
+func (f *FakeProcessManager) nextPID() int {
+	if len(f.SpawnPIDs) == 0 {
+		return f.SpawnPID
+	}
+	pid := f.SpawnPIDs[0]
+	f.SpawnPIDs = f.SpawnPIDs[1:]
+	return pid
 }
 
 func (f *FakeProcessManager) Alive(pid int) bool {

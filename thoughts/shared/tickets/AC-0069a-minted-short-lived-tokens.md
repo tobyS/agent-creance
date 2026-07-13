@@ -3,7 +3,7 @@
 **Status:** Open
 **Estimated Complexity:** High
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-12
 
 > Sub-ticket of **AC-0069** (Credential injection, Phase 2). **Deferred** — no
 > near-term agent-tooling need beyond GitHub (per the discussion audits).
@@ -48,7 +48,7 @@ injected credentials are short-lived and auto-refreshed.
 
 ## Open Questions
 
-(Deferred to Phase-2 planning.)
+(Deferred to Phase-2 planning.) Resolved 2026-07-12 — see Notes & Updates.
 
 ## Questions for Research/Planning
 
@@ -74,6 +74,30 @@ injected credentials are short-lived and auto-refreshed.
 (Filled when planned.)
 
 ## Notes & Updates
+
+### 2026-07-12
+Planning round started (`/tce:plan`) against the 2026-07-11 research; **paused
+pending AC-0069b**. Decisions resolved with the user (binding for the future
+plan round):
+
+1. **Refresh channel: AC-0069b broker first.** The unix-socket broker is
+   researched, planned, and implemented before this ticket is planned; this
+   ticket's refresh loop then consumes it. Confirms the epic's sequencing
+   preference; the fd-3 stream extension (Option B) and per-refresh respawn
+   (Option C) are rejected.
+2. **First OAuth2 target: Google Drive with the `drive.file` scope** —
+   non-sensitive scope, no verification friction, installed-app loopback
+   consent host-side.
+3. **Refresh-failure semantics: stale-then-472-at-expiry.** Keep injecting the
+   still-valid token after a failed refresh; once `expires_at` passes without
+   a successful refresh, answer 472 (human-recoverable) instead of sending a
+   dead token upstream. Requires expiry metadata at the injection side —
+   an input to the AC-0069b broker protocol design.
+4. **Revocation: best-effort.** Last-out `Detach` sends
+   `DELETE /installation/token` for minted GitHub tokens, ignoring failures.
+
+Next step: `/tce:research AC-0069b`, then plan/implement the broker, then
+re-run `/tce:plan AC-0069a`.
 
 ### 2026-06-29
 Created (deferred) as the minted-token sub-ticket of AC-0069.

@@ -36,6 +36,11 @@ type FileSystem interface {
 	// MkdirAll creates name and any missing parents with perm, mirroring
 	// os.MkdirAll. It is a no-op (nil) if the directory already exists.
 	MkdirAll(name string, perm fs.FileMode) error
+	// Chmod changes name's mode, mirroring os.Chmod. It exists because MkdirAll
+	// only applies perm to directories it actually *creates*: a state dir left
+	// behind at a laxer mode by an earlier binary would silently stay that way,
+	// and the broker's socket directory has to be 0700 whether it is new or not.
+	Chmod(name string, perm fs.FileMode) error
 	// Remove removes the named file or empty directory, mirroring os.Remove.
 	Remove(name string) error
 	// Rename renames (moves) oldpath to newpath, mirroring os.Rename — the
@@ -70,6 +75,10 @@ func (OSFileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
 
 func (OSFileSystem) MkdirAll(name string, perm fs.FileMode) error {
 	return os.MkdirAll(name, perm)
+}
+
+func (OSFileSystem) Chmod(name string, perm fs.FileMode) error {
+	return os.Chmod(name, perm)
 }
 
 func (OSFileSystem) Remove(name string) error {

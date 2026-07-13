@@ -46,7 +46,7 @@ func runClean(app *App, force bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve project: %w", err)
 	}
-	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
+	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.UnixSocket, app.Sleeper, app.Stderr)
 	res, err := mgr.Clean(layout, force)
 	if err != nil {
 		return fmt.Errorf("clean proxy: %w", err)

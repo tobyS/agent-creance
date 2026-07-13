@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"strconv"
+	"io/fs"
 	"strings"
 	"syscall"
 	"testing"
@@ -22,6 +22,7 @@ import (
 // tests can seed and inspect proxy.lock contents.
 type lockJSON struct {
 	ProxyPID      int            `json:"proxy_pid"`
+	BrokerPID     int            `json:"broker_pid"`
 	Port          int            `json:"port"`
 	PolicyHash    string         `json:"policy_hash"`
 	Agents        []agentRefJSON `json:"agents"`
@@ -73,6 +74,7 @@ type harness struct {
 	flock *sysdeptest.FakeFlock
 	proc  *sysdeptest.FakeProcessManager
 	ports *sysdeptest.FakePortAllocator
+	sock  *sysdeptest.FakeUnixSocket
 	fs    *sysdeptest.FakeFileSystem
 	sleep *sysdeptest.FakeSleeper
 	warn  *bytes.Buffer
@@ -83,18 +85,24 @@ func newHarness() *harness {
 	fl := sysdeptest.NewFakeFlock()
 	pm := sysdeptest.NewFakeProcessManager()
 	pa := sysdeptest.NewFakePortAllocator()
+	us := sysdeptest.NewFakeUnixSocket()
 	fs := sysdeptest.NewFakeFileSystem()
 	sl := &sysdeptest.FakeSleeper{}
 	warn := &bytes.Buffer{}
+	lay := testLayout()
+	// The state dir must exist for the broker path's Chmod to find it, as it does in
+	// production (Attach MkdirAll's it first).
+	fs.Dirs[lay.Root] = true
 	return &harness{
-		mgr:   proxy.NewManager(fs, fl, pm, pa, sl, warn),
+		mgr:   proxy.NewManager(fs, fl, pm, pa, us, sl, warn),
 		flock: fl,
 		proc:  pm,
 		ports: pa,
+		sock:  us,
 		fs:    fs,
 		sleep: sl,
 		warn:  warn,
-		lay:   testLayout(),
+		lay:   lay,
 	}
 }
 
@@ -122,6 +130,7 @@ func (h *harness) cfg(selfPID int) proxy.StartConfig {
 		EnforcerPy: "/cache/agent-creance/enforcer/enforcer.py",
 		PolicyHash: "hash-v1",
 		SelfPID:    selfPID,
+		SelfExe:    brokerExe,
 	}
 }
 
@@ -130,6 +139,25 @@ func (h *harness) cfg(selfPID int) proxy.StartConfig {
 func (h *harness) agentAlive(pid int) {
 	h.proc.AlivePIDs[pid] = true
 	h.proc.StartTimes[pid] = startFor(pid)
+}
+
+// The two daemons a project with injected credentials runs. The broker is spawned
+// first, so it is listening before the proxy serves a request that needs a token.
+const (
+	brokerPID = 110
+	proxyPID  = 111
+	brokerExe = "/usr/local/bin/agent-creance"
+)
+
+// injectable scripts the happy path for a project that injects a credential: both
+// daemons spawn, come alive, and start listening.
+func (h *harness) injectable() {
+	h.ports.AllocPort = 8080
+	h.ports.Listening[8080] = true
+	h.proc.SpawnPIDs = []int{brokerPID, proxyPID}
+	h.proc.AlivePIDs[brokerPID] = true
+	h.proc.AlivePIDs[proxyPID] = true
+	h.sock.Listening[h.lay.BrokerSock()] = true
 }
 
 func TestAttachStartsProxyWhenNone(t *testing.T) {
@@ -443,12 +471,11 @@ func TestLockPathIsOutOfTree(t *testing.T) {
 	assert.NotContains(t, locked, h.lay.Canonical, "lock must not live in the project tree")
 }
 
-func TestAttachDeliversInjectionSecretOnSpawn(t *testing.T) {
+// The secrets now go to the broker daemon, not to mitmdump: the addon is told only
+// where the socket is (AC-0069b).
+func TestAttachDeliversInjectionSecretToBroker(t *testing.T) {
 	h := newHarness()
-	h.ports.AllocPort = 8080
-	h.proc.SpawnPID = 111
-	h.proc.AlivePIDs[111] = true
-	h.ports.Listening[8080] = true
+	h.injectable()
 
 	cfg := h.cfg(222)
 	called := false
@@ -456,18 +483,128 @@ func TestAttachDeliversInjectionSecretOnSpawn(t *testing.T) {
 		called = true
 		return []byte(`{"gh":"tok3n"}`), nil
 	}
-	_, err := h.mgr.Attach(context.Background(), cfg)
+	att, err := h.mgr.Attach(context.Background(), cfg)
 	require.NoError(t, err)
 
 	require.True(t, called, "Secrets must be resolved on the spawn path")
-	require.Len(t, h.proc.Spawned, 1)
-	require.Len(t, h.proc.Secrets, 1, "the proxy was spawned via SpawnWithSecret")
+	require.Len(t, h.proc.Spawned, 2, "the broker and the proxy are both started")
+
+	// The broker comes up first — it must be listening before the proxy takes a
+	// request that needs a credential.
+	broker, proxied := h.proc.Spawned[0], h.proc.Spawned[1]
+	assert.Equal(t, brokerExe, broker.Name)
+	assert.Contains(t, broker.Args, "broker")
+	assert.Contains(t, broker.Args, h.lay.BrokerSock())
+	assert.Equal(t, "mitmdump", proxied.Name)
+
+	// The payload reached the broker over the inherited descriptor, and nothing else.
+	require.Len(t, h.proc.Secrets, 1, "exactly one process receives the secrets: the broker")
 	assert.Equal(t, `{"gh":"tok3n"}`, string(h.proc.Secrets[0]))
-	assert.Contains(t, h.proc.Spawned[0].Args, "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
-	// Hygiene: the payload never rides argv.
-	for _, a := range h.proc.Spawned[0].Args {
-		assert.NotContains(t, a, "tok3n", "secret must not appear in argv")
+
+	// The addon learns the socket path (not a secret — the socket's mode is the
+	// control), and no longer an fd to read the token from itself.
+	assert.Contains(t, proxied.Args, "creance_broker_sock="+h.lay.BrokerSock())
+	for _, a := range proxied.Args {
+		assert.NotContains(t, a, "creance_secret_fd", "the fd channel to the addon is gone")
 	}
+
+	// Hygiene, unchanged from Phase 1: the payload never rides argv, where ps would
+	// show it.
+	for _, sp := range h.proc.Spawned {
+		for _, a := range sp.Args {
+			assert.NotContains(t, a, "tok3n", "secret must not appear in argv")
+		}
+	}
+
+	// Both daemons are recorded in the lock, so a later Detach can reap both.
+	assert.Equal(t, brokerPID, att.BrokerPID)
+	ls := h.readLock(t)
+	assert.Equal(t, brokerPID, ls.BrokerPID)
+	assert.Equal(t, proxyPID, ls.ProxyPID)
+
+	// The state dir hosting the socket is tightened to 0700 even if it predates us.
+	assert.Equal(t, fs.FileMode(0o700), h.fs.Perms[h.lay.Root])
+}
+
+// A broker that never comes up must not take the cage down with it: the proxy still
+// starts, and the addon answers 472 for the hosts that needed a credential.
+func TestAttachBrokerFailureStillSpawnsProxy(t *testing.T) {
+	h := newHarness()
+	h.injectable()
+	h.sock.Listening[h.lay.BrokerSock()] = false // never starts listening
+	h.proc.AlivePIDs[brokerPID] = false          // and the process is gone
+
+	cfg := h.cfg(222)
+	cfg.Secrets = func(context.Context) ([]byte, error) { return []byte(`{"gh":"tok3n"}`), nil }
+
+	att, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err, "a dead broker is not a failed attach")
+
+	assert.Zero(t, att.BrokerPID)
+	require.Len(t, h.proc.Spawned, 2)
+	proxied := h.proc.Spawned[1]
+	assert.Equal(t, "mitmdump", proxied.Name)
+	for _, a := range proxied.Args {
+		assert.NotContains(t, a, "creance_broker_sock",
+			"without a broker the addon gets no socket, so injection fails closed")
+	}
+	assert.Contains(t, h.warn.String(), "injected hosts will answer 472")
+	assert.Zero(t, h.readLock(t).BrokerPID)
+}
+
+// sun_path is 104 bytes: a long $HOME or XDG_CACHE_HOME can genuinely overflow it.
+// Same rule as any other injection failure — warn, run, 472.
+func TestAttachOverlongSocketPathSkipsBroker(t *testing.T) {
+	h := newHarness()
+	h.injectable()
+	h.lay.Root = "/" + strings.Repeat("x", sysdep.MaxSocketPathLen)
+	h.fs.Dirs[h.lay.Root] = true
+
+	cfg := h.cfg(222)
+	cfg.Secrets = func(context.Context) ([]byte, error) { return []byte(`{"gh":"tok3n"}`), nil }
+
+	att, err := h.mgr.Attach(context.Background(), cfg)
+	require.NoError(t, err)
+
+	assert.Zero(t, att.BrokerPID)
+	require.Len(t, h.proc.Spawned, 1, "no broker was even spawned")
+	assert.Equal(t, "mitmdump", h.proc.Spawned[0].Name)
+	assert.Empty(t, h.proc.Secrets, "the secrets were never handed to anything")
+	assert.Contains(t, h.warn.String(), "too long")
+}
+
+// Last agent out reaps both daemons and removes the socket file. The broker's
+// SIGTERM is what makes it wipe the tokens it custodied.
+func TestDetachLastAgentStopsBrokerAndProxy(t *testing.T) {
+	h := newHarness()
+	h.seedLock(lockJSON{ProxyPID: proxyPID, BrokerPID: brokerPID, Port: 8080, PolicyHash: "hash-v1", Agents: agentRefs(555)})
+	h.proc.AlivePIDs[proxyPID] = true
+	h.proc.AlivePIDs[brokerPID] = true
+	h.fs.Files[h.lay.BrokerSock()] = []byte{}
+
+	require.NoError(t, h.mgr.Detach(h.lay, 555))
+
+	assert.ElementsMatch(t, []sysdeptest.SignaledPID{
+		{PID: proxyPID, Sig: syscall.SIGTERM},
+		{PID: brokerPID, Sig: syscall.SIGTERM},
+	}, h.proc.Signaled)
+	assert.NotContains(t, h.fs.Files, h.lay.BrokerSock(), "the socket file is removed")
+	assert.Zero(t, h.readLock(t).BrokerPID)
+}
+
+// A non-final detach leaves both daemons alone — the surviving agent still needs
+// its credentials, which is exactly the case a run-session-owned broker would break.
+func TestDetachNonFinalKeepsBroker(t *testing.T) {
+	h := newHarness()
+	h.seedLock(lockJSON{ProxyPID: proxyPID, BrokerPID: brokerPID, Port: 8080, PolicyHash: "hash-v1", Agents: agentRefs(555, 666)})
+	h.proc.AlivePIDs[proxyPID] = true
+	h.proc.AlivePIDs[brokerPID] = true
+	h.agentAlive(666)
+
+	require.NoError(t, h.mgr.Detach(h.lay, 555))
+
+	assert.Empty(t, h.proc.Signaled, "neither daemon is signalled while an agent remains")
+	assert.Equal(t, brokerPID, h.readLock(t).BrokerPID)
 }
 
 func TestAttachReuseDoesNotResolveSecret(t *testing.T) {

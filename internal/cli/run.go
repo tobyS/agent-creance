@@ -217,8 +217,15 @@ func runRun(ctx context.Context, app *App, dir string, quiet bool) error {
 	// 10. Start or attach the refcounted proxy. Detach is deferred immediately so
 	//    every exit path decrements; the last agent out kills the proxy and purges
 	//    the session overlay (proxy.Manager owns that logic).
-	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
+	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.UnixSocket, app.Sleeper, app.Stderr)
 	selfPID := os.Getpid()
+
+	// The broker daemon is this same binary, re-executed (see newBrokerCmd). If the
+	// path is unreadable, no broker starts and injection 472s — the cage still runs.
+	selfExe, exeErr := os.Executable()
+	if exeErr != nil {
+		fmt.Fprintf(app.Stderr, "warning: locate own binary for the credential broker: %v\n", exeErr)
+	}
 
 	// Load the compiled policy so injection can resolve the credentials it references.
 	// Parsing here is cheap and hermetic; the expensive/prompting op:// resolution is
@@ -238,6 +245,7 @@ func runRun(ctx context.Context, app *App, dir string, quiet bool) error {
 		EnforcerPy: enforcerPy,
 		PolicyHash: polRes.InputHash,
 		SelfPID:    selfPID,
+		SelfExe:    selfExe,
 		Secrets: func(ctx context.Context) ([]byte, error) {
 			return resolveInjectionSecrets(ctx, app.SecretResolver, compiledForInject, func(msg string) {
 				fmt.Fprintf(app.Stderr, "warning: %s\n", msg)

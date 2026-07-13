@@ -38,6 +38,7 @@ type FakeFileSystem struct {
 	WriteErrs   map[string]error
 	StatErrs    map[string]error
 	MkdirErrs   map[string]error
+	ChmodErrs   map[string]error
 	RemoveErrs  map[string]error
 	RenameErrs  map[string]error
 	ReadDirErrs map[string]error
@@ -62,6 +63,7 @@ func NewFakeFileSystem() *FakeFileSystem {
 		WriteErrs:   map[string]error{},
 		StatErrs:    map[string]error{},
 		MkdirErrs:   map[string]error{},
+		ChmodErrs:   map[string]error{},
 		RemoveErrs:  map[string]error{},
 		RenameErrs:  map[string]error{},
 		ReadDirErrs: map[string]error{},
@@ -178,6 +180,22 @@ func (f *FakeFileSystem) MkdirAll(name string, perm fs.FileMode) error {
 	}
 	for dir := name; dir != "/" && dir != "." && dir != ""; dir = filepath.Dir(dir) {
 		f.Dirs[dir] = true
+	}
+	f.Perms[name] = perm
+	return nil
+}
+
+// Chmod mirrors os.Chmod: it records the new mode in Perms (so a test can assert
+// the broker's socket dir was tightened) and errors on a path the fake does not
+// know about.
+func (f *FakeFileSystem) Chmod(name string, perm fs.FileMode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err, ok := f.ChmodErrs[name]; ok {
+		return err
+	}
+	if _, isFile := f.Files[name]; !isFile && !f.Dirs[name] {
+		return &fs.PathError{Op: "chmod", Path: name, Err: fs.ErrNotExist}
 	}
 	f.Perms[name] = perm
 	return nil

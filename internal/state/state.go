@@ -43,6 +43,7 @@ const (
 	claudeSBName       = "claude.sb"
 	configROSBName     = "config-ro.sb"
 	proxyLockName      = "proxy.lock"
+	brokerSockName     = "broker.sock"
 	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
 	// (egress.jsonl.1). The reader (internal/audit) reads it then the current file
@@ -282,6 +283,13 @@ func (l Layout) ConfigProfileSB() string { return filepath.Join(l.Root, configRO
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }
+
+// BrokerSock is the credential broker's unix socket (AC-0069b): the enforcer
+// fetches the current token for an injected credential from it, once per injected
+// request. It lives here, under the out-of-tree state root, precisely because the
+// cage never mounts it — the socket's unreachability, together with its 0600 mode,
+// is the whole access control.
+func (l Layout) BrokerSock() string { return filepath.Join(l.Root, brokerSockName) }
 
 // EgressJSONL is the JSONL audit log of proxied requests.
 func (l Layout) EgressJSONL() string { return filepath.Join(l.Root, egressJSONLName) }

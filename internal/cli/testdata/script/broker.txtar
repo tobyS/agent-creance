@@ -1,0 +1,30 @@
+# The credential broker (AC-0069b) is a daemon `run` spawns, never a command a user
+# invokes. It is hidden from help, requires its socket, and — because it is the
+# custodian of every injected token — must not be discoverable or startable by
+# accident. HOME/XDG_CACHE_HOME under $WORK and PATH pinned to $CREANCE_BIN keep the
+# scenario hermetic: no proxy, no mitmdump, no network.
+
+env HOME=$WORK/home
+env XDG_CACHE_HOME=$WORK/cache
+env PATH=$CREANCE_BIN
+
+# Hidden: the command exists but is absent from every help surface a user reads.
+agent-creance --help
+! stdout broker
+
+# It still runs when named explicitly — that is how `run` spawns it.
+agent-creance broker --help
+stdout 'credential broker daemon'
+stdout '--socket'
+
+# The socket is mandatory: a broker with nowhere to listen would be a silent
+# no-injection cage rather than an honest failure.
+! agent-creance broker
+stderr 'required flag\(s\) "socket" not set'
+
+# It takes no positional arguments — a stray path is a mistake, not a socket.
+! agent-creance broker --socket $WORK/b.sock /some/path
+stderr 'unknown command|accepts 0 arg'
+
+-- home/.keep --
+-- cache/.keep --

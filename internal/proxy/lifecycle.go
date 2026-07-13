@@ -29,6 +29,16 @@ import (
 // headless, scriptable flavour (no TUI), which is what a daemon wants.
 const proxyBin = "mitmdump"
 
+// brokerCmd is the hidden subcommand this binary re-executes itself as to run the
+// credential broker daemon (AC-0069b). Re-exec rather than a separate binary: the
+// broker must ship and version with the CLI that speaks its protocol.
+const brokerCmd = "broker"
+
+// stateDirPerm is the mode the project state dir is held at once it hosts the
+// broker socket. The socket itself is 0600 — that is the access control — but a
+// 0700 directory means a same-uid process cannot even enumerate it.
+const stateDirPerm = 0o700
+
 // readiness poll bounds for a freshly-spawned proxy: Attach waits up to
 // readyMaxAttempts * readyPollInterval for the proxy to start listening, so a proxy
 // that exits during startup (e.g. the enforcer refusing a corrupt initial policy.json)
@@ -47,6 +57,13 @@ const (
 type lockState struct {
 	// ProxyPID is the mitmproxy process; 0 when no proxy is running.
 	ProxyPID int `json:"proxy_pid"`
+	// BrokerPID is the credential-broker daemon (AC-0069b); 0 when the project
+	// injects no credentials, or when the broker could not be started (in which
+	// case the proxy still runs and the enforcer answers 472 for inject-hosts).
+	// It shares the proxy's lifetime exactly: spawned on the same branch, killed
+	// by the same last-out Detach. A lock written before this field existed
+	// unmarshals with it zero — read as "no broker", so the next Attach starts one.
+	BrokerPID int `json:"broker_pid"`
 	// Port is the proxy's ephemeral listen port; 0 when none has been allocated.
 	Port int `json:"port"`
 	// PolicyHash is the compiled-policy hash the running proxy was started with.
@@ -83,15 +100,17 @@ type Manager struct {
 	lock  sysdep.Flock
 	proc  sysdep.ProcessManager
 	ports sysdep.PortAllocator
+	sock  sysdep.UnixSocket
 	sleep sysdep.Sleeper
 	warn  io.Writer
 }
 
 // NewManager wires a Manager from the OS seams. warn receives the warn-never-kill
 // message (the caller passes app.Stderr); sleep bounds the post-spawn readiness poll;
-// the others are the injected seams.
-func NewManager(fs sysdep.FileSystem, lock sysdep.Flock, proc sysdep.ProcessManager, ports sysdep.PortAllocator, sleep sysdep.Sleeper, warn io.Writer) *Manager {
-	return &Manager{fs: fs, lock: lock, proc: proc, ports: ports, sleep: sleep, warn: warn}
+// sock probes the broker's socket the way ports probes the proxy's port; the others
+// are the injected seams.
+func NewManager(fs sysdep.FileSystem, lock sysdep.Flock, proc sysdep.ProcessManager, ports sysdep.PortAllocator, sock sysdep.UnixSocket, sleep sysdep.Sleeper, warn io.Writer) *Manager {
+	return &Manager{fs: fs, lock: lock, proc: proc, ports: ports, sock: sock, sleep: sleep, warn: warn}
 }
 
 // StartConfig is everything Attach needs to identify or launch a project's proxy.
@@ -105,13 +124,18 @@ type StartConfig struct {
 	PolicyHash string
 	// SelfPID is this invocation's PID (os.Getpid()), added to the agents array.
 	SelfPID int
+	// SelfExe is the agent-creance binary (os.Executable()), re-executed as the
+	// broker daemon (`agent-creance broker --socket …`). Empty disables the broker,
+	// and therefore injection.
+	SelfExe string
 	// Secrets, when non-nil, resolves the credential-injection payload host-side —
-	// the JSON {credential-name: raw-token} handed to the addon over fd
-	// sysdep.SecretFD. It is invoked ONLY when this Attach actually spawns the proxy
-	// (never on reuse), because resolving an op:// reference can prompt for Touch ID
-	// and must not re-prompt every time an agent attaches to an already-running
-	// proxy. A best-effort resolver: an individual unresolvable credential is omitted
-	// (the addon then answers 472 for requests needing it), not a hard error.
+	// the JSON {credential-name: raw-token} handed to the *broker* over fd
+	// sysdep.SecretFD (AC-0069b; before that it went to the addon directly). It is
+	// invoked ONLY when this Attach actually spawns the proxy (never on reuse),
+	// because resolving an op:// reference can prompt for Touch ID and must not
+	// re-prompt every time an agent attaches to an already-running proxy. A
+	// best-effort resolver: an individual unresolvable credential is omitted (the
+	// addon then answers 472 for requests needing it), not a hard error.
 	Secrets func(ctx context.Context) ([]byte, error)
 }
 
@@ -121,6 +145,10 @@ type Attachment struct {
 	Port int
 	// ProxyPID is the live mitmproxy process.
 	ProxyPID int
+	// BrokerPID is the live credential-broker daemon, or 0 when the project injects
+	// nothing (or the broker could not be started — injection then 472s, but the
+	// cage runs).
+	BrokerPID int
 	// PortChanged is true when a crash restart could not reclaim the recorded port
 	// (the warn-never-kill condition); the caller's own network.sb is unaffected,
 	// but already-attached agents were warned.
@@ -160,6 +188,7 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 	if proxyUp {
 		att.Port = cur.Port
 		att.ProxyPID = cur.ProxyPID
+		att.BrokerPID = cur.BrokerPID
 	} else {
 		port, changed, err := m.choosePort(cur.Port)
 		if err != nil {
@@ -173,7 +202,7 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		// Resolve the injection payload only now, on the spawn path — never on the
 		// reuse branch above — so op:// resolution can't re-prompt for Touch ID each
 		// time an agent attaches to a running proxy. A resolver error is non-fatal:
-		// spawn plain, and the addon fails closed (472) for inject-hosts.
+		// spawn without a broker, and the addon fails closed (472) for inject-hosts.
 		var secret []byte
 		if cfg.Secrets != nil {
 			s, serr := cfg.Secrets(ctx)
@@ -183,24 +212,26 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 				secret = s
 			}
 		}
-		var pid int
-		if len(secret) > 0 {
-			pid, err = m.proc.SpawnWithSecret(ctx, secret, proxyBin, mitmArgs(port, cfg, true)...)
-		} else {
-			pid, err = m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg, false)...)
-		}
+		// The broker custodies the secrets and serves them to the addon over its
+		// socket; it must be listening before the proxy starts taking requests.
+		brokerPID, sock := m.startBroker(ctx, cfg, secret)
+
+		pid, err := m.proc.Spawn(ctx, proxyBin, mitmArgs(port, cfg, sock)...)
 		if err != nil {
+			m.stopBroker(brokerPID, cfg.Layout)
 			return Attachment{}, fmt.Errorf("proxy: start mitmproxy: %w (try `agent-creance doctor`)", err)
 		}
 		if err := m.waitProxyReady(ctx, pid, port); err != nil {
-			// Don't leave a half-started proxy orphaned: the lock has not been written
-			// yet, so this PID is not yet recorded. Best-effort SIGTERM by PID (a proxy
-			// that already exited is a no-op).
+			// Don't leave a half-started proxy (or its broker) orphaned: the lock has
+			// not been written yet, so neither PID is recorded. Best-effort SIGTERM by
+			// PID (a process that already exited is a no-op).
 			_ = m.proc.Signal(pid, syscall.SIGTERM)
+			m.stopBroker(brokerPID, cfg.Layout)
 			return Attachment{}, err
 		}
 		att.Port = port
 		att.ProxyPID = pid
+		att.BrokerPID = brokerPID
 		att.PortChanged = changed
 	}
 
@@ -213,11 +244,85 @@ func (m *Manager) Attach(ctx context.Context, cfg StartConfig) (Attachment, erro
 		return Attachment{}, fmt.Errorf("proxy: read own start time (pid %d): %w", cfg.SelfPID, err)
 	}
 	agents := addRef(alive, agentRef{PID: cfg.SelfPID, StartTime: selfStart})
-	next := lockState{ProxyPID: att.ProxyPID, Port: att.Port, PolicyHash: cfg.PolicyHash, Agents: agents, CanonicalPath: cfg.Layout.Canonical}
+	next := lockState{ProxyPID: att.ProxyPID, BrokerPID: att.BrokerPID, Port: att.Port, PolicyHash: cfg.PolicyHash, Agents: agents, CanonicalPath: cfg.Layout.Canonical}
 	if err := writeLock(lf, next); err != nil {
 		return Attachment{}, err
 	}
 	return att, nil
+}
+
+// startBroker spawns the credential broker for a project that injects something,
+// handing it the resolved secrets over the inherited descriptor, and waits until
+// it is listening. It returns the broker's PID and the socket path the addon must
+// be told about — both zero/empty when no broker runs.
+//
+// Every failure here is non-fatal by design, and the reason is the same one that
+// makes injection failures a per-request 472 rather than a failed spawn: a cage
+// that will not start is worse than a cage whose injected hosts refuse. So a
+// missing binary, an over-long socket path (sun_path is 104 bytes — a long $HOME
+// or XDG_CACHE_HOME really can overflow it), or a broker that never comes up all
+// warn and return 0. The proxy then starts without a broker socket, and the addon
+// answers 472 for exactly the hosts that needed a credential.
+func (m *Manager) startBroker(ctx context.Context, cfg StartConfig, secret []byte) (pid int, sock string) {
+	if len(secret) == 0 || cfg.SelfExe == "" {
+		return 0, "" // nothing to inject
+	}
+
+	sock = cfg.Layout.BrokerSock()
+	if len(sock) > sysdep.MaxSocketPathLen {
+		fmt.Fprintf(m.warn, "warning: credential broker socket path is too long (%d bytes, limit %d): %s\n"+
+			"  injected hosts will answer 472; set XDG_CACHE_HOME to a shorter path\n",
+			len(sock), sysdep.MaxSocketPathLen, sock)
+		return 0, ""
+	}
+
+	// The socket's mode is the access control, but tighten the directory too: it may
+	// predate this binary (MkdirAll only applies perm to dirs it creates).
+	if err := m.fs.Chmod(cfg.Layout.Root, stateDirPerm); err != nil {
+		fmt.Fprintf(m.warn, "warning: tighten state dir %q: %v\n", cfg.Layout.Root, err)
+	}
+
+	pid, err := m.proc.SpawnWithSecret(ctx, secret, cfg.SelfExe, brokerArgs(sock)...)
+	if err != nil {
+		fmt.Fprintf(m.warn, "warning: start credential broker: %v\n  injected hosts will answer 472\n", err)
+		return 0, ""
+	}
+	if err := m.waitBrokerReady(ctx, pid, sock); err != nil {
+		fmt.Fprintf(m.warn, "warning: %v\n  injected hosts will answer 472\n", err)
+		m.stopBroker(pid, cfg.Layout)
+		return 0, ""
+	}
+	return pid, sock
+}
+
+// waitBrokerReady blocks until the freshly-spawned broker is accepting connections
+// on its socket, the process has exited, or the bounded poll elapses — the same
+// shape (and the same bounds) as waitProxyReady, for the same reason: a PID from
+// Spawn is not evidence that the daemon ever came up.
+func (m *Manager) waitBrokerReady(ctx context.Context, pid int, sock string) error {
+	for attempt := 0; attempt < readyMaxAttempts; attempt++ {
+		if m.sock.Probe(sock) {
+			return nil
+		}
+		if !m.proc.Alive(pid) {
+			return fmt.Errorf("proxy: credential broker (pid %d) exited during startup", pid)
+		}
+		if err := m.sleep.Sleep(ctx, readyPollInterval); err != nil {
+			return fmt.Errorf("proxy: wait for credential broker on %s: %w", sock, err)
+		}
+	}
+	return fmt.Errorf("proxy: credential broker did not start listening on %s within %s",
+		sock, time.Duration(readyMaxAttempts)*readyPollInterval)
+}
+
+// stopBroker SIGTERMs the broker (which wipes its secrets on the way out) and
+// removes the socket file. Both steps are best-effort: a broker that already exited
+// is a no-op, and a leftover socket file would only be cleaned by the next Listen.
+func (m *Manager) stopBroker(pid int, layout state.Layout) {
+	if pid != 0 {
+		_ = m.proc.Signal(pid, syscall.SIGTERM)
+	}
+	_, _ = sysdep.RemoveIfPresent(m.fs, layout.BrokerSock())
 }
 
 // waitProxyReady blocks until the freshly-spawned proxy is accepting connections
@@ -264,6 +369,9 @@ func (m *Manager) Detach(layout state.Layout, selfPID int) error {
 				return fmt.Errorf("proxy: stop mitmproxy: %w", err)
 			}
 		}
+		// The broker dies with the proxy it served — on SIGTERM it wipes the tokens
+		// it custodied, which is the point of holding them in Go at all.
+		m.stopBroker(cur.BrokerPID, layout)
 		if _, err := sysdep.RemoveIfPresent(m.fs, layout.SessionOverlay()); err != nil {
 			return fmt.Errorf("proxy: purge session overlay: %w", err)
 		}
@@ -272,8 +380,8 @@ func (m *Manager) Detach(layout state.Layout, selfPID int) error {
 		return writeLock(lf, lockState{PolicyHash: cur.PolicyHash})
 	}
 
-	// Others remain: drop our PID, leave the proxy untouched.
-	return writeLock(lf, lockState{ProxyPID: cur.ProxyPID, Port: cur.Port, PolicyHash: cur.PolicyHash, Agents: agents, CanonicalPath: cur.CanonicalPath})
+	// Others remain: drop our PID, leave the proxy (and its broker) untouched.
+	return writeLock(lf, lockState{ProxyPID: cur.ProxyPID, BrokerPID: cur.BrokerPID, Port: cur.Port, PolicyHash: cur.PolicyHash, Agents: agents, CanonicalPath: cur.CanonicalPath})
 }
 
 // Diagnosis is doctor's read-only view of a project's proxy lifecycle (AC-0031),
@@ -285,6 +393,17 @@ type Diagnosis struct {
 	// ProxyPID and Port are the recorded proxy identity (may be stale).
 	ProxyPID int
 	Port     int
+	// BrokerPID is the recorded credential broker (0 when the project injects
+	// nothing, or the broker failed to start).
+	BrokerPID int
+	// BrokerUp is the broker's "genuinely alive" composite, mirroring ProxyUp: PID
+	// liveness AND a socket probe.
+	BrokerUp bool
+	// BrokerDown is true when the proxy is up but its recorded broker is not. The
+	// cage still runs and non-injected hosts still work, but every request needing
+	// an injected credential answers 472 — a degraded state worth surfacing, since
+	// a 472 alone cannot tell the user a dead broker from a locked secret store.
+	BrokerDown bool
 	// CanonicalPath is the project directory recorded in the lock (empty for locks
 	// written before AC-0032). `status` shows it, falling back to the state-dir hash.
 	CanonicalPath string
@@ -326,15 +445,21 @@ func (m *Manager) Inspect(layout state.Layout) (Diagnosis, error) {
 
 	live := m.pruneDead(cur.Agents)
 	up := cur.ProxyPID != 0 && m.proc.Alive(cur.ProxyPID) && m.ports.Probe(cur.Port)
+	brokerUp := cur.BrokerPID != 0 && m.proc.Alive(cur.BrokerPID) && m.sock.Probe(layout.BrokerSock())
 	return Diagnosis{
 		LockPresent:   true,
 		ProxyPID:      cur.ProxyPID,
 		Port:          cur.Port,
+		BrokerPID:     cur.BrokerPID,
 		CanonicalPath: cur.CanonicalPath,
 		ProxyUp:       up,
-		LiveAgents:    pids(live),
-		Orphan:        up && len(live) == 0,
-		Stranded:      !up && len(live) > 0,
+		BrokerUp:      brokerUp,
+		// Only a project that *has* a broker can have a dead one: BrokerPID is 0
+		// when nothing is injected, which is not a degradation.
+		BrokerDown: up && cur.BrokerPID != 0 && !brokerUp,
+		LiveAgents: pids(live),
+		Orphan:     up && len(live) == 0,
+		Stranded:   !up && len(live) > 0,
 	}, nil
 }
 
@@ -378,6 +503,7 @@ func (m *Manager) CleanOrphan(layout state.Layout) (CleanResult, error) {
 	if err := m.proc.Signal(cur.ProxyPID, syscall.SIGTERM); err != nil {
 		return CleanResult{}, fmt.Errorf("proxy: stop orphan mitmproxy: %w", err)
 	}
+	m.stopBroker(cur.BrokerPID, layout)
 	if _, err := sysdep.RemoveIfPresent(m.fs, layout.SessionOverlay()); err != nil {
 		return CleanResult{}, fmt.Errorf("proxy: purge session overlay: %w", err)
 	}
@@ -425,6 +551,7 @@ func (m *Manager) Clean(layout state.Layout, force bool) (CleanResult, error) {
 		res.Cleaned = true
 		res.ProxyPID = cur.ProxyPID
 	}
+	m.stopBroker(cur.BrokerPID, layout)
 	if _, err := sysdep.RemoveIfPresent(m.fs, layout.SessionOverlay()); err != nil {
 		return CleanResult{}, fmt.Errorf("proxy: purge session overlay: %w", err)
 	}
@@ -488,11 +615,14 @@ func (m *Manager) warnPortChanged(newPort, oldPort int, agents []int) {
 }
 
 // mitmArgs builds the mitmdump command for the enforcer addon. The option names
-// (creance_policy, creance_audit_log, creance_secret_fd) are the ones enforcer.py
-// declares. withSecret adds creance_secret_fd so the addon reads the injection
-// payload from the inherited descriptor; it is set only when the proxy is spawned
-// via SpawnWithSecret.
-func mitmArgs(port int, cfg StartConfig, withSecret bool) []string {
+// (creance_policy, creance_audit_log, creance_broker_sock) are the ones enforcer.py
+// declares. A non-empty sock adds creance_broker_sock, telling the addon where to
+// fetch injected credentials; it is set only when a broker was actually started.
+//
+// The socket path is not a secret — the socket's mode and its unreachability from
+// the cage are the access control (AC-0069b) — so unlike the raw token it once
+// carried, it is safe on argv, where `ps` can see it.
+func mitmArgs(port int, cfg StartConfig, sock string) []string {
 	args := []string{
 		"--listen-host", "127.0.0.1",
 		"--listen-port", strconv.Itoa(port),
@@ -500,10 +630,16 @@ func mitmArgs(port int, cfg StartConfig, withSecret bool) []string {
 		"--set", "creance_policy=" + cfg.Layout.PolicyJSON(),
 		"--set", "creance_audit_log=" + cfg.Layout.EgressJSONL(),
 	}
-	if withSecret {
-		args = append(args, "--set", "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
+	if sock != "" {
+		args = append(args, "--set", "creance_broker_sock="+sock)
 	}
 	return append(args, "-q")
+}
+
+// brokerArgs builds the argv for re-executing this binary as the broker daemon.
+// The secrets reach it over fd sysdep.SecretFD, never here.
+func brokerArgs(sock string) []string {
+	return []string{brokerCmd, "--socket", sock}
 }
 
 // readLock reads and unmarshals the lock contents from the held descriptor. An

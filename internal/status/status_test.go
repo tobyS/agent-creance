@@ -66,7 +66,7 @@ func newScanHarness(t *testing.T) *scanHarness {
 
 	return &scanHarness{
 		scanner: &status.Scanner{
-			Manager:  proxy.NewManager(fs, flock, proc, ports, &sysdeptest.FakeSleeper{}, nil),
+			Manager:  proxy.NewManager(fs, flock, proc, ports, sysdeptest.NewFakeUnixSocket(), &sysdeptest.FakeSleeper{}, nil),
 			Resolver: resolver,
 			FS:       fs,
 		},

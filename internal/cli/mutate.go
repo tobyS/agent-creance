@@ -189,7 +189,7 @@ func cageRunning(app *App, dir string) bool {
 	if err != nil {
 		return false
 	}
-	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.Sleeper, app.Stderr)
+	mgr := proxy.NewManager(app.FS, app.Flock, app.ProcessManager, app.PortAllocator, app.UnixSocket, app.Sleeper, app.Stderr)
 	diag, err := mgr.Inspect(layout)
 	if err != nil {
 		return false

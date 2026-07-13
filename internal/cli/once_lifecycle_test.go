@@ -46,7 +46,7 @@ func TestOnceRulePurgedOnLastExit(t *testing.T) {
 	proc := sysdeptest.NewFakeProcessManager()
 	proc.AlivePIDs[proxyPID] = true // so the last-out Detach can SIGTERM the proxy
 
-	mgr := proxy.NewManager(f.fs, flock, proc, sysdeptest.NewFakePortAllocator(), &sysdeptest.FakeSleeper{}, f.app.Stderr)
+	mgr := proxy.NewManager(f.fs, flock, proc, sysdeptest.NewFakePortAllocator(), sysdeptest.NewFakeUnixSocket(), &sysdeptest.FakeSleeper{}, f.app.Stderr)
 	require.NoError(t, mgr.Detach(f.layout, selfPID))
 
 	// Overlay purged, and a recompile drops the once rule from the policy.

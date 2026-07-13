@@ -1,12 +1,10 @@
 package proxy
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/tobyS/agent-creance/internal/state"
-	"github.com/tobyS/agent-creance/internal/sysdep"
 )
 
 func TestMitmArgsShape(t *testing.T) {
@@ -14,7 +12,7 @@ func TestMitmArgsShape(t *testing.T) {
 		Layout:     state.Layout{Root: "/cache/agent-creance/projects/abc"},
 		EnforcerPy: "/enforcer/enforcer.py",
 	}
-	args := mitmArgs(7777, cfg, false)
+	args := mitmArgs(7777, cfg, "")
 
 	// Must carry the listen port, the addon script, and both --set options.
 	assertContainsPair(t, args, "--listen-port", "7777")
@@ -22,12 +20,28 @@ func TestMitmArgsShape(t *testing.T) {
 	assertContains(t, args, "creance_policy="+cfg.Layout.PolicyJSON())
 	assertContains(t, args, "creance_audit_log="+cfg.Layout.EgressJSONL())
 	assertContains(t, args, "--listen-host")
-	// Without secrets there is no fd option.
+	// With no broker there is no socket option — and injection is then impossible.
+	assertNotContainsPrefix(t, args, "creance_broker_sock=")
+	// The pre-AC-0069b fd channel is gone: the addon no longer reads secrets itself.
 	assertNotContainsPrefix(t, args, "creance_secret_fd=")
 
-	// With secrets the addon is told which inherited fd to read.
-	withSecret := mitmArgs(7777, cfg, true)
-	assertContains(t, withSecret, "creance_secret_fd="+strconv.Itoa(sysdep.SecretFD))
+	// With a broker the addon is told where to fetch credentials. The path is not a
+	// secret (the socket's mode is the control), so argv is a safe place for it.
+	withBroker := mitmArgs(7777, cfg, cfg.Layout.BrokerSock())
+	assertContains(t, withBroker, "creance_broker_sock="+cfg.Layout.BrokerSock())
+}
+
+func TestBrokerArgsShape(t *testing.T) {
+	args := brokerArgs("/cache/agent-creance/projects/abc/broker.sock")
+
+	assertContains(t, args, brokerCmd)
+	assertContainsPair(t, args, "--socket", "/cache/agent-creance/projects/abc/broker.sock")
+	// The payload rides the inherited descriptor, never argv, where ps would show it.
+	for _, a := range args {
+		if strings.Contains(a, "token") || strings.Contains(a, "secret") {
+			t.Errorf("brokerArgs leaks something secret-shaped: %q", a)
+		}
+	}
 }
 
 func TestAddRemoveRef(t *testing.T) {

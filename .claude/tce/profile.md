@@ -40,7 +40,10 @@ read this to know where to look.
 | Kind of code | Location(s) |
 |--------------|-------------|
 | Entry point (CLI main) | `cmd/agent-creance/main.go` (thin; calls into `internal/cli`) |
-| CLI commands + composition root | `internal/cli/` (`App` struct in `cli.go`; one file per command: `run`, `init`, `setup`, `doctor`, `status`, `policy`, `allow`, `deny`, `logs`, `import`, `clean`, `version`) |
+| CLI commands + composition root | `internal/cli/` (`App` struct in `cli.go`; one file per command: `run`, `init`, `setup`, `doctor`, `status`, `policy`, `allow`, `deny`, `credential`, `domain`, `include`, `mount`, `service`, `logs`, `import`, `clean`, `version`) |
+| Live config watching during a run | `internal/configwatch/` (watches config + include graph, recompiles policy) |
+| Git remote detection (init auto-allowlist) | `internal/gitremote/` |
+| CLI color / visual-hierarchy layer | `internal/style/` (wraps fatih/color) |
 | Project identity / state dir | `internal/state/` |
 | Config parsing & schema | `internal/config/` (`.agent-creance.yaml` loader) |
 | Egress policy | `internal/policy/` (matcher) + `internal/policy/compile/`, `internal/policy/render/` |

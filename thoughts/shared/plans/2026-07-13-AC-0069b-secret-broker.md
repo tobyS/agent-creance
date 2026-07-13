@@ -341,6 +341,33 @@ Register the hidden `broker` command in the command tree.
       with mode `0600` in a `0700` dir
 - [ ] Exiting the last agent leaves no broker process and no socket file behind
 
+### Implementation log
+
+**Status:** complete (automated criteria; manual items pending user verification)
+**Phase commit:** (this commit)
+
+`Layout.BrokerSock()`, the hidden `broker` command, and the lifecycle integration:
+`lockState.BrokerPID`, broker-before-proxy spawn, `waitBrokerReady` (the
+`waitProxyReady` shape), and teardown in `Detach`/`CleanOrphan`/`Clean`.
+`Inspect` gained `BrokerPID`/`BrokerUp`/`BrokerDown` for Phase 4's doctor surface.
+
+Deviations from the plan, both forced by the code:
+
+- **`sysdep.FileSystem` gained `Chmod`.** The plan said "the socket dir mode must
+  be set explicitly" without saying how; `MkdirAll` only applies its mode to dirs
+  it *creates*, so a state dir left at `0755` by an earlier binary would have
+  stayed that way. The seam had no `Chmod` at all.
+- **`sysdeptest.FakeProcessManager` gained a `SpawnPIDs` queue.** With two daemons
+  spawned per attach, a single `SpawnPID` cannot distinguish them.
+
+The old `TestAttachDeliversInjectionSecretOnSpawn` was rewritten rather than
+deleted: it now asserts the secret reaches the *broker* over the fd, that
+`mitmdump` gets only `creance_broker_sock` (and no `creance_secret_fd`), and — the
+Phase-1 hygiene assertion, retained verbatim in spirit — that the token appears in
+no argv.
+
+`make test` and `make lint` green.
+
 ---
 
 ## Phase 3: Enforcer cut-over to the broker
