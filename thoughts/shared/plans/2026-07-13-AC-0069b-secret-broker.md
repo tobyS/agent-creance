@@ -572,6 +572,34 @@ correct fail-closed state.
       BLOCKED
 - [ ] Inside a cage, `nc -U ~/.cache/agent-creance/projects/*/broker.sock` fails
 
+### Implementation log
+
+**Status:** complete (automated criteria; manual items pending user verification)
+**Phase commit:** (this commit)
+
+`RenderBrokerDenyFragment` (+ golden), the seventh `--append-profile`, the
+`broker-socket` BLOCKED vector, and the doctor/status `broker-down` state.
+
+Two things worth recording:
+
+- **The coverage test refused the new vector until `docs/design.md` earned it.**
+  `TestThreatModelMappingHasNoDrift` requires every BLOCKED vector's keyword to
+  appear in the threat-model section — a probe may not exist without a design
+  promise behind it. So the threat model gained a "Prevented" bullet naming the
+  broker socket and the in-cage-token-endpoint hazard. That is the AC-0033 harness
+  working exactly as designed, and it is why the docs change landed here rather
+  than in Phase 5.
+- **The live battery plants a *real* listener on the socket path.** A probe that
+  reported "blocked" against a path where nothing listens would pass for the wrong
+  reason — and would keep passing if the sandbox ever stopped denying it.
+
+The fragment is written unconditionally, even for a project that injects nothing:
+making the deny conditional on the current config would make the guarantee depend
+on config the caged agent can see.
+
+`make test`, `make lint`, `make test-enforcer` green; `go vet -tags=integration`
+clean (four integration call sites updated for the new seam).
+
 ---
 
 ## Phase 5: Integration, docs, and the honest write-up

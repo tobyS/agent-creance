@@ -113,6 +113,9 @@ func stateLabel(d proxy.Diagnosis) string {
 		return "orphan"
 	case d.Stranded:
 		return "stranded"
+	case d.BrokerDown:
+		// Running, but injected hosts 472 until the session restarts.
+		return "broker-down"
 	case d.ProxyUp:
 		return "running"
 	default:

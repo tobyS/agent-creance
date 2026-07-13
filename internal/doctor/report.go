@@ -170,6 +170,13 @@ func renderProxy(b *strings.Builder, sec ProxySection, sty *style.Styler) {
 		line(b, sty.Bad(glyphMiss), "orphan proxy "+sty.Dim(fmt.Sprintf("(pid %d, port %d)", d.ProxyPID, d.Port))+" — no live agents; run `doctor --fix`")
 	case d.Stranded:
 		line(b, sty.Warn(glyphWarn), fmt.Sprintf("%d attached agent(s) but proxy not reachable on recorded port ", len(d.LiveAgents))+sty.Dim(fmt.Sprintf("%d", d.Port))+"; relaunch them")
+	case d.BrokerDown:
+		// The cage still runs and non-injected hosts still work; only injected ones
+		// answer 472. Worth saying out loud, because a 472 on its own cannot tell the
+		// user a dead broker from a locked secret store.
+		line(b, sty.Warn(glyphWarn), "proxy running "+sty.Dim(fmt.Sprintf("(pid %d, port %d)", d.ProxyPID, d.Port))+
+			" but the credential broker "+sty.Dim(fmt.Sprintf("(pid %d)", d.BrokerPID))+
+			" is gone — injected hosts answer 472; restart the session")
 	case d.ProxyUp:
 		line(b, sty.OK(glyphOK), "proxy running "+sty.Dim(fmt.Sprintf("(pid %d, port %d)", d.ProxyPID, d.Port))+fmt.Sprintf(", %d agent(s) attached", len(d.LiveAgents)))
 	default:

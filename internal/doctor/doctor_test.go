@@ -34,6 +34,7 @@ var caCertPath = filepath.Join(checkerHome, ".mitmproxy", "mitmproxy-ca-cert.pem
 // lockJSON mirrors proxy's unexported lockState wire format.
 type lockJSON struct {
 	ProxyPID   int            `json:"proxy_pid"`
+	BrokerPID  int            `json:"broker_pid"`
 	Port       int            `json:"port"`
 	PolicyHash string         `json:"policy_hash"`
 	Agents     []agentRefJSON `json:"agents"`
@@ -157,6 +158,45 @@ func TestRun_CAVerifyEnvErrorIsWarning(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusWarn, rep.CA.State)
 	assert.Empty(t, rep.Actionable())
+}
+
+// A dead broker under a live proxy is a *degradation*, not a failure: the cage runs,
+// non-injected hosts work, and only injected ones answer 472. Doctor says so, because
+// a 472 on its own cannot tell the user a dead broker from a locked secret store.
+func TestRun_BrokerDownIsReportedButNotActionable(t *testing.T) {
+	h := newCheckerHarness().withCA()
+	h.seedLock(t, lockJSON{
+		ProxyPID: 111, BrokerPID: 110, Port: 8080, PolicyHash: "h",
+		Agents: []agentRefJSON{{PID: 999, StartTime: 999000}},
+	})
+	h.proc.AlivePIDs[111] = true   // proxy alive...
+	h.ports.Listening[8080] = true // ...and listening
+	h.proc.AlivePIDs[110] = false  // the broker is gone
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+
+	assert.True(t, rep.Proxy.Diag.ProxyUp)
+	assert.True(t, rep.Proxy.Diag.BrokerDown)
+	assert.False(t, rep.Proxy.Diag.BrokerUp)
+}
+
+// A project that injects nothing runs no broker, and the absence of one is not a
+// degradation to report.
+func TestRun_NoBrokerIsNotBrokerDown(t *testing.T) {
+	h := newCheckerHarness().withCA()
+	h.seedLock(t, lockJSON{
+		ProxyPID: 111, Port: 8080, PolicyHash: "h", // BrokerPID zero: nothing injected
+		Agents: []agentRefJSON{{PID: 999, StartTime: 999000}},
+	})
+	h.proc.AlivePIDs[111] = true
+	h.ports.Listening[8080] = true
+
+	rep, err := h.chk.Run(context.Background(), false)
+	require.NoError(t, err)
+
+	assert.True(t, rep.Proxy.Diag.ProxyUp)
+	assert.False(t, rep.Proxy.Diag.BrokerDown)
 }
 
 func TestRun_OrphanActionableThenFixed(t *testing.T) {

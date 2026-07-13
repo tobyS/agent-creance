@@ -85,6 +85,11 @@ var Vectors = []Vector{
 		Keyword: "DNS tunneling", DesignRef: "design.md:59",
 		Desc: "direct DNS to an external nameserver → blocked",
 	},
+	{
+		ID: "broker-socket", Label: LabelBlocked, Expected: "blocked",
+		Keyword: "in-cage token endpoint", DesignRef: "design.md:685",
+		Desc: "connect to the credential broker's unix socket → blocked (a reachable broker would be the IMDS-style token endpoint the design excludes)",
+	},
 	// BLOCKED — proxy.
 	{
 		ID: "proxy-soft-deny", Label: LabelBlocked, Expected: "470:soft-deny",

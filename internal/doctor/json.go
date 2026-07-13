@@ -132,6 +132,8 @@ func proxyJSON(sec ProxySection) jsonProxy {
 		out.State = "orphan"
 	case d.Stranded:
 		out.State = "stranded"
+	case d.BrokerDown:
+		out.State = "broker-down"
 	case d.ProxyUp:
 		out.State = "running"
 	default:

@@ -148,6 +148,7 @@ func Build(in Inputs) (Invocation, error) {
 	// Appended last so its config-write denies win (last-match) over the project's
 	// read-write mount: the agent may read but not edit the hot-reloaded config.
 	args = append(args, "--append-profile", in.Layout.ConfigProfileSB())
+	args = append(args, "--append-profile", in.Layout.BrokerProfileSB())
 
 	env := buildEnv(in)
 	keys := sortedKeys(env)
@@ -293,6 +294,19 @@ func (b *Builder) Prepare(in Inputs) error {
 	cfgDst := in.Layout.ConfigProfileSB()
 	if err := b.fs.WriteFile(cfgDst, []byte(cfgFrag), 0o600); err != nil {
 		return fmt.Errorf("cage: write config read-only fragment %q: %w", cfgDst, err)
+	}
+
+	// Deny the credential broker's socket (AC-0069b). Written unconditionally, even
+	// for a project that injects nothing: the deny is what guarantees the cage can
+	// never reach a broker, and making it conditional on the current config would
+	// make that guarantee depend on the config the agent can see.
+	brFrag, err := profile.RenderBrokerDenyFragment(in.Layout.BrokerSock())
+	if err != nil {
+		return fmt.Errorf("cage: render broker deny fragment: %w", err)
+	}
+	brDst := in.Layout.BrokerProfileSB()
+	if err := b.fs.WriteFile(brDst, []byte(brFrag), 0o600); err != nil {
+		return fmt.Errorf("cage: write broker deny fragment %q: %w", brDst, err)
 	}
 	return nil
 }

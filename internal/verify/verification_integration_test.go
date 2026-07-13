@@ -170,6 +170,12 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 	svcPort := dualStackListener(t)
 	blockedPort := dualStackListener(t)
 
+	// A LIVE listener on the credential broker's socket path (AC-0069b). Planting a
+	// real one matters: if the probe reported "blocked" against a path where nothing
+	// listens, the vector would pass for the wrong reason and would keep passing even
+	// if the sandbox stopped denying it.
+	brokerSock := brokerListener(t, layout)
+
 	// AC-0045: a THROWAWAY generic-password item in the real login keychain for the
 	// kc-read/kc-write vectors — never the real Claude Code-credentials. The login
 	// keychain (the default add target) is required for kc-write to exercise the
@@ -222,7 +228,7 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 	require.NoError(t, err)
 
 	// Start (or attach to) the real proxy; tear it down at the end.
-	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, sysdep.OSSleeper{}, os.Stderr)
+	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{}, sysdep.OSPortAllocator{}, sysdep.OSUnixSocket{}, sysdep.OSSleeper{}, os.Stderr)
 	att, err := mgr.Attach(context.Background(), proxy.StartConfig{
 		Layout: layout, EnforcerPy: enforcerPy, PolicyHash: "verify", SelfPID: os.Getpid(),
 	})
@@ -252,6 +258,11 @@ func runBattery(t *testing.T, weakened bool) batteryRun {
 			"CREANCE_EGRESS":       boolFlag(egress),
 			"CREANCE_KC_SERVICE":   kcService,
 			"CREANCE_KC_ACCOUNT":   kcAccount,
+			// The credential broker's socket, which the cage must not be able to reach
+			// (AC-0069b). The battery plants a *live* listener there below, so a
+			// "blocked" result means the sandbox refused a socket that genuinely
+			// answers — not that there was nothing to connect to.
+			"CREANCE_BROKER_SOCK": brokerSock,
 		},
 	}
 
@@ -315,6 +326,20 @@ func egressOK(t *testing.T) bool {
 // IPv4 (127.0.0.1) and IPv6 (::1), accept-and-closing connections so a caged
 // connect that is NOT refused proves the sandbox blocked it (rather than nothing
 // listening). Returns the shared port; both listeners are closed at test end.
+// brokerListener binds a real unix socket at the layout's broker path and serves it
+// until the test ends, so the broker-socket vector probes something that genuinely
+// answers. It returns the socket path.
+func brokerListener(t *testing.T, layout state.Layout) string {
+	t.Helper()
+
+	sock := layout.BrokerSock()
+	ln, err := sysdep.OSUnixSocket{}.Listen(sock, 0o600)
+	require.NoError(t, err)
+	go acceptLoop(ln)
+	t.Cleanup(func() { _ = ln.Close() })
+	return sock
+}
+
 func dualStackListener(t *testing.T) int {
 	t.Helper()
 	for attempt := 0; attempt < 50; attempt++ {

@@ -57,6 +57,7 @@ The agent's only egress path is the mitmproxy on localhost. Mitmproxy terminates
 - Egress to non-allowlisted hosts/paths/methods.
 - Credential exfiltration for non-Claude services is addressed by **credential injection**: an injected token is resolved host-side and written into the request at egress, so it never enters the agent's environment, and an agent-set auth header for that host is overwritten. This bounds a compromised agent to the injected token's scope *against injected hosts*. It does not cover hosts you have not bound, credentials you deliberately mark `in_cage`, or Claude's own OAuth token (see "Credential injection").
 - DNS tunneling to unknown nameservers — DNS goes through the proxy's resolver only.
+- Reaching the credential broker itself. The broker that custodies injected tokens serves them on a unix socket under the out-of-tree state dir, which is never mounted into the cage; `(deny network*)` covers a unix-socket connect, and a generated `broker.sb` fragment denies that socket by path explicitly. A caged agent that could talk to it would have an **in-cage token endpoint** — the IMDS-style confused-deputy hole the whole injection design exists to avoid — so it could simply *ask* for the secrets injection keeps out of its hands. An adversarial probe asserts the socket is unreachable (`internal/verify`, vector `broker-socket`).
 
 **Not prevented (the honest limits):**
 - Damage to project files themselves: `rm -rf .`, destructive SQL, `git reset --hard`. Git, backups, and Claude's `/rewind` are the defense here, not the cage.

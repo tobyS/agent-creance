@@ -44,6 +44,7 @@ const (
 	configROSBName     = "config-ro.sb"
 	proxyLockName      = "proxy.lock"
 	brokerSockName     = "broker.sock"
+	brokerSBName       = "broker.sb"
 	egressJSONLName    = "egress.jsonl"
 	// egressJSONLRotatedName is the single rotated backup the enforcer keeps
 	// (egress.jsonl.1). The reader (internal/audit) reads it then the current file
@@ -280,6 +281,14 @@ func (l Layout) ClaudeProfileSB() string { return filepath.Join(l.Root, claudeSB
 // the deny closes that. Rewritten every launch because the resolved file set is
 // project-specific.
 func (l Layout) ConfigProfileSB() string { return filepath.Join(l.Root, configROSBName) }
+
+// BrokerProfileSB is the launch-time Seatbelt fragment that denies the caged agent
+// any access to the credential broker's unix socket (AC-0069b), passed to Safehouse
+// via a further --append-profile. The socket is already out of reach — it lives in
+// this out-of-tree state dir, which is never mounted, and (deny network*) covers a
+// unix-socket connect — so this is defence in depth: it keeps the guarantee true if
+// a future change ever mounts a broader path into the cage.
+func (l Layout) BrokerProfileSB() string { return filepath.Join(l.Root, brokerSBName) }
 
 // ProxyLock is the mitmproxy lifecycle lock file (PID, port, policy hash, agents).
 func (l Layout) ProxyLock() string { return filepath.Join(l.Root, proxyLockName) }

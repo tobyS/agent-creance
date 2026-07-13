@@ -251,7 +251,7 @@ func startInjectProxy(t *testing.T, secrets func(context.Context) ([]byte, error
 	require.NoError(t, os.WriteFile(lay.SessionOverlay(), []byte("once: []\n"), 0o644))
 
 	mgr := proxy.NewManager(sysdep.OSFileSystem{}, sysdep.OSFlock{}, sysdep.OSProcessManager{},
-		sysdep.OSPortAllocator{}, sysdep.OSSleeper{}, os.Stderr)
+		sysdep.OSPortAllocator{}, sysdep.OSUnixSocket{}, sysdep.OSSleeper{}, os.Stderr)
 
 	att, err := mgr.Attach(context.Background(), proxy.StartConfig{
 		Layout:     lay,

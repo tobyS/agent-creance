@@ -68,6 +68,14 @@ const (
 		";; any edit to these files; without this deny a prompt-injected agent could widen its\n" +
 		";; own egress by editing them. Read stays allowed; only write is denied (last-match-\n" +
 		";; wins over safehouse's RW grant). Generated; do not edit.\n"
+	brokerHeader = ";; agent-creance broker.sb — appended after safehouse's base via --append-profile (AC-0069b).\n" +
+		";; The credential broker serves every injected token on this unix socket. It is\n" +
+		";; host-side only: the socket lives under ~/.cache/agent-creance, which is never\n" +
+		";; mounted into the cage, and (deny network*) already covers a unix-socket connect.\n" +
+		";; These denies are the belt to that suspenders — they survive a future change that\n" +
+		";; mounts a broader path in, and they make the guarantee explicit rather than\n" +
+		";; incidental. A cage that could reach this socket would be the IMDS-style token\n" +
+		";; endpoint the whole design exists to avoid. Generated; do not edit.\n"
 )
 
 // allowRule renders one outbound allow for the loopback at the given port. The host
@@ -121,6 +129,29 @@ func RenderProxyFragment(port int) (string, error) {
 		return "", fmt.Errorf("profile: proxy port %d out of range %d-%d", port, minPort, maxPort)
 	}
 	return proxyHeader + allowRule(port) + "\n", nil
+}
+
+// RenderBrokerDenyFragment renders the broker.sb append fragment: an explicit deny
+// of the credential broker's unix socket, both as a connect target and as a file.
+//
+// On macOS a unix-socket connect(2) is governed by the network-outbound operation
+// filtered by path literal (the form Chromium's own sandbox profile uses), so the
+// deny has to name the operation, not just the file. sockPath must be absolute; it
+// is sanitized like a host-service label, so a control character cannot terminate
+// the comment block and smuggle a live SBPL form past the deny (AC-0058 / F1).
+func RenderBrokerDenyFragment(sockPath string) (string, error) {
+	if sockPath == "" {
+		return "", fmt.Errorf("profile: empty broker socket path")
+	}
+	if !filepath.IsAbs(sockPath) {
+		return "", fmt.Errorf("profile: broker socket path %q is not absolute", sockPath)
+	}
+	clean := sanitizeLabel(sockPath)
+	var b strings.Builder
+	b.WriteString(brokerHeader)
+	fmt.Fprintf(&b, "(deny network-outbound (literal %q))\n", clean)
+	fmt.Fprintf(&b, "(deny file-read* file-write* (literal %q))\n", clean)
+	return b.String(), nil
 }
 
 // RenderCAReadFragment renders the ca.sb append fragment: a read grant for exactly the

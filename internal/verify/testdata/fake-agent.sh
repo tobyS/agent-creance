@@ -88,6 +88,18 @@ else
 	emit net-child blocked
 fi
 
+# The credential broker's unix socket must be unreachable (AC-0069b). A cage that
+# could connect to it would be exactly the in-cage token endpoint the design
+# excludes: the agent could ask for the very secrets injection exists to keep out of
+# its hands. Two ways in — connect, and read the socket file — both must fail.
+if nc -U -w 2 "$CREANCE_BROKER_SOCK" </dev/null >/dev/null 2>&1; then
+	emit broker-socket LEAK
+elif cat "$CREANCE_BROKER_SOCK" >/dev/null 2>&1; then
+	emit broker-socket LEAK
+else
+	emit broker-socket blocked
+fi
+
 # ---- BLOCKED: proxy ------------------------------------------------------------
 
 set -- $(http_through_proxy "https://$CREANCE_SOFT_HOST/v2/auth/" --cacert "$CREANCE_CA")

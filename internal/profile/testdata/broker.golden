@@ -1,0 +1,10 @@
+;; agent-creance broker.sb — appended after safehouse's base via --append-profile (AC-0069b).
+;; The credential broker serves every injected token on this unix socket. It is
+;; host-side only: the socket lives under ~/.cache/agent-creance, which is never
+;; mounted into the cage, and (deny network*) already covers a unix-socket connect.
+;; These denies are the belt to that suspenders — they survive a future change that
+;; mounts a broader path in, and they make the guarantee explicit rather than
+;; incidental. A cage that could reach this socket would be the IMDS-style token
+;; endpoint the whole design exists to avoid. Generated; do not edit.
+(deny network-outbound (literal "/home/test/.cache/agent-creance/projects/abcd1234ef567890/broker.sock"))
+(deny file-read* file-write* (literal "/home/test/.cache/agent-creance/projects/abcd1234ef567890/broker.sock"))

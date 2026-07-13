@@ -20,6 +20,8 @@
     "/home/test/.cache/agent-creance/projects/0123456789abcdef/claude.sb",
     "--append-profile",
     "/home/test/.cache/agent-creance/projects/0123456789abcdef/config-ro.sb",
+    "--append-profile",
+    "/home/test/.cache/agent-creance/projects/0123456789abcdef/broker.sb",
     "--env-pass",
     "GIT_SSL_CAINFO,HTTPS_PROXY,HTTP_PROXY,MY_VAR,NODE_EXTRA_CA_CERTS,NO_PROXY,REQUESTS_CA_BUNDLE,SSL_CERT_FILE,http_proxy,https_proxy,no_proxy",
     "--",

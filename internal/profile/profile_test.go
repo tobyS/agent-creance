@@ -409,6 +409,64 @@ func TestRenderConfigReadOnlyFragment_Golden(t *testing.T) {
 	}
 }
 
+func TestRenderBrokerDenyFragment_Golden(t *testing.T) {
+	got, err := RenderBrokerDenyFragment("/home/test/.cache/agent-creance/projects/abcd1234ef567890/broker.sock")
+	if err != nil {
+		t.Fatalf("RenderBrokerDenyFragment: %v", err)
+	}
+
+	golden := filepath.Join("testdata", "broker.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("broker.sb mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderBrokerDenyFragment_DeniesConnectAndFile(t *testing.T) {
+	got, err := RenderBrokerDenyFragment("/c/p/broker.sock")
+	if err != nil {
+		t.Fatalf("RenderBrokerDenyFragment: %v", err)
+	}
+	// A unix-socket connect(2) is a network-outbound operation on macOS: denying the
+	// file alone would not stop a connect.
+	if !strings.Contains(got, `(deny network-outbound (literal "/c/p/broker.sock"))`) {
+		t.Errorf("missing the connect deny:\n%s", got)
+	}
+	if !strings.Contains(got, `(deny file-read* file-write* (literal "/c/p/broker.sock"))`) {
+		t.Errorf("missing the file deny:\n%s", got)
+	}
+}
+
+func TestRenderBrokerDenyFragment_Rejects(t *testing.T) {
+	if _, err := RenderBrokerDenyFragment(""); err == nil {
+		t.Error("empty socket path must be rejected")
+	}
+	if _, err := RenderBrokerDenyFragment("relative/broker.sock"); err == nil {
+		t.Error("relative socket path must be rejected — Seatbelt literals are absolute")
+	}
+}
+
+// A control character in the path must not terminate the comment block and let the
+// remainder render as a live SBPL form after the denies (AC-0058 / F1).
+func TestRenderBrokerDenyFragment_SanitizesControlChars(t *testing.T) {
+	got, err := RenderBrokerDenyFragment("/c/p/broker.sock\n(allow network*)")
+	if err != nil {
+		t.Fatalf("RenderBrokerDenyFragment: %v", err)
+	}
+	if strings.Contains(got, "\n(allow network*)") {
+		t.Errorf("a newline in the path smuggled a live form through:\n%s", got)
+	}
+}
+
 func TestRenderConfigReadOnlyFragment_DeniesWriteOnly(t *testing.T) {
 	got, err := RenderConfigReadOnlyFragment([]string{"/p/.agent-creance.yaml"})
 	if err != nil {
