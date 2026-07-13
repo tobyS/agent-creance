@@ -1,6 +1,6 @@
 # AC-0069b: Unix-socket secret broker — Go-side custody + rotation channel
 
-**Status:** In Progress
+**Status:** Done
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
 **Updated:** 2026-07-13
@@ -33,14 +33,14 @@ custody and rotation channel Phase 2 wants.
 
 ## Acceptance Criteria
 
-- [ ] The broker custodies the secret in `mlock`-able, zeroizable Go memory; the
+- [x] The broker custodies the secret in `mlock`-able, zeroizable Go memory; the
       value is wiped on shutdown.
-- [ ] The addon fetches the credential from the broker over a unix socket with
+- [x] The addon fetches the credential from the broker over a unix socket with
       restrictive permissions; the cage cannot reach the socket.
-- [ ] Rotating the served credential takes effect for subsequent requests without a
+- [x] Rotating the served credential takes effect for subsequent requests without a
       proxy restart and without corrupting in-flight requests.
-- [ ] Behavior on broker-unavailable is fail-closed (472), consistent with Phase 1.
-- [ ] `make test` green; broker protocol unit-tested; real socket path behind
+- [x] Behavior on broker-unavailable is fail-closed (472), consistent with Phase 1.
+- [x] `make test` green; broker protocol unit-tested; real socket path behind
       `integration`.
 
 ## Out of Scope
@@ -77,7 +77,40 @@ custody and rotation channel Phase 2 wants.
 
 ## Implementation Plan
 
-(Filled when planned.)
+`thoughts/shared/plans/2026-07-13-AC-0069b-secret-broker.md` (5 phases, all complete).
+
+## Implementation Closeout
+
+Shipped: a detached Go broker daemon (`agent-creance broker`, hidden), spawned as a
+sibling of `mitmdump` and reaped by the same last-out `Detach`, custodying tokens in
+mlock-ed/wipeable memory and serving them over a 0600 unix socket. The addon fetches
+per injected request (`async def request`), so rotation takes effect on the next
+request with no proxy restart. The fd-3 channel survives but now terminates in Go.
+
+Decisions taken at planning (see Notes & Updates, 2026-07-13): detached daemon (a
+run-session broker would die under a live proxy); per-request fetch, no addon cache;
+one channel for all credentials; best-effort mlock over memguard; filesystem
+permissions as the sole auth control; fail-closed + doctor warning on broker death.
+
+The honest bound is documented in `docs/design.md`: mlock and zeroization are
+**hygiene, not a control** — scope and TTL (AC-0069a) are what limit a leaked token.
+A peer-uid check was rejected as theatre: the caged agent shares mitmproxy's uid.
+
+Verification: `make test`, `make lint`, `make test-enforcer` (160), and
+`make test-enforcer-integration` (16, live mitmdump against a real socket) green; new
+Go integration tests drive the real daemon. Manual items 1–6 executed on an uncaged
+host and passing (broker/socket modes, clean teardown, end-to-end injection with the
+phantom overwritten, 472-on-dead-broker with non-injected hosts unaffected,
+doctor/status `broker-down`, and a caged agent unable to connect to or read its own
+broker socket). Item 7 (dogfood with a *valid* GitHub token) was not run — it needs a
+real credential reference that must not be committed to this public repo.
+
+Out-of-scope discovery, filed as **AC-0070**: on this host agent-safehouse 0.11.0
+(tested-against 0.10.1) does not enforce the appended `(deny network*)` baseline, so
+the cage's kernel-level egress guarantee is void. Pre-existing — it reproduces before
+any of this ticket's code — and our own SBPL is fine (the direct `sandbox-exec` tests
+pass). Notably the broker socket stayed unreachable even in that weakened cage: the
+filesystem layer held when the network layer did not, which is why both were built.
 
 ## Notes & Updates
 

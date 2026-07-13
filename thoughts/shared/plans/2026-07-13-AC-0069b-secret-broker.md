@@ -336,10 +336,10 @@ Register the hidden `broker` command in the command tree.
 
 #### Manual Verification:
 
-- [ ] `agent-creance run` in a project with an `inject` rule starts a broker
+- [x] `agent-creance run` in a project with an `inject` rule starts a broker
       process (`ps` shows `agent-creance broker --socket …`) and the socket exists
       with mode `0600` in a `0700` dir
-- [ ] Exiting the last agent leaves no broker process and no socket file behind
+- [x] Exiting the last agent leaves no broker process and no socket file behind
 
 ### Implementation log
 
@@ -456,8 +456,8 @@ server that never answers (timeout), truncated reply.
 
 #### Manual Verification:
 
-- [ ] With the cage running, an injected host still authenticates end-to-end
-- [ ] `kill` the broker mid-session: the next injected request returns 472 with
+- [x] With the cage running, an injected host still authenticates end-to-end
+- [x] `kill` the broker mid-session: the next injected request returns 472 with
       the human-recoverable body, and non-injected hosts keep working
 
 ### Implementation log
@@ -568,9 +568,9 @@ correct fail-closed state.
 
 #### Manual Verification:
 
-- [ ] `agent-creance verify` (live battery, out-of-cage) reports `broker-socket`
+- [x] `agent-creance verify` (live battery, out-of-cage) reports `broker-socket`
       BLOCKED
-- [ ] Inside a cage, `nc -U ~/.cache/agent-creance/projects/*/broker.sock` fails
+- [x] Inside a cage, `nc -U ~/.cache/agent-creance/projects/*/broker.sock` fails
 
 ### Implementation log
 
@@ -661,7 +661,7 @@ Decision on delivery-channel evolution is **resolved**.
 
 - [ ] A real dogfood run against GitHub still authenticates through the injected
       credential
-- [ ] `docs/design.md` describes the shipped channel accurately, including the
+- [x] `docs/design.md` describes the shipped channel accurately, including the
       bounded memory-custody claim
 
 ### Implementation log
@@ -701,6 +701,44 @@ Also recorded: a bare `Alive(pid)` reports an exited-but-unreaped child as alive
 (kill(pid,0) sees a zombie). This does not affect the lifecycle, because both
 `ProxyUp` and `BrokerUp` are `Alive() && Probe()` composites — but the integration
 test has to `Wait4` rather than trust `Alive`.
+
+## Manual verification (executed 2026-07-13, uncaged host)
+
+Run against a scratch project with `credential add gh --source env://… --bearer` and
+`allow 'api.github.com/repos/' --inject gh`:
+
+1. **Broker starts; socket 0600 in a 0700 dir** — ✅
+   `ps`: `agent-creance broker --socket …/broker.sock` (and no token in its argv);
+   `srw------- broker.sock` inside `drwx------ projects/<hash>/`.
+2. **Teardown is clean** — ✅ after the last agent exits: no broker process, no
+   socket file.
+3. **Injected host authenticates end-to-end** — ✅ a request carrying a *phantom*
+   `Authorization` header came back `401` from real GitHub with `x-cage-injected: gh`
+   — i.e. the broker served the token, the addon overwrote the phantom, and the
+   injected value went upstream (401 because the test token is fake).
+4. **Broker killed mid-session** — ✅ the next injected request is a **472** with
+   `x-cage-reason: injection-unavailable` and the `agent_cage_injection_unavailable`
+   body, while a non-injected allowed host still returns **200**.
+5. **doctor / status surface it** — ✅ `⚠ proxy running (pid …) but the credential
+   broker (pid …) is gone — injected hosts answer 472; restart the session`;
+   `status` shows state `broker-down`.
+6. **The cage cannot reach the socket** — ✅ a caged agent probing its *own* live
+   broker socket reports `CONNECT-REFUSED` and `READ-REFUSED`. The battery's
+   `broker-socket` vector likewise reports BLOCKED.
+7. **Real dogfood against GitHub with a valid token** — not run: it needs a real
+   credential reference, which must not be committed to this public repo. Item 3
+   demonstrates the same path end-to-end against real GitHub; what remains unproven
+   is only that a *valid* token yields 200 rather than 401.
+
+## Out-of-scope finding: the cage's network deny-baseline is not enforced
+
+`make test-integration` fails two tests — `TestLiveSafehouseEgressDenied` and
+`TestCageVerificationBattery` — on this host. Both reproduce at `0d00e23`, before any
+of this ticket's code. The installed **agent-safehouse 0.11.0** (tested-against:
+0.10.1) does not honour the appended `(deny network*)` baseline, so every network
+vector leaks (`net-raw-tcp`, `net-dns`, `net-localhost-v4/v6`, `net-child`). Our own
+SBPL is fine — the `internal/profile` live tests, which drive `sandbox-exec`
+directly, pass. Filed as **AC-0070**.
 
 ---
 
