@@ -460,6 +460,44 @@ server that never answers (timeout), truncated reply.
 - [ ] `kill` the broker mid-session: the next injected request returns 472 with
       the human-recoverable body, and non-injected hosts keep working
 
+### Implementation log
+
+**Status:** complete (automated criteria; manual items pending user verification)
+**Phase commit:** (this commit)
+
+`broker.py` (stdlib asyncio, no mitmproxy import — it stays testable without it),
+the `creance_broker_sock` option in place of `creance_secret_fd`, an `async def`
+`request` hook, and the deletion of `_secrets` / `_read_secrets` / `_secrets_read`.
+`broker.fetch` never raises, by contract: a raise would be caught by the hook's
+fail-closed handler and become a **471 hard-deny**, when a credential that cannot
+be fetched must be a **472**. There is a test asserting exactly that.
+
+Additions the plan did not name:
+
+- **`stub_broker.py`** — a Python stub of the Go broker speaking the same wire
+  protocol over a real socket. It lets the addon's client be tested end to end
+  (connect/request/response/close) without building the Go binary, and it gives the
+  rotation test its teeth: `b.rotate(...)` mid-test, and the next request carries
+  the new token with no restart.
+- **`pytest.ini`** with `asyncio_mode = auto` (an ini option, not something
+  `conftest.py` can set via `addinivalue_line`), plus `pytest-asyncio==0.25.2`.
+
+Three things the tests caught:
+
+- **`sun_path` again, now in Python**: `tmp_path` embeds the test name and overflows
+  104 bytes, so sockets live in a short `mkdtemp` dir (`sock_dir` fixture). The same
+  limit the Go side guards for real.
+- **11 tests in `test_enforcer.py`** called the request hook synchronously and had to
+  become coroutines — the blast radius of making the hook `async`, which the plan
+  flagged.
+- The silent-broker timeout test made the suite take 60s: `server.wait_closed()`
+  waits for in-flight handlers, so a sleeping handler stalls teardown for its full
+  duration. It now blocks on an event the test releases. 0.44s.
+
+`make test`, `make lint`, `make test-enforcer` green (159 passed).
+`test_integration.py` still speaks the fd channel and is rewritten in Phase 5; it is
+`integration`-marked, so it is deselected from `make test-enforcer`.
+
 ---
 
 ## Phase 4: Cage unreachability, asserted

@@ -1,3 +1,7 @@
 # Pinned to the tested-against version in internal/buildinfo (mitmproxy: 12.2.3).
 mitmproxy==12.2.3
 pytest==8.3.4
+# The addon's request hook is async since AC-0069b (it awaits the credential broker
+# over a unix socket); pytest-asyncio runs the coroutine tests. Dev-only, like pytest
+# — the addon itself needs nothing beyond mitmproxy and the stdlib.
+pytest-asyncio==0.25.2

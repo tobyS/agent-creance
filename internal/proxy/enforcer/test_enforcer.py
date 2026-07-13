@@ -81,15 +81,15 @@ def _clienthello(sni):
 # --- request hook: the three outcomes -----------------------------------------
 
 
-def test_allow_forwards_untouched(addon):
+async def test_allow_forwards_untouched(addon):
     flow = _https_flow("react.dev", "/learn/anything")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is None
 
 
-def test_soft_deny_returns_470(addon):
+async def test_soft_deny_returns_470(addon):
     flow = _https_flow("not-allowlisted.example", "/v2/auth/")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is not None
     assert flow.response.status_code == 470
     assert flow.response.reason == "agent-creance soft-deny (not allowlisted)"
@@ -102,9 +102,9 @@ def test_soft_deny_returns_470(addon):
     )
 
 
-def test_hard_deny_returns_471_with_reason(addon):
+async def test_hard_deny_returns_471_with_reason(addon):
     flow = _https_flow("w3schools.com", "/html/default.asp")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is not None
     assert flow.response.status_code == 471
     assert flow.response.reason == "agent-creance hard-deny (blocked)"
@@ -114,10 +114,10 @@ def test_hard_deny_returns_471_with_reason(addon):
     assert body["reason"] == "Known low-quality source."
 
 
-def test_request_does_not_overwrite_existing_response(addon):
+async def test_request_does_not_overwrite_existing_response(addon):
     flow = _https_flow("w3schools.com", "/html")
     flow.response = tutils.tresp(content=b"preset")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response.content == b"preset"
 
 
@@ -208,11 +208,11 @@ def _raise(*_args, **_kwargs):
     raise RuntimeError("boom")
 
 
-def test_request_hook_fails_closed_on_exception(addon, monkeypatch):
+async def test_request_hook_fails_closed_on_exception(addon, monkeypatch):
     # An exception anywhere in the decision path must hard-deny, never forward upstream.
     monkeypatch.setattr(policy, "decide", _raise)
     flow = _https_flow("react.dev", "/learn")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is not None, "a raising decision must still set a response"
     assert flow.response.status_code == 471
     assert flow.response.headers[responses.X_CAGE_REASON] == "hard-deny"
@@ -286,11 +286,11 @@ def test_malformed_reload_keeps_last_good(tmp_path):
 # --- audit logging (AC-0018) --------------------------------------------------
 
 
-def test_intercept_allow_logs_entry_and_strips_query(addon, audit_path):
+async def test_intercept_allow_logs_entry_and_strips_query(addon, audit_path):
     # An allowed request with a token in the query string: the response hook logs a
     # full entry, and the whole query (so the token) must not reach the log.
     flow = _https_flow("react.dev", "/learn?api_key=SEKRET")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is None  # allow forwards untouched
     flow.response = tutils.tresp(content=b"ok")  # upstream 200
     addon.response(flow)
@@ -306,9 +306,9 @@ def test_intercept_allow_logs_entry_and_strips_query(addon, audit_path):
     assert "SEKRET" not in audit_path.read_text(encoding="utf-8")
 
 
-def test_intercept_soft_deny_logs_entry(addon, audit_path):
+async def test_intercept_soft_deny_logs_entry(addon, audit_path):
     flow = _https_flow("not-allowlisted.example", "/v2/auth/")
-    addon.request(flow)
+    await addon.request(flow)
     addon.response(flow)  # status comes from the synthesized refusal
 
     entries = _read_audit(audit_path)
@@ -319,9 +319,9 @@ def test_intercept_soft_deny_logs_entry(addon, audit_path):
     assert e["status"] == 470
 
 
-def test_intercept_hard_deny_logs_entry_with_rule(addon, audit_path):
+async def test_intercept_hard_deny_logs_entry_with_rule(addon, audit_path):
     flow = _https_flow("w3schools.com", "/html/default.asp")
-    addon.request(flow)
+    await addon.request(flow)
     addon.response(flow)
 
     entries = _read_audit(audit_path)
@@ -360,11 +360,11 @@ def test_passthrough_denied_logs_host_only(addon, audit_path):
 # --- response streaming (AC-0057) ---------------------------------------------
 
 
-def test_responseheaders_marks_response_for_streaming(addon):
+async def test_responseheaders_marks_response_for_streaming(addon):
     # The responseheaders hook must flag every upstream response for incremental
     # streaming so long SSE bodies are not buffered (which would time out the client).
     flow = _https_flow("react.dev", "/learn")
-    addon.request(flow)
+    await addon.request(flow)
     assert flow.response is None  # allow forwards untouched
     flow.response = tutils.tresp(content=b"data")
     assert flow.response.stream is False  # mitmproxy default: buffered
@@ -372,11 +372,11 @@ def test_responseheaders_marks_response_for_streaming(addon):
     assert flow.response.stream is True
 
 
-def test_response_still_audits_after_streaming(addon, audit_path):
+async def test_response_still_audits_after_streaming(addon, audit_path):
     # Streaming the body must not break the single audit point: the response hook
     # still fires with status_code available.
     flow = _https_flow("react.dev", "/learn")
-    addon.request(flow)
+    await addon.request(flow)
     flow.response = tutils.tresp(content=b"data")
     addon.responseheaders(flow)
     addon.response(flow)
@@ -388,7 +388,7 @@ def test_response_still_audits_after_streaming(addon, audit_path):
     assert e["status"] == 200
 
 
-def test_audit_disabled_when_option_empty(tmp_path):
+async def test_audit_disabled_when_option_empty(tmp_path):
     # No creance_audit_log -> the addon writes nothing and creates no file.
     path = tmp_path / "policy.json"
     _write_policy(path, _POLICY)
@@ -397,7 +397,7 @@ def test_audit_disabled_when_option_empty(tmp_path):
     with taddons.context(a) as tctx:
         tctx.configure(a, creance_policy=str(path))  # audit option left at default ""
         flow = _https_flow("w3schools.com", "/x")
-        a.request(flow)
+        await a.request(flow)
         a.response(flow)
         a.tls_clienthello(_clienthello("api.anthropic.com"))
     assert not log.exists()

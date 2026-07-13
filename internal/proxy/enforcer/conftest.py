@@ -50,3 +50,21 @@ def update_golden(request) -> bool:
 @pytest.fixture(scope="session")
 def corpus_dir() -> pathlib.Path:
     return CORPUS_DIR
+
+
+@pytest.fixture
+def sock_dir():
+    """A temp dir short enough to hold a unix socket (AC-0069b).
+
+    Not tmp_path: AF_UNIX caps a path at 104 bytes on darwin, and tmp_path embeds the
+    test's name on top of an already-long TMPDIR, which overflows it for most of these
+    test names. (The Go side guards the production path explicitly — see
+    sysdep.MaxSocketPathLen — because a long $HOME can hit the same limit for real.)
+    """
+    import shutil
+
+    from stub_broker import short_sock_dir
+
+    d = short_sock_dir()
+    yield d
+    shutil.rmtree(d, ignore_errors=True)

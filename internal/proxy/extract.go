@@ -27,7 +27,7 @@ import (
 // modules explicitly because `enforcer/*.py` would also embed the pytest suite
 // (the embed directive has no exclude/negation).
 //
-//go:embed enforcer/enforcer.py enforcer/policy.py enforcer/audit.py enforcer/responses.py enforcer/inject.py
+//go:embed enforcer/enforcer.py enforcer/policy.py enforcer/audit.py enforcer/responses.py enforcer/inject.py enforcer/broker.py
 var enforcerFS embed.FS
 
 const (
@@ -44,7 +44,7 @@ const (
 
 // enforcerModules are the embedded addon files, relative to embedDir. enforcer.py
 // is the entrypoint; the rest are the siblings it imports.
-var enforcerModules = []string{"enforcer.py", "policy.py", "audit.py", "responses.py", "inject.py"}
+var enforcerModules = []string{"enforcer.py", "policy.py", "audit.py", "responses.py", "inject.py", "broker.py"}
 
 // Extractor writes the embedded enforcer addon to the constant, cross-project
 // enforcer dir through the injected filesystem seam.

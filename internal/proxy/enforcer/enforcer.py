@@ -45,7 +45,6 @@ lifecycle/lock/port (AC-0020). The policy path is supplied as a mitmproxy option
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 from typing import Optional
@@ -53,6 +52,7 @@ from typing import Optional
 from mitmproxy import ctx, http, tls
 
 import audit
+import broker
 import inject
 import policy
 import responses
@@ -61,6 +61,12 @@ logger = logging.getLogger(__name__)
 
 # How often the hot-reload loop checks policy.json's mtime.
 _POLL_INTERVAL_SECONDS = 1.0
+
+# How long an injected request waits for the broker before failing closed. A local
+# unix socket answers in well under a millisecond; a broker that needs two seconds is
+# a dead broker, and the caged agent is better served by a 472 (which tells it what
+# to do) than by a hanging request.
+_BROKER_TIMEOUT_SECONDS = 2.0
 
 
 def _make_response(r: responses.CageResponse) -> http.Response:
@@ -96,11 +102,13 @@ class Enforcer:
         self._task: Optional[asyncio.Task] = None
         self._audit_path: str = ""
         self._audit: Optional[audit.AuditLog] = None
-        # Injection secrets: {credential-name: raw-token}, resolved host-side and
-        # delivered once over the inherited fd. Held in memory for the proxy's
-        # lifetime; never logged or written to disk (AC-0068c). Read at most once.
-        self._secrets: dict[str, str] = {}
-        self._secrets_read = False
+        # Path of the host-side credential broker's unix socket (AC-0069b). The addon
+        # holds no secrets of its own: it fetches the current token from the broker
+        # once per injected request, so a token exists in this process only for as
+        # long as a request needs it, and a rotated credential takes effect on the
+        # next request without restarting the proxy. Empty ⇒ no injection possible
+        # (every inject-host then answers 472).
+        self._broker_sock: str = ""
 
     # --- addon lifecycle -------------------------------------------------------
 
@@ -118,10 +126,10 @@ class Enforcer:
             help="Path to the egress.jsonl audit log the enforcer appends to ('' disables).",
         )
         loader.add_option(
-            name="creance_secret_fd",
-            typespec=int,
-            default=0,
-            help="Inherited fd carrying the injection payload (0 disables injection).",
+            name="creance_broker_sock",
+            typespec=str,
+            default="",
+            help="Unix socket of the credential broker ('' disables injection).",
         )
 
     def configure(self, updated) -> None:
@@ -135,12 +143,8 @@ class Enforcer:
             self._audit = (
                 audit.AuditLog(self._audit_path) if self._audit_path else None
             )
-        if "creance_secret_fd" in updated:
-            fd = ctx.options.creance_secret_fd
-            if fd > 0 and not self._secrets_read:
-                # Read once, at startup, before any request is served.
-                self._secrets_read = True
-                self._read_secrets(fd)
+        if "creance_broker_sock" in updated:
+            self._broker_sock = ctx.options.creance_broker_sock
 
     def running(self) -> None:
         # Two settings make the enforcer a true egress gate — the proxy must never
@@ -210,40 +214,6 @@ class Enforcer:
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
             self._maybe_reload()
 
-    # --- injection secrets -----------------------------------------------------
-
-    def _read_secrets(self, fd: int) -> None:
-        """Read the injection payload the Go launcher wrote to the inherited fd.
-
-        The payload is JSON {credential-name: raw-token}, written to the write end of
-        a pipe whose read end the child inherited at ``fd`` (sysdep.SecretFD). Read to
-        EOF, parse, hold in memory, then close the fd. The secret values are never
-        logged. A read/parse failure leaves the map empty, so inject-hosts fail closed
-        (472) rather than the secret leaking into a log or the proxy refusing to start.
-        """
-        try:
-            chunks = []
-            while True:
-                b = os.read(fd, 65536)
-                if not b:
-                    break
-                chunks.append(b)
-            raw = b"".join(chunks)
-            if raw:
-                loaded = json.loads(raw)
-                self._secrets = {str(k): str(v) for k, v in loaded.items()}
-            logger.info("loaded %d injection credential(s)", len(self._secrets))
-        except (OSError, ValueError, TypeError) as exc:
-            # Note: never interpolate the payload — only the exception type/message,
-            # which carries no secret value.
-            logger.error("failed to read injection secrets (fd %d): %s", fd, exc)
-            self._secrets = {}
-        finally:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
-
     # --- enforcement hooks -----------------------------------------------------
 
     def http_connect(self, flow: http.HTTPFlow) -> None:
@@ -291,8 +261,14 @@ class Enforcer:
             data.ignore_connection = False
             logger.error("enforcer tls_clienthello hook failed; not tunnelling: %s", exc)
 
-    def request(self, flow: http.HTTPFlow) -> None:
-        """Decide an intercepted (TLS-terminated) request: allow / soft / hard."""
+    async def request(self, flow: http.HTTPFlow) -> None:
+        """Decide an intercepted (TLS-terminated) request: allow / soft / hard.
+
+        Async because injection fetches the credential from the broker over a unix
+        socket (AC-0069b). mitmproxy awaits an async hook, so other requests keep
+        being served during the round-trip; a *blocking* fetch here would stall the
+        whole proxy event loop. Non-injected requests never touch the socket.
+        """
         if flow.response is not None:
             return  # already answered (e.g. at http_connect)
 
@@ -313,7 +289,7 @@ class Enforcer:
             }
 
             if result.decision == policy.DECISION_ALLOW:
-                self._apply_injection(flow, result)
+                await self._apply_injection(flow, result)
                 return  # forward upstream (with the injected header, or a 472)
 
             url = flow.request.pretty_url
@@ -336,19 +312,25 @@ class Enforcer:
                 responses.hard_deny(_safe_url(flow), "internal enforcer error")
             )
 
-    def _apply_injection(self, flow: http.HTTPFlow, result: policy.Result) -> None:
+    async def _apply_injection(
+        self, flow: http.HTTPFlow, result: policy.Result
+    ) -> None:
         """Apply the matched allow rule's auth axis to an allowed request (AC-0068c).
 
         - ``in_cage``: leave auth untouched — the proxy guarantees it never adds,
-          strips, or modifies an auth header on an in-cage host.
-        - ``inject``: overwrite the credential's header with the rendered value. If the
-          credential is unknown or its secret did not resolve host-side, fail closed
-          with 472 instead of forwarding unauthenticated or with the phantom.
+          strips, or modifies an auth header on an in-cage host. No broker fetch is
+          made for such a host: the addon never even sees its credential.
+        - ``inject``: fetch the current token from the broker and overwrite the
+          credential's header with the rendered value. If the credential shape is
+          unknown, or the broker cannot supply a live token (missing, expired,
+          unreachable), fail closed with 472 instead of forwarding unauthenticated or
+          with the phantom.
         - neither: today's default — the proxy does not touch auth.
 
         Runs inside the ``request`` hook's try/except, so an unexpected error (e.g. a
         malformed template that slipped past compile-time validation) falls through to
-        the fail-closed hard-deny there.
+        the fail-closed hard-deny (471) there. A *broker* failure must not: it is a
+        472, which is why broker.fetch returns its errors rather than raising them.
         """
         if result.matched is None or result.matched.list != "allow":
             return
@@ -358,8 +340,19 @@ class Enforcer:
         if not rule.inject:
             return
         cred = self._ruleset.credentials.get(rule.inject)
-        token = self._secrets.get(rule.inject)
-        if cred is None or token is None:
+        if cred is None:
+            flow.response = _make_response(
+                responses.injection_unavailable(flow.request.pretty_url, rule.inject)
+            )
+            return
+
+        token, err = await broker.fetch(
+            self._broker_sock, rule.inject, _BROKER_TIMEOUT_SECONDS
+        )
+        if token is None:
+            # err is secret-free by construction (see broker.fetch) — the credential
+            # *name* and the failure kind, never a token.
+            logger.warning("injection unavailable for %s: %s", rule.inject, err)
             flow.response = _make_response(
                 responses.injection_unavailable(flow.request.pretty_url, rule.inject)
             )
