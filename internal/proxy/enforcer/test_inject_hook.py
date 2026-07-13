@@ -7,7 +7,9 @@ socket, so these tests stand up a stub broker rather than writing a private fiel
 Requires mitmproxy; skips cleanly if it is absent so the pure suites still run.
 """
 
+import asyncio
 import json
+import os
 
 import pytest
 
@@ -147,6 +149,32 @@ async def test_inject_unreachable_broker_returns_472(make_addon, tmp_path):
 
     _assert_472(flow)
     assert flow.response.status_code != 471, "a missing broker is human-recoverable"
+
+
+async def test_inject_broker_timeout_returns_472(make_addon, monkeypatch, sock_dir):
+    """A broker that accepts but never answers must not hang the request: the hook
+    gives up and 472s, rather than stalling the caged agent behind a dead daemon."""
+    # A hung handler, and a timeout short enough to keep the test quick.
+    release = asyncio.Event()
+
+    async def never_answer(reader, writer):
+        await release.wait()
+
+    path = os.path.join(sock_dir, "s.sock")
+    server = await asyncio.start_unix_server(never_answer, path)
+    monkeypatch.setattr(enforcer, "_BROKER_TIMEOUT_SECONDS", 0.05)
+    try:
+        addon = await make_addon(sock=path)
+        flow = _https_flow("api.github.com")
+
+        await addon.request(flow)
+    finally:
+        release.set()
+        server.close()
+        await server.wait_closed()
+
+    _assert_472(flow)
+    assert flow.response.status_code != 471, "a hung broker is human-recoverable, not a hard-deny"
 
 
 async def test_in_cage_leaves_auth_header_untouched(make_addon):
