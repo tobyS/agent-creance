@@ -1,9 +1,9 @@
 # AC-0069b: Unix-socket secret broker — Go-side custody + rotation channel
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** Medium
 **Created:** 2026-06-29
-**Updated:** 2026-06-29
+**Updated:** 2026-07-13
 
 > Sub-ticket of **AC-0069** (Credential injection, Phase 2). **Deferred** hardening.
 > **Depends on AC-0068 (Phase 1) complete.** Resolves the Phase-1 Open Decision on
@@ -53,7 +53,8 @@ custody and rotation channel Phase 2 wants.
 ## Open Questions
 
 - **Delivery-channel design** (the Phase-1 Open Decision): confirm the unix-socket
-  broker protocol and custody model at planning.
+  broker protocol and custody model at planning. — **Resolved 2026-07-13**, see
+  Notes & Updates.
 
 ## Questions for Research/Planning
 
@@ -79,6 +80,36 @@ custody and rotation channel Phase 2 wants.
 (Filled when planned.)
 
 ## Notes & Updates
+
+### 2026-07-13
+Researched and planned (`/tce:work`). Research:
+`thoughts/shared/research/2026-07-13-AC-0069b-secret-broker.md`; plan:
+`thoughts/shared/plans/2026-07-13-AC-0069b-secret-broker.md`. Status → In Progress.
+
+The Phase-1 Open Decision (delivery-channel evolution) is **resolved**: a
+detached Go broker daemon, sibling of the `mitmdump` daemon, refcounted in
+`proxy.lock`, serving newline-delimited JSON (carrying `expires_at`, per
+AC-0069a decision 3) over a `0600` unix socket in a `0700` dir; the addon
+fetches per injected request. Decisions taken with the user:
+
+1. **Detached sibling daemon**, not a run-session goroutine — the proxy outlives
+   its spawning CLI when a second agent is attached, so a session-owned broker
+   would vanish under a live proxy and 472 forever.
+2. **Per-request fetch, no addon cache** — instant rotation, no in-flight race,
+   token out of Python memory except while a request needs it. Makes the
+   enforcer's `request` hook a coroutine.
+3. **One channel for all credentials** — static tokens move to the broker too;
+   the fd-3 payload now goes Go→broker, and the (non-secret) socket path rides
+   `mitmdump`'s argv.
+4. **Best-effort `unix.Mlock` + wipe + `RLIMIT_CORE=0`**, not `memguard`.
+   Research verdict: with encrypted swap, a same-uid adversary, Go's stack
+   copying, and `runtime/secret` being a darwin no-op, memory locking is honest
+   hygiene, not a control — TTL and scope (AC-0069a) are the real bounds. This
+   is to be documented as a bounded claim, not sold as protection.
+5. **Filesystem permissions as the sole auth control** (the ssh-agent model) — a
+   peer-uid check is theatre because the caged agent shares `mitmdump`'s uid.
+6. **Broker death is fail-closed** (472) and surfaced as a doctor/status warning;
+   no automatic restart.
 
 ### 2026-06-29
 Created (deferred) as the broker-hardening sub-ticket of AC-0069. Carries the one
