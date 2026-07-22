@@ -749,7 +749,7 @@ Refuse cleanly on `op://`/`env://` refresh-token refs (authorize can only write 
 ### Implementation log
 
 - **Status**: ✅ Complete
-- **Commit**: _pending_
+- **Commit**: `fded7d4` feat(AC-0069a): add the credential authorize OAuth2 consent flow
 - **Did**: `sysdep.Keychain.SetGenericPassword` (writes via security(1) stdin, `-U`
   idempotent) + fake recorder; new `sysdep.Browser` seam (`open <url>` via Commander)
   + fake. New `credential authorize` (`internal/cli/authorize.go`): PKCE S256, state
@@ -827,11 +827,11 @@ or `internal/setup/skill.go` change (472 semantics unchanged, deliberately).
 
 #### Automated Verification:
 
-- [ ] `make test` and `make lint` green
-- [ ] `make test-integration` passes out-of-cage (GitHub App mint + broker e2e)
-- [ ] `make test-enforcer` / `make test-enforcer-integration` green
-- [ ] `make build` produces `bin/agent-creance` at the final commit
-- [ ] `grep` confirms the AC-0047 pinned-literal 472 surface is unchanged
+- [x] `make test` and `make lint` green
+- [ ] `make test-integration` passes out-of-cage (GitHub App mint + broker e2e) — **pending out-of-cage batch**
+- [x] `make test-enforcer` green; [ ] `make test-enforcer-integration` — **pending out-of-cage batch**
+- [x] `make build` produces `bin/agent-creance` at the final commit
+- [x] `grep` confirms the AC-0047 pinned-literal 472 surface is unchanged
 
 #### Manual Verification:
 
@@ -843,6 +843,27 @@ or `internal/setup/skill.go` change (472 semantics unchanged, deliberately).
       boundary without a proxy restart
 - [ ] `docs/design.md` describes the shipped minting/refresh/authorize/revocation
       accurately
+
+### Implementation log
+
+- **Status**: ⚠️ Partial — hermetic artifacts done in-cage; the integration *runs* and
+  manual verification are the out-of-cage batch (dogfooding rule).
+- **Commit**: _pending_
+- **Did**: Wrote the env-gated `//go:build integration` tests —
+  `mint/githubapp/githubapp_integration_test.go` (real mint → authenticate → revoke →
+  no-longer-authenticate), `mint/oauth2mint/oauth2mint_integration_test.go` (real
+  refresh), and a broker-mint e2e in `proxy/broker_integration_test.go`. **Corrected
+  the AC-0069b broker integration test's fd-3 fixture** from the old flat map to
+  `broker.Payload` (Phase-3 format change) so it still passes. Extended
+  `docs/design.md` "Credential injection" with the minted-tokens subsection (GitHub
+  App + OAuth2, broker refresh loop, fd-3 spec, `credential authorize`, revocation,
+  honest bounds) and updated the trade-offs + roadmap. `make build` at the final
+  commit. All integration files compile under `-tags=integration`.
+- **Issues**: The integration tests and manual steps need real `mitmdump`/
+  `agent-safehouse` and real GitHub App / Google OAuth, none of which run inside the
+  dev cage — deferred to a batched out-of-cage run (see the closeout ask).
+- **Verification (hermetic)**: ✅ make test, ✅ make lint, ✅ make test-enforcer,
+  ✅ make build, ✅ 472 pinned-literal surface unchanged, ✅ integration files compile.
 
 ---
 

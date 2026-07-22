@@ -40,9 +40,21 @@ type brokerDaemon struct {
 	sock string
 }
 
-// startBroker builds the CLI, re-executes it as the broker with secrets on fd 3
-// (exactly as proxy.Manager.Attach does), and waits for the socket to answer.
+// startBroker builds the CLI and re-executes it as the broker with a flat map of
+// static secrets. It wraps each as a static CredentialSpec — the fd-3 payload is a
+// broker.Payload (AC-0069a), no longer a flat {name: token} map.
 func startBroker(t *testing.T, secrets map[string]string) brokerDaemon {
+	t.Helper()
+	payload := broker.Payload{}
+	for name, tok := range secrets {
+		payload[name] = broker.CredentialSpec{Kind: broker.KindStatic, Token: tok}
+	}
+	return startBrokerWithPayload(t, payload)
+}
+
+// startBrokerWithPayload builds the CLI, re-executes it as the broker with payload on
+// fd 3 (exactly as proxy.Manager.Attach does), and waits for the socket to answer.
+func startBrokerWithPayload(t *testing.T, payload broker.Payload) brokerDaemon {
 	t.Helper()
 	if runtime.GOOS != "darwin" {
 		t.Skip("the broker is macOS-only")
@@ -57,11 +69,11 @@ func startBroker(t *testing.T, secrets map[string]string) brokerDaemon {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "broker.sock")
 
-	payload, err := json.Marshal(secrets)
+	data, err := json.Marshal(payload)
 	require.NoError(t, err)
 
 	pid, err := sysdep.OSProcessManager{}.SpawnWithSecret(
-		context.Background(), payload, bin, "broker", "--socket", sock)
+		context.Background(), data, bin, "broker", "--socket", sock)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 
@@ -158,4 +170,46 @@ func TestBrokerDaemonWithoutPayloadFailsClosedNotShut(t *testing.T) {
 	d := startBroker(t, map[string]string{}) // an empty payload
 
 	assert.Equal(t, broker.Response{Error: broker.ErrUnknownCredential}, ask(t, d.sock, "gh"))
+}
+
+// TestBrokerDaemonMintsGitHubAppToken drives the real broker with a github_app spec
+// and asserts it mints an installation token host-side and serves it over the socket
+// with a non-zero expiry — the AC-0069a refresh loop, end to end, against real GitHub.
+// It is env-gated: it needs a real GitHub App private key, its client ID, and a repo
+// the App is installed on.
+//
+// Run with:
+//
+//	AC_TEST_GH_APP_KEY_REF='op://Private/GH App/key' \
+//	AC_TEST_GH_APP_CLIENT_ID='Iv1.…' AC_TEST_GH_APP_REPO='owner/name' make test-integration
+func TestBrokerDaemonMintsGitHubAppToken(t *testing.T) {
+	keyRef := os.Getenv("AC_TEST_GH_APP_KEY_REF")
+	clientID := os.Getenv("AC_TEST_GH_APP_CLIENT_ID")
+	repo := os.Getenv("AC_TEST_GH_APP_REPO")
+	if keyRef == "" || clientID == "" || repo == "" {
+		t.Skip("set AC_TEST_GH_APP_KEY_REF, AC_TEST_GH_APP_CLIENT_ID, AC_TEST_GH_APP_REPO to exercise the real broker-mint path")
+	}
+
+	// Resolve the app key host-side, exactly as the CLI does at spawn.
+	r := sysdep.OSSecretResolver{Commander: sysdep.ExecCommander{}, Keychain: sysdep.OSKeychain{}, Paths: sysdep.OSPathResolver{}}
+	pem, err := r.Resolve(context.Background(), keyRef)
+	require.NoError(t, err, "resolve the app private key")
+	require.NotEmpty(t, pem)
+
+	d := startBrokerWithPayload(t, broker.Payload{
+		"gh-app": {Kind: broker.KindGitHubApp, GitHubApp: &broker.GitHubAppSpec{
+			PEM: string(pem), ClientID: clientID, Repo: repo,
+			Permissions: map[string]string{"metadata": "read"},
+		}},
+	})
+
+	// The first mint is async; poll until the broker serves a token (or 472s at first).
+	var resp broker.Response
+	require.Eventually(t, func() bool {
+		resp = ask(t, d.sock, "gh-app")
+		return resp.Token != ""
+	}, 20*time.Second, 250*time.Millisecond, "broker never minted a token (last: %+v)", resp)
+
+	assert.NotEmpty(t, resp.Token, "a minted installation token is served")
+	assert.NotEmpty(t, resp.ExpiresAt, "a minted token carries a non-zero expiry (arms the 472-at-expiry)")
 }
