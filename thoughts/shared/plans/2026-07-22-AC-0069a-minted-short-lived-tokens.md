@@ -286,7 +286,7 @@ minting keys" invariant against a future strict-decode regression.
 
 - **Status**: ✅ Complete
 - **Base commit**: `ff43db0` (HEAD before any implementation commit)
-- **Commit**: _pending_
+- **Commit**: `cbcc39e` feat(AC-0069a): add minted-credential schema to config and compiled policy
 - **Did**: `config.Credential` gained `GitHubApp`/`OAuth2` sub-blocks + `IsMinted()`,
   OAuth2 endpoint/scope defaults, form-branching validation (repo slug, perm levels,
   https endpoint). `policy.Credential` mirrors them (reference-only, `source` now
@@ -384,22 +384,40 @@ through `sysdep.HTTPClient`.
 
 #### Automated Verification:
 
-- [ ] `make test` passes; `make lint` passes; `go build ./...` succeeds
-- [ ] `sysdeptest` HTTP fake records the request (method/url/headers/body) and
+- [x] `make test` passes; `make lint` passes; `go build ./...` succeeds
+- [x] `sysdeptest` HTTP fake records the request (method/url/headers/body) and
       returns scripted responses; a GET expressed via `Do` still satisfies the
       registry consumer
-- [ ] GitHub minter tests (fake HTTP + fake clock): JWT claims are correct
+- [x] GitHub minter tests (fake HTTP + fake clock): JWT claims are correct
       (`iat−60s`, `exp+9min`, `iss=client_id`); the mint request body carries the
       single repo + permissions; `token`/`expires_at` are parsed; a non-2xx yields
       a typed error that does **not** contain the token; `Revoke` issues the DELETE
-- [ ] OAuth2 minter tests: refresh grant body is correct; `expires_at` computed
+- [x] OAuth2 minter tests: refresh grant body is correct; `expires_at` computed
       from `expires_in` + clock; a rotated `refresh_token` is surfaced;
       `invalid_grant`/400 is a terminal typed error
-- [ ] JWT signing verifies against the public key in a round-trip test
+- [x] JWT signing verifies against the public key in a round-trip test
 
 #### Manual Verification:
 
 - [ ] None (no wiring yet)
+
+### Implementation log
+
+- **Status**: ✅ Complete
+- **Commit**: _pending_
+- **Did**: New `sysdep.HTTPClient` (POST/GET/DELETE via `Do`) + `OSHTTPClient` +
+  `sysdeptest.FakeHTTPClient` (records method/url/headers/body, scripts by
+  "METHOD URL"). New `internal/mint` package: `Minter` interface; `mint/githubapp`
+  (RS256 JWT via golang-jwt/jwt/v5, install discovery+cache, token create, revoke,
+  typed `APIError`); `mint/oauth2mint` (refresh grant, expiry from expires_in,
+  rotated-refresh-token surfacing, terminal `InvalidGrantError`). Added
+  golang-jwt/jwt/v5 dep.
+- **Issues**: Plan's `mint.New(broker.CredentialSpec,…)` factory would cycle
+  (broker imports mint for the refresher). Resolved by making `mint` self-contained
+  (`githubapp.New(Config,…)` / `oauth2mint.New(Config,…)`); the spec→minter factory
+  moves to the broker in Phase 3. `go mod tidy` also corrected fatih/color to a
+  direct dep (pre-existing drift).
+- **Verification**: ✅ make test, ✅ make lint (fixed `max` shadow), ✅ mint unit tests
 
 ---
 

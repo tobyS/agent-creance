@@ -3,6 +3,7 @@ package sysdep_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -110,5 +111,43 @@ func TestOSHTTPGetterContextCancellationAborts(t *testing.T) {
 	g := sysdep.OSHTTPGetter{Client: srv.Client()}
 	if _, _, err := g.Get(ctx, srv.URL, nil); err == nil {
 		t.Error("want error when context times out, got nil")
+	}
+}
+
+// TestOSHTTPClientDoForwardsMethodHeadersAndBody exercises the general HTTPClient
+// seam (AC-0069a): the method, headers, and request body reach the server and the
+// response status+body come back. A GET (nil body) also works, so a caller could
+// express registry GETs through Do if desired.
+func TestOSHTTPClientDoForwardsMethodHeadersAndBody(t *testing.T) {
+	var gotMethod, gotAuth, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	c := sysdep.OSHTTPClient{Client: srv.Client()}
+	status, body, err := c.Do(context.Background(), "POST", srv.URL,
+		map[string]string{"Authorization": "Bearer jwt"}, []byte("payload"))
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if status != 201 || string(body) != "ok" {
+		t.Errorf("status=%d body=%q, want 201/ok", status, body)
+	}
+	if gotMethod != "POST" || gotAuth != "Bearer jwt" || gotBody != "payload" {
+		t.Errorf("server saw method=%q auth=%q body=%q", gotMethod, gotAuth, gotBody)
+	}
+
+	// A GET with a nil body still works.
+	if _, _, err := c.Do(context.Background(), "GET", srv.URL, nil, nil); err != nil {
+		t.Fatalf("Do GET: %v", err)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("second call method = %q, want GET", gotMethod)
 	}
 }

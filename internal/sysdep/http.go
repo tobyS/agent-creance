@@ -1,6 +1,7 @@
 package sysdep
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -76,4 +77,59 @@ func (g OSHTTPGetter) Get(ctx context.Context, url string, headers map[string]st
 		return resp.StatusCode, nil, fmt.Errorf("sysdep: response body of %q exceeds %d MiB", url, maxBodyBytes>>20)
 	}
 	return resp.StatusCode, body, nil
+}
+
+// HTTPClient abstracts a general HTTP request (any method, optional request body).
+// It is the seam host-side credential minting uses (AC-0069a): GitHub App JWT →
+// installation-token GET/POST/DELETE, and the OAuth2 refresh-grant POST. GET-only
+// callers keep using HTTPGetter; this is the superset the minters need.
+//
+// Like HTTPGetter, a non-nil error means the request could not be completed at all
+// (DNS, connection, timeout, body read); an HTTP error *status* (4xx/5xx) is reported
+// via status with a nil error so callers branch on it. The same 16 MiB body cap and
+// default timeout apply.
+type HTTPClient interface {
+	Do(ctx context.Context, method, url string, headers map[string]string, body []byte) (status int, respBody []byte, err error)
+}
+
+// OSHTTPClient is the production HTTPClient backed by net/http. Client may be nil, in
+// which case a default client with defaultHTTPTimeout is used.
+type OSHTTPClient struct {
+	Client *http.Client
+}
+
+var _ HTTPClient = (*OSHTTPClient)(nil)
+
+func (g OSHTTPClient) Do(ctx context.Context, method, url string, headers map[string]string, body []byte) (int, []byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		return 0, nil, fmt.Errorf("sysdep: build %s request for %q: %w", method, url, err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := g.Client
+	if client == nil {
+		client = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("sysdep: %s %q: %w", method, url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("sysdep: read body of %q: %w", url, err)
+	}
+	if len(respBody) > maxBodyBytes {
+		return resp.StatusCode, nil, fmt.Errorf("sysdep: response body of %q exceeds %d MiB", url, maxBodyBytes>>20)
+	}
+	return resp.StatusCode, respBody, nil
 }
