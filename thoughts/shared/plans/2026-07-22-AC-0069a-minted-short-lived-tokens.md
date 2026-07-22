@@ -848,7 +848,7 @@ or `internal/setup/skill.go` change (472 semantics unchanged, deliberately).
 
 - **Status**: ⚠️ Partial — hermetic artifacts done in-cage; the integration *runs* and
   manual verification are the out-of-cage batch (dogfooding rule).
-- **Commit**: _pending_
+- **Commit**: `c5fce63` test(AC-0069a): add minting integration tests and document minted tokens
 - **Did**: Wrote the env-gated `//go:build integration` tests —
   `mint/githubapp/githubapp_integration_test.go` (real mint → authenticate → revoke →
   no-longer-authenticate), `mint/oauth2mint/oauth2mint_integration_test.go` (real
