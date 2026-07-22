@@ -108,12 +108,38 @@ const CompiledVersion = 1
 // a reference the enforcer resolves host-side and injects, never a resolved value. It
 // mirrors config.Credential but carries json tags for the artifact. Source is an
 // op:// / keychain:// / env:// reference; Header is the target header; Template is the
-// value-template; Username is the Basic sentinel. No secret value ever appears here.
+// value-template; Username is the Basic sentinel. GitHubApp/OAuth2 are the minted
+// forms (AC-0069a) — still reference-only: Key/RefreshToken are secret *references*,
+// the rest is non-secret minting config. No secret value ever appears here.
+//
+// The Python enforcer ignores the minting blocks entirely: the token it injects
+// comes from the broker by credential name, resolved (static) or minted (AC-0069a)
+// host-side, and it renders through Header/Template/Username regardless of form.
 type Credential struct {
-	Source   string `json:"source"`
-	Header   string `json:"header,omitempty"`
-	Template string `json:"template"`
-	Username string `json:"username,omitempty"`
+	Source    string         `json:"source,omitempty"`
+	Header    string         `json:"header,omitempty"`
+	Template  string         `json:"template"`
+	Username  string         `json:"username,omitempty"`
+	GitHubApp *GitHubAppMint `json:"github_app,omitempty"`
+	OAuth2    *OAuth2Mint    `json:"oauth2,omitempty"`
+}
+
+// GitHubAppMint is the compiled github_app: block (reference-only): Key is a secret
+// reference to the PKCS#1 PEM app private key, the rest is non-secret config.
+type GitHubAppMint struct {
+	Key         string            `json:"key"`
+	ClientID    string            `json:"client_id"`
+	Repo        string            `json:"repo"`
+	Permissions map[string]string `json:"permissions,omitempty"`
+}
+
+// OAuth2Mint is the compiled oauth2: block (reference-only): RefreshToken is a secret
+// reference, the rest is non-secret config.
+type OAuth2Mint struct {
+	RefreshToken  string   `json:"refresh_token"`
+	ClientID      string   `json:"client_id"`
+	TokenEndpoint string   `json:"token_endpoint,omitempty"`
+	Scopes        []string `json:"scopes,omitempty"`
 }
 
 // CredentialsFromConfig converts the config credentials map into the compiled form
@@ -125,12 +151,29 @@ func CredentialsFromConfig(in map[string]config.Credential) map[string]Credentia
 	}
 	out := make(map[string]Credential, len(in))
 	for name, c := range in {
-		out[name] = Credential{
+		cc := Credential{
 			Source:   c.Source,
 			Header:   c.Header,
 			Template: c.Template,
 			Username: c.Username,
 		}
+		if c.GitHubApp != nil {
+			cc.GitHubApp = &GitHubAppMint{
+				Key:         c.GitHubApp.Key,
+				ClientID:    c.GitHubApp.ClientID,
+				Repo:        c.GitHubApp.Repo,
+				Permissions: c.GitHubApp.Permissions,
+			}
+		}
+		if c.OAuth2 != nil {
+			cc.OAuth2 = &OAuth2Mint{
+				RefreshToken:  c.OAuth2.RefreshToken,
+				ClientID:      c.OAuth2.ClientID,
+				TokenEndpoint: c.OAuth2.TokenEndpoint,
+				Scopes:        c.OAuth2.Scopes,
+			}
+		}
+		out[name] = cc
 	}
 	return out
 }

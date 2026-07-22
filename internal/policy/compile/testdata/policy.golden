@@ -1,7 +1,32 @@
 {
   "version": 1,
-  "input_hash": "150ec164f7fca01f82919b7915eab091223ef175a683b9c4ff69d4383584e9f9",
+  "input_hash": "8e9e93791c6b64d368848f2204d21b9457f072fc5436e7d6734fc10154196b19",
   "credentials": {
+    "drive": {
+      "header": "Authorization",
+      "template": "Bearer {token}",
+      "oauth2": {
+        "refresh_token": "keychain://agent-creance/drive-refresh",
+        "client_id": "1234.apps.googleusercontent.com",
+        "token_endpoint": "https://oauth2.googleapis.com/token",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.file"
+        ]
+      }
+    },
+    "gh-app": {
+      "header": "Authorization",
+      "template": "Bearer {token}",
+      "github_app": {
+        "key": "keychain://agent-creance/ghapp-key",
+        "client_id": "Iv1.example",
+        "repo": "tobyS/agent-creance",
+        "permissions": {
+          "contents": "read",
+          "issues": "write"
+        }
+      }
+    },
     "github-token": {
       "source": "op://Private/GitHub PAT/token",
       "header": "Authorization",

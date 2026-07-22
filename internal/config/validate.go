@@ -84,11 +84,34 @@ func validateCredentials(creds map[string]Credential, verr *ValidationError) {
 		if name == "" {
 			verr.add("credentials has an entry with an empty name")
 		}
-		if cred.Source == "" {
-			verr.add("credential %q is missing a source (an op:// , keychain:// , or env:// reference)", name)
-		} else if err := sysdep.ValidateSecretRefSyntax(cred.Source); err != nil {
-			verr.add("credential %q has an invalid source %q (want an op:// , keychain:// , or env:// reference)", name, cred.Source)
+
+		// Exactly one form: a static source, a github_app block, or an oauth2 block.
+		forms := 0
+		if cred.Source != "" {
+			forms++
 		}
+		if cred.GitHubApp != nil {
+			forms++
+		}
+		if cred.OAuth2 != nil {
+			forms++
+		}
+		switch {
+		case forms == 0:
+			verr.add("credential %q defines no form: set a source (op:// / keychain:// / env://), a github_app: block, or an oauth2: block", name)
+		case forms > 1:
+			verr.add("credential %q sets more than one form (source / github_app / oauth2 are mutually exclusive)", name)
+		case cred.Source != "":
+			if err := sysdep.ValidateSecretRefSyntax(cred.Source); err != nil {
+				verr.add("credential %q has an invalid source %q (want an op:// , keychain:// , or env:// reference)", name, cred.Source)
+			}
+		case cred.GitHubApp != nil:
+			validateGitHubAppMint(name, cred.GitHubApp, verr)
+		case cred.OAuth2 != nil:
+			validateOAuth2Mint(name, cred.OAuth2, verr)
+		}
+
+		// The injected-header shape (template/header/username) applies to every form.
 		if cred.Template == "" {
 			verr.add("credential %q is missing a template (e.g. \"Bearer {token}\")", name)
 		} else if err := validateTemplate(cred.Template, cred.Username); err != nil {
@@ -98,6 +121,71 @@ func validateCredentials(creds map[string]Credential, verr *ValidationError) {
 			verr.add("credential %q has an invalid header %q: %v", name, cred.Header, err)
 		}
 	}
+}
+
+// knownGitHubPermissionLevels is the set of access levels a GitHub App installation
+// token may request per permission (a down-scope cap). GitHub uses read/write and,
+// for a few permissions, admin.
+var knownGitHubPermissionLevels = map[string]bool{"read": true, "write": true, "admin": true}
+
+// validateGitHubAppMint checks a github_app: block: a valid key secret reference, a
+// non-empty client_id, an owner/name repo, and known permission levels. It does not
+// resolve the key or contact GitHub (that is minting, host-side at run).
+func validateGitHubAppMint(name string, m *GitHubAppMint, verr *ValidationError) {
+	if m.Key == "" {
+		verr.add("credential %q github_app is missing a key (an op:// , keychain:// , or env:// reference to the app private key)", name)
+	} else if err := sysdep.ValidateSecretRefSyntax(m.Key); err != nil {
+		verr.add("credential %q github_app has an invalid key %q (want an op:// , keychain:// , or env:// reference)", name, m.Key)
+	}
+	if m.ClientID == "" {
+		verr.add("credential %q github_app is missing a client_id", name)
+	}
+	if err := validateRepoSlug(m.Repo); err != nil {
+		verr.add("credential %q github_app has an invalid repo %q: %v (want owner/name)", name, m.Repo, err)
+	}
+	levels := make([]string, 0, len(m.Permissions))
+	for perm := range m.Permissions {
+		levels = append(levels, perm)
+	}
+	sort.Strings(levels)
+	for _, perm := range levels {
+		if !knownGitHubPermissionLevels[m.Permissions[perm]] {
+			verr.add("credential %q github_app permission %q has an unknown level %q (want read, write, or admin)", name, perm, m.Permissions[perm])
+		}
+	}
+}
+
+// validateOAuth2Mint checks an oauth2: block: a valid refresh_token secret
+// reference, a non-empty client_id, and a plausible https token endpoint. Endpoint
+// and scopes are already defaulted (applyDefaults) by the time validation runs.
+func validateOAuth2Mint(name string, m *OAuth2Mint, verr *ValidationError) {
+	if m.RefreshToken == "" {
+		verr.add("credential %q oauth2 is missing a refresh_token (an op:// , keychain:// , or env:// reference)", name)
+	} else if err := sysdep.ValidateSecretRefSyntax(m.RefreshToken); err != nil {
+		verr.add("credential %q oauth2 has an invalid refresh_token %q (want an op:// , keychain:// , or env:// reference)", name, m.RefreshToken)
+	}
+	if m.ClientID == "" {
+		verr.add("credential %q oauth2 is missing a client_id", name)
+	}
+	if !strings.HasPrefix(m.TokenEndpoint, "https://") {
+		verr.add("credential %q oauth2 has an invalid token_endpoint %q (want an https:// URL)", name, m.TokenEndpoint)
+	}
+}
+
+// validateRepoSlug checks a "owner/name" GitHub repository slug: exactly one slash,
+// non-empty owner and name, no whitespace or control characters.
+func validateRepoSlug(repo string) error {
+	if repo == "" {
+		return fmt.Errorf("empty")
+	}
+	if strings.IndexFunc(repo, isControlRune) >= 0 || strings.ContainsAny(repo, " \t") {
+		return fmt.Errorf("contains whitespace or a control character")
+	}
+	owner, rname, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || rname == "" || strings.Contains(rname, "/") {
+		return fmt.Errorf("not in owner/name form")
+	}
+	return nil
 }
 
 // validateHeaderName checks a credential's target header is a plausible HTTP field

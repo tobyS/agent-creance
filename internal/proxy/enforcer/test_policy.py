@@ -160,3 +160,52 @@ def test_auth_fields_and_credentials_parsed_but_ignored_by_matcher():
     )
     assert in_cage.decision == policy.DECISION_ALLOW
     assert rs.allow[in_cage.matched.index].in_cage is True
+
+
+def test_minted_credential_keys_ignored_but_shape_read():
+    """AC-0069a: a minted credential (github_app / oauth2) carries extra keys in the
+    compiled policy.json. The enforcer is indifferent to minting — the token comes
+    from the broker by name — so Credential.from_dict must ignore the github_app /
+    oauth2 blocks and still read the header/template/username shape correctly. A
+    minted credential carries no ``source``; from_dict tolerates its absence."""
+    data = {
+        "version": 1,
+        "input_hash": "x",
+        "credentials": {
+            "gh-app": {
+                # No "source": a minted credential is reference-only via github_app.
+                "template": "Bearer {token}",
+                "github_app": {
+                    "key": "keychain://agent-creance/ghapp-key",
+                    "client_id": "Iv1.example",
+                    "repo": "tobyS/agent-creance",
+                    "permissions": {"contents": "read"},
+                },
+            },
+            "drive": {
+                "template": "Bearer {token}",
+                "oauth2": {
+                    "refresh_token": "keychain://agent-creance/drive-refresh",
+                    "client_id": "1234.apps.googleusercontent.com",
+                    "token_endpoint": "https://oauth2.googleapis.com/token",
+                    "scopes": ["https://www.googleapis.com/auth/drive.file"],
+                },
+            },
+        },
+        "allow": [],
+        "deny_always": [],
+    }
+
+    rs = policy.RuleSet.from_dict(data)
+
+    # The minting blocks are ignored; the injected-header shape is read intact.
+    gh = rs.credentials["gh-app"]
+    assert gh.source == ""  # no source key on a minted credential
+    assert gh.template == "Bearer {token}"
+    assert gh.header == "Authorization"  # defaulted
+    assert not hasattr(gh, "github_app")  # Credential carries no minting fields
+
+    drive = rs.credentials["drive"]
+    assert drive.source == ""
+    assert drive.template == "Bearer {token}"
+    assert drive.header == "Authorization"

@@ -12,6 +12,8 @@ package config
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -120,17 +122,69 @@ func renderCredentialBlock(baseIndent int, name string, cred Credential) []strin
 
 // renderCredentialEntry renders one credentials: entry (name: mapping) at the given
 // indent. header is omitted when it is empty or the Authorization default; username
-// is omitted when empty. source and template are always present.
+// is omitted when empty. For a static credential source is present; for a minted one
+// (github_app/oauth2) the source line is dropped and the minting sub-block rendered
+// instead. template is always present.
 func renderCredentialEntry(indent int, name string, cred Credential) []string {
 	pad := strings.Repeat(" ", indent)
 	out := []string{pad + scalar(name) + ":"}
-	out = append(out, pad+"  source: "+scalar(cred.Source))
+	if cred.Source != "" {
+		out = append(out, pad+"  source: "+scalar(cred.Source))
+	}
 	out = append(out, pad+"  template: "+scalar(cred.Template))
 	if cred.Header != "" && cred.Header != DefaultCredentialHeader {
 		out = append(out, pad+"  header: "+scalar(cred.Header))
 	}
 	if cred.Username != "" {
 		out = append(out, pad+"  username: "+scalar(cred.Username))
+	}
+	if cred.GitHubApp != nil {
+		out = append(out, renderGitHubAppBlock(indent+2, cred.GitHubApp)...)
+	}
+	if cred.OAuth2 != nil {
+		out = append(out, renderOAuth2Block(indent+2, cred.OAuth2)...)
+	}
+	return out
+}
+
+// renderGitHubAppBlock renders a github_app: sub-block at the given indent, with
+// permissions as a nested mapping in sorted key order (deterministic output).
+func renderGitHubAppBlock(indent int, m *GitHubAppMint) []string {
+	pad := strings.Repeat(" ", indent)
+	out := []string{pad + "github_app:"}
+	out = append(out, pad+"  key: "+scalar(m.Key))
+	out = append(out, pad+"  client_id: "+scalar(m.ClientID))
+	out = append(out, pad+"  repo: "+scalar(m.Repo))
+	if len(m.Permissions) > 0 {
+		out = append(out, pad+"  permissions:")
+		perms := make([]string, 0, len(m.Permissions))
+		for p := range m.Permissions {
+			perms = append(perms, p)
+		}
+		sort.Strings(perms)
+		for _, p := range perms {
+			out = append(out, pad+"    "+scalar(p)+": "+scalar(m.Permissions[p]))
+		}
+	}
+	return out
+}
+
+// renderOAuth2Block renders an oauth2: sub-block at the given indent. The Google
+// endpoint/scope defaults are emitted verbatim (they are concrete after parse-time
+// defaulting) so the round-trip is exact.
+func renderOAuth2Block(indent int, m *OAuth2Mint) []string {
+	pad := strings.Repeat(" ", indent)
+	out := []string{pad + "oauth2:"}
+	out = append(out, pad+"  refresh_token: "+scalar(m.RefreshToken))
+	out = append(out, pad+"  client_id: "+scalar(m.ClientID))
+	if m.TokenEndpoint != "" {
+		out = append(out, pad+"  token_endpoint: "+scalar(m.TokenEndpoint))
+	}
+	if len(m.Scopes) > 0 {
+		out = append(out, pad+"  scopes:")
+		for _, s := range m.Scopes {
+			out = append(out, pad+"    - "+scalar(s))
+		}
 	}
 	return out
 }
@@ -147,6 +201,7 @@ func validateAppendCredential(before *Config, candidate []byte, name string, cre
 	want := cloneCredentials(before.Credentials)
 	want[name] = cred
 	defaultCredentialHeaders(want) // mirror the parse-time header default
+	defaultCredentialMinting(want) // mirror the parse-time OAuth2 endpoint/scope defaults
 	if !sameCredentials(after.Credentials, want) {
 		return fmt.Errorf("edit did not add credential %q as expected", name)
 	}
@@ -205,14 +260,15 @@ func cloneCredentials(in map[string]Credential) map[string]Credential {
 
 // sameCredentials reports whether a and b hold the same name→Credential entries. A
 // nil and an empty map are treated as equal (removing the last credential yields a
-// nil map on re-parse).
+// nil map on re-parse). Credential now carries pointer/map/slice fields (the minting
+// blocks), so entries are compared by deep value, not ==.
 func sameCredentials(a, b map[string]Credential) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for k, va := range a {
 		vb, ok := b[k]
-		if !ok || va != vb {
+		if !ok || !reflect.DeepEqual(va, vb) {
 			return false
 		}
 	}

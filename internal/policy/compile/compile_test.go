@@ -81,6 +81,8 @@ func representativeFiles() map[string]string {
 			"    deny_always:\n      - host: w3schools.com\n        reason: low quality\n",
 		projDir + "/.agent-creance.yaml": "" +
 			"credentials:\n  github-token:\n    source: op://Private/GitHub PAT/token\n    template: \"Bearer {token}\"\n" +
+			"  gh-app:\n    template: \"Bearer {token}\"\n    github_app:\n      key: keychain://agent-creance/ghapp-key\n      client_id: Iv1.example\n      repo: tobyS/agent-creance\n      permissions:\n        contents: read\n        issues: write\n" +
+			"  drive:\n    template: \"Bearer {token}\"\n    oauth2:\n      refresh_token: keychain://agent-creance/drive-refresh\n      client_id: 1234.apps.googleusercontent.com\n" +
 			"network:\n  egress:\n    generators:\n      - package_json\n" +
 			"    allow:\n      - host: api.github.com\n        paths: [\"/repos/tobyS/x/\"]\n        methods: [GET, POST]\n        inject: github-token\n" +
 			"      - host: s3.eu-central-1.amazonaws.com\n        in_cage: true\n" +

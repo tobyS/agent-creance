@@ -1,6 +1,6 @@
 # AC-0069a: Minted short-lived tokens — GitHub App installation + OAuth2 refresh
 
-**Status:** Open
+**Status:** In Progress
 **Estimated Complexity:** High
 **Created:** 2026-06-29
 **Updated:** 2026-07-22

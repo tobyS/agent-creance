@@ -265,22 +265,37 @@ minting keys" invariant against a future strict-decode regression.
 
 #### Automated Verification:
 
-- [ ] `make test` passes (`go test -race ./...`)
-- [ ] `make lint` passes; `go build ./...` succeeds
-- [ ] `make test-enforcer` passes (the new `policy.py` tolerance test)
-- [ ] Table tests: a minted `github_app` and a minted `oauth2` credential parse,
+- [x] `make test` passes (`go test -race ./...`)
+- [x] `make lint` passes; `go build ./...` succeeds
+- [x] `make test-enforcer` passes (the new `policy.py` tolerance test)
+- [x] Table tests: a minted `github_app` and a minted `oauth2` credential parse,
       default (Google endpoint/scopes), validate, and compile; a static credential
       is unchanged
-- [ ] Validation rejects: two forms set at once; a minted block with a missing/bad
+- [x] Validation rejects: two forms set at once; a minted block with a missing/bad
       secret ref; a `repo` not in `owner/name` form; an unknown permission level
-- [ ] `make golden` reviewed: `policy.json` golden gains the minting blocks;
+- [x] `make golden` reviewed: `policy.json` golden gains the minting blocks;
       config round-trip golden covers a minted entry
-- [ ] Go↔Python parity test: the addon ignores `github_app`/`oauth2` keys and reads
+- [x] Go↔Python parity test: the addon ignores `github_app`/`oauth2` keys and reads
       the shape correctly
 
 #### Manual Verification:
 
 - [ ] None (no user-visible behavior yet)
+
+### Implementation log
+
+- **Status**: ✅ Complete
+- **Base commit**: `ff43db0` (HEAD before any implementation commit)
+- **Commit**: _pending_
+- **Did**: `config.Credential` gained `GitHubApp`/`OAuth2` sub-blocks + `IsMinted()`,
+  OAuth2 endpoint/scope defaults, form-branching validation (repo slug, perm levels,
+  https endpoint). `policy.Credential` mirrors them (reference-only, `source` now
+  omitempty). Writer renders/round-trips minted entries; `sameCredentials` → deep
+  equal. New `credentials_minted_test.go`; compile golden extended; Python parity
+  test `test_minted_credential_keys_ignored_but_shape_read`.
+- **Issues**: `Credential` gained pointer/map fields → writer's `==` compare replaced
+  with `reflect.DeepEqual`; append round-trip now also applies minting defaults.
+- **Verification**: ✅ make test, ✅ make lint, ✅ make test-enforcer (161 passed)
 
 ---
 
