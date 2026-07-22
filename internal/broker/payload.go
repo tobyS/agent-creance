@@ -42,12 +42,15 @@ type GitHubAppSpec struct {
 }
 
 // OAuth2Spec carries the resolved refresh token plus the non-secret minting
-// parameters.
+// parameters. RefreshTokenRef is the original secret *reference* (e.g. a keychain://
+// item), so the broker can persist a provider-rotated refresh token back to where it
+// came from (RFC 6749 §6; defensive — Google does not rotate today).
 type OAuth2Spec struct {
-	RefreshToken  string   `json:"refresh_token"`
-	ClientID      string   `json:"client_id"`
-	TokenEndpoint string   `json:"token_endpoint"`
-	Scopes        []string `json:"scopes,omitempty"`
+	RefreshToken    string   `json:"refresh_token"`
+	RefreshTokenRef string   `json:"refresh_token_ref,omitempty"`
+	ClientID        string   `json:"client_id"`
+	TokenEndpoint   string   `json:"token_endpoint"`
+	Scopes          []string `json:"scopes,omitempty"`
 }
 
 // Payload maps a credential name to its delivery spec.

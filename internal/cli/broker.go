@@ -113,6 +113,8 @@ func runBroker(ctx context.Context, app *App, sock string) error {
 	var wg sync.WaitGroup
 	refresher := broker.NewRefresher(store, app.Clock, app.Sleeper, func(msg string) {
 		fmt.Fprintf(app.Stderr, "warning: %s\n", msg)
+	}).WithRotatePersist(func(name, refreshToken string) {
+		persistRotatedRefreshToken(app, payload, name, refreshToken)
 	})
 	for name, m := range minters {
 		wg.Add(1)
@@ -137,6 +139,27 @@ func runBroker(ctx context.Context, app *App, sock string) error {
 		return fmt.Errorf("broker: serve: %w", serveErr)
 	}
 	return nil
+}
+
+// persistRotatedRefreshToken writes a provider-rotated OAuth2 refresh token back to
+// its keychain reference (RFC 6749 §6). It only handles keychain:// references — the
+// only backend we can write to; an op:// / env:// reference is logged as needing a
+// manual update. Best-effort: a write failure warns but does not fail the session
+// (defensive path — Google does not rotate today).
+func persistRotatedRefreshToken(app *App, payload broker.Payload, name, refreshToken string) {
+	spec := payload[name]
+	ref := ""
+	if spec.OAuth2 != nil {
+		ref = spec.OAuth2.RefreshTokenRef
+	}
+	service, account, err := keychainServiceAccount(ref)
+	if err != nil {
+		fmt.Fprintf(app.Stderr, "warning: credential %q rotated its refresh token, but it cannot be persisted automatically (%v); re-run 'agent-creance credential authorize %s'\n", name, err, name)
+		return
+	}
+	if err := app.Keychain.SetGenericPassword(service, account, []byte(refreshToken)); err != nil {
+		fmt.Fprintf(app.Stderr, "warning: credential %q rotated its refresh token, but persisting it failed: %v\n", name, err)
+	}
 }
 
 // marginsFor picks the refresh margins for a credential by its kind.

@@ -52,6 +52,10 @@ type App struct {
 	// consumers — the proxy spawner (AC-0068c) and the credential CLI (AC-0068d) —
 	// land in later phases.
 	SecretResolver sysdep.SecretResolver
+	// Browser opens the OAuth2 consent URL in the user's default browser for
+	// `credential authorize` (AC-0069a). The refresh token it obtains is stored in
+	// the keychain host-side and never enters the cage.
+	Browser sysdep.Browser
 	// ProcessGroup starts the caged agent in its own process group and forwards
 	// SIGINT/SIGTERM to the whole group; the run command (AC-0025) drives it via
 	// cage.Runner to tear the agent's subtree down on Ctrl-C before the lock decrement.
@@ -236,6 +240,7 @@ func Main() int {
 			Keychain:  sysdep.OSKeychain{},
 			Paths:     sysdep.OSPathResolver{},
 		},
+		Browser:        sysdep.OSBrowser{Commander: sysdep.ExecCommander{}},
 		ProcessGroup:   sysdep.OSProcessGroup{},
 		Flock:          sysdep.OSFlock{},
 		ProcessManager: sysdep.OSProcessManager{},

@@ -26,6 +26,10 @@ type FakeKeychain struct {
 	AddedCerts []string
 	// AddCertErr, if set, is returned by AddTrustedCert.
 	AddCertErr error
+	// Stored records each SetGenericPassword call, in order.
+	Stored []StoredItem
+	// SetErr, if set, is returned by SetGenericPassword.
+	SetErr error
 }
 
 // KeychainQuery is one recorded FindGenericPassword call.
@@ -85,6 +89,25 @@ func (f *FakeKeychain) HasGenericPassword(service, account string) (bool, error)
 	}
 	_, ok := f.Items[key]
 	return ok, nil
+}
+
+// StoredItem is one recorded SetGenericPassword call.
+type StoredItem struct {
+	Service string
+	Account string
+	Secret  []byte
+}
+
+func (f *FakeKeychain) SetGenericPassword(service, account string, secret []byte) error {
+	if f.SetErr != nil {
+		return f.SetErr
+	}
+	f.Stored = append(f.Stored, StoredItem{Service: service, Account: account, Secret: append([]byte(nil), secret...)})
+	if f.Items == nil {
+		f.Items = map[string][]byte{}
+	}
+	f.Items[keychainKey(service, account)] = append([]byte(nil), secret...)
+	return nil
 }
 
 func (f *FakeKeychain) FindCertificate(commonName string) ([]byte, error) {

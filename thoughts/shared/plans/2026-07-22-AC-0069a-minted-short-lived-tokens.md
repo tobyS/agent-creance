@@ -647,7 +647,7 @@ action, consistent with the AC-0069b `broker-down` warning style.
 ### Implementation log
 
 - **Status**: ✅ Complete
-- **Commit**: _pending_
+- **Commit**: `6a208c7` feat(AC-0069a): register minted credentials and surface authorization
 - **Did**: `credential add-github-app` / `add-oauth2` subcommands (validation, perm
   map via `--perm k=v`, git-over-HTTPS `--basic`); `credential list` gains a KIND
   column + relevant reference. Cage-start authorization check is the Phase-3
@@ -727,24 +727,46 @@ Refuse cleanly on `op://`/`env://` refresh-token refs (authorize can only write 
 
 #### Automated Verification:
 
-- [ ] `make test` passes; `make lint` passes
-- [ ] PKCE generation test: verifier/challenge satisfy S256 (`base64url(sha256(v))`),
+- [x] `make test` passes; `make lint` passes
+- [x] PKCE generation test: verifier/challenge satisfy S256 (`base64url(sha256(v))`),
       correct lengths, unpadded
-- [ ] Code-exchange test (fake HTTP): the exchange POST body carries `code`,
+- [x] Code-exchange test (fake HTTP): the exchange POST body carries `code`,
       `code_verifier`, `client_id`, `grant_type=authorization_code`,
       `redirect_uri`; the `refresh_token` is parsed and handed to `Keychain.Set`
-- [ ] Callback-handler test: a mismatched `state` is rejected; a well-formed
+- [x] Callback-handler test: a mismatched `state` is rejected; a well-formed
       callback yields the code
-- [ ] testscript / unit: `authorize` on a non-OAuth2 or undefined credential errors
+- [x] testscript / unit: `authorize` on a non-OAuth2 or undefined credential errors
       clearly; an `op://` refresh-token ref is refused with guidance
-- [ ] `Keychain.Set` fake records the stored item; the secret is passed via stdin,
-      never argv (hygiene assertion)
+- [x] `Keychain.Set` fake records the stored item; the secret is passed via stdin,
+      never argv (hygiene assertion — real seam pipes to security's stdin)
 
 #### Manual Verification:
 
 - [ ] `agent-creance credential authorize drive` opens the browser, completes Google
       consent, stores the refresh token, and a subsequent `run` mints an access
       token that authenticates against Drive (out-of-cage; Phase 6 batch)
+
+### Implementation log
+
+- **Status**: ✅ Complete
+- **Commit**: _pending_
+- **Did**: `sysdep.Keychain.SetGenericPassword` (writes via security(1) stdin, `-U`
+  idempotent) + fake recorder; new `sysdep.Browser` seam (`open <url>` via Commander)
+  + fake. New `credential authorize` (`internal/cli/authorize.go`): PKCE S256, state
+  nonce, RFC 8252 loopback listener on 127.0.0.1:0, Google auth URL
+  (access_type=offline+prompt=consent), one-shot callback handler (state/error/code),
+  code exchange via `HTTPClient`, keychain store; refuses non-`keychain://` refresh
+  refs. `App.Browser` wired. Also wired the Phase-3 rotate-persist hook: `OAuth2Spec`
+  gains `RefreshTokenRef`, and the broker persists a rotated refresh token to its
+  keychain ref (defensive). New `authorize_test.go` incl. a full-flow test (real
+  loopback, simulated browser, fake HTTP+keychain).
+- **Issues**: `security add-generic-password` has no documented stdin password input;
+  implemented per the plan (secret on the process's stdin, `-w` with no inline value)
+  and flagged for Phase-6 real-keychain verification. Unit tests exercise logic via
+  the fake, so they are independent of that detail.
+- **Verification**: ✅ make test, ✅ make lint, ✅ make test-enforcer (161 passed)
+
+---
 
 ---
 

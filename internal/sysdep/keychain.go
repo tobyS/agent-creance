@@ -47,6 +47,13 @@ type Keychain interface {
 	// was confirmed — the robust live verification stays setup/doctor's job.
 	FindCertificate(commonName string) ([]byte, error)
 
+	// SetGenericPassword creates or updates (‑U) a login-keychain generic-password
+	// item identified by service and account, storing secret. It is the write side
+	// `credential authorize` (AC-0069a) uses to persist an OAuth2 refresh token, and
+	// the broker uses to persist a rotated one. The secret is written to the
+	// security(1) process's stdin, never passed on argv (where `ps` would show it).
+	SetGenericPassword(service, account string, secret []byte) error
+
 	// AddTrustedCert imports the PEM certificate at certPath into the login
 	// keychain and marks it a trusted SSL root (security add-trusted-cert, per-user
 	// trust domain). This is the write side setup uses to install the mitmproxy CA.
@@ -130,6 +137,32 @@ func (OSKeychain) HasGenericPassword(service, account string) (bool, error) {
 	default:
 		return false, err
 	}
+}
+
+func (OSKeychain) SetGenericPassword(service, account string, secret []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), securityFindTimeout)
+	defer cancel()
+
+	// -U updates the item if it already exists (idempotent re-authorize). -w with no
+	// inline value makes security read the password from stdin, so the secret never
+	// rides argv where `ps` (or KERN_PROCARGS2) could read it. -a/-s identify the item.
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/usr/bin/security",
+		"add-generic-password", "-U", "-s", service, "-a", account, "-w")
+	cmd.Stdin = bytes.NewReader(secret)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("sysdep: add-generic-password: timed out after %s", securityFindTimeout)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Errorf("sysdep: add-generic-password: exit %d: %s",
+				exitErr.ExitCode(), bytes.TrimSpace(stderr.Bytes()))
+		}
+		return fmt.Errorf("sysdep: add-generic-password: %w", err)
+	}
+	return nil
 }
 
 func (OSKeychain) FindCertificate(commonName string) ([]byte, error) {

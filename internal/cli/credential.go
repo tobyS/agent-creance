@@ -37,6 +37,7 @@ func newCredentialCmd(app *App) *cobra.Command {
 		newCredentialAddCmd(app),
 		newCredentialAddGitHubAppCmd(app),
 		newCredentialAddOAuth2Cmd(app),
+		newCredentialAuthorizeCmd(app),
 		newCredentialListCmd(app),
 		newCredentialRemoveCmd(app),
 	)

@@ -91,10 +91,11 @@ func resolveCredentialSpec(ctx context.Context, r sysdep.SecretResolver, name st
 		return broker.CredentialSpec{
 			Kind: broker.KindOAuth2,
 			OAuth2: &broker.OAuth2Spec{
-				RefreshToken:  string(rt),
-				ClientID:      cred.OAuth2.ClientID,
-				TokenEndpoint: cred.OAuth2.TokenEndpoint,
-				Scopes:        cred.OAuth2.Scopes,
+				RefreshToken:    string(rt),
+				RefreshTokenRef: cred.OAuth2.RefreshToken,
+				ClientID:        cred.OAuth2.ClientID,
+				TokenEndpoint:   cred.OAuth2.TokenEndpoint,
+				Scopes:          cred.OAuth2.Scopes,
 			},
 		}, true
 
