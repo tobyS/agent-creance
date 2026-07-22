@@ -942,3 +942,26 @@ formats; the AC-0069b `proxy.lock` old-binary tolerance is unaffected.
   (background goroutine), `internal/sysdep/clock.go` + `sleeper.go` + their fakes,
   `internal/proxy/lifecycle.go:229-242` (readiness poll shape),
   `internal/proxy/lifecycle_test.go:378-394` (asserting Sleeps without wall-clock)
+
+## Implementation Closeout
+
+- **Plan-compliance gate**: PASS — all 29 code-observable criteria met (fresh-context
+  `plan-compliance-checker` run, base `ff43db0` → `b7b107e`). The two runtime items
+  (30, 31) and the integration *runs* (5's green-run, 27) are flagged for human
+  verification, not blocking.
+- **Manual verification**: pending (dogfooding — needs the cage closed for an
+  out-of-cage batch):
+  1. `make test-integration` and `make test-enforcer-integration` (real
+     `mitmdump`/`agent-safehouse`; the GitHub-App/Drive mint tests are env-gated and
+     skip unless `AC_TEST_GH_APP_*` / `AC_TEST_DRIVE_*` are set).
+  2. Register a GitHub App, install on a repo, store its PEM in the keychain,
+     `credential add-github-app`, `run`, confirm a caged REST call authenticates with
+     a minted token; kill refresh / wait past expiry → 472 while non-injected hosts
+     still work.
+  3. `credential authorize drive` (browser consent), `run`, confirm a caged
+     `drive.file` call authenticates and the token rotates across the expiry boundary
+     with no proxy restart. **Also verifies the Phase-5 keychain write** — confirm
+     `security add-generic-password -w` actually reads the secret from stdin (the one
+     real-seam assumption not covered by unit tests).
+- **Ticket**: AC-0069a → stays **In Progress** until the batch above is confirmed,
+  then → Done.
