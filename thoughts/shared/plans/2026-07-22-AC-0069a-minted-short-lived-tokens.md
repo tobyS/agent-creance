@@ -546,7 +546,7 @@ in `Main` (`:216-249`). The broker command already receives `App`.
 ### Implementation log
 
 - **Status**: ✅ Complete
-- **Commit**: _pending_
+- **Commit**: `55a28e9` feat(AC-0069a): drive minting from the broker with a refresh loop
 - **Did**: New `broker.Payload`/`CredentialSpec` (structured fd-3 spec) + `MinterFor`
   factory; `broker.Refresher` (per-credential goroutine: mint→Set, re-mint at
   expiry−margin+jitter, stale-then-472 on failure, backoff self-heal, rotate-persist
@@ -625,22 +625,48 @@ action, consistent with the AC-0069b `broker-down` warning style.
 
 #### Automated Verification:
 
-- [ ] `make test` passes; `make lint` passes
-- [ ] testscript (`internal/cli/testdata/script/credential_minted.txtar`):
+- [x] `make test` passes; `make lint` passes
+- [x] testscript (`internal/cli/testdata/script/credential_minted.txtar`):
       `add-github-app` and `add-oauth2` write the expected YAML sub-blocks;
       validation errors are surfaced; `list` shows the kind; hidden/help behavior
       correct
-- [ ] Inject-builder test: an unauthorized OAuth2 credential produces the exact
+- [x] Inject-builder test: an unauthorized OAuth2 credential produces the exact
       authorize-hint warning and is omitted (proxy still spawns)
-- [ ] Doctor/status tests: unauthorized minted credential ⇒ warning with the
+- [x] Doctor tests: unauthorized minted credential ⇒ warning with the
       authorize action; a fully-authorized project ⇒ no warning; no minted
-      credentials ⇒ no report
-- [ ] `make golden` reviewed for any doctor/status golden changes
+      credentials ⇒ no report (implemented in **doctor**; see log for why status is
+      not a fit)
+- [x] `make golden` reviewed: doctor goldens unchanged (the section renders only
+      when minted credentials exist; `minted_credentials` is omitempty in `--json`)
 
 #### Manual Verification:
 
 - [ ] `credential add-github-app` / `add-oauth2` then `credential list` reads back
       correctly and `agent-creance run` warns actionably when unauthorized
+
+### Implementation log
+
+- **Status**: ✅ Complete
+- **Commit**: _pending_
+- **Did**: `credential add-github-app` / `add-oauth2` subcommands (validation, perm
+  map via `--perm k=v`, git-over-HTTPS `--basic`); `credential list` gains a KIND
+  column + relevant reference. Cage-start authorization check is the Phase-3
+  `resolveInjectionSecrets` authorize-hint (no run.go change needed). Doctor gains a
+  conditional "Minted credentials:" section via a new non-prompting
+  `sysdep.Keychain.HasGenericPassword` (no `-w`, no ACL prompt, no key material read):
+  keychain refs checked for existence, op:// reported "configured", env:// checked;
+  unauthorized ⇒ warning (never actionable). New `credential_minted.txtar`,
+  `doctor/minted_test.go`.
+- **Issues**: Plan said "doctor / status". Status is a runtime proxy-state table keyed
+  on state dirs (its `broker-down` comes from proxy diagnosis, not config), so a
+  config-authorization check has no natural home there and would need per-project
+  config loads off recorded paths. Implemented in **doctor** (which already loads the
+  project config); the run-time authorize hint + doctor cover the user need. OAuth2
+  endpoint/scope defaults stay implicit in the written YAML (match the plan's config
+  example), so the txtar asserts the block, not the default lines.
+- **Verification**: ✅ make test, ✅ make lint, ✅ make test-enforcer (161 passed)
+
+---
 
 ---
 

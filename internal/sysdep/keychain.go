@@ -29,6 +29,15 @@ type Keychain interface {
 	// distinguish these (and genuine failures) via errors.Is.
 	FindGenericPassword(service, account string) ([]byte, error)
 
+	// HasGenericPassword reports whether a login-keychain generic-password item
+	// identified by service and account exists, WITHOUT reading its secret (no -w, so
+	// no ACL access prompt and no secret material pulled into memory) — the
+	// non-prompting existence check doctor uses for a minted credential's keychain://
+	// reference (AC-0069a). A locked keychain yields ErrKeychainLocked; a genuine
+	// failure is returned as-is. found is false with a nil error when the item is
+	// simply absent.
+	HasGenericPassword(service, account string) (found bool, err error)
+
 	// FindCertificate returns the PEM bytes of the login-keychain certificate
 	// whose common name is commonName — the cheap "is the CA installed?" check the
 	// run command uses (setup imports the mitmproxy CA into the login keychain). A
@@ -102,6 +111,25 @@ func (OSKeychain) FindGenericPassword(service, account string) ([]byte, error) {
 	}
 	args = append(args, "-w")
 	return runSecurity(args)
+}
+
+func (OSKeychain) HasGenericPassword(service, account string) (bool, error) {
+	// No -w: we ask only whether the item exists, never for its secret, so securityd
+	// raises no ACL-access prompt (a locked keychain still blocks and maps to
+	// ErrKeychainLocked via the timeout).
+	args := []string{"find-generic-password", "-s", service}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	_, err := runSecurity(args)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, ErrItemNotFound):
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 func (OSKeychain) FindCertificate(commonName string) ([]byte, error) {

@@ -44,9 +44,26 @@ type Report struct {
 	Missing string          // prereq.MissingInstructions(Version); "" when nothing missing
 	CA      CASection
 	Cred    CredSection
+	Minted  MintedCredSection
 	Proxy   ProxySection
 	Exposed ExposedSection
 	FS      FSSection
+}
+
+// MintedCredSection reports the authorization state of the project's minted
+// credentials (AC-0069a): whether each github_app / oauth2 credential's key material
+// is available host-side, checked without prompting. It is empty (and not rendered)
+// for a project with no minted credentials, so it is purely additive.
+type MintedCredSection struct {
+	Creds []MintedCredStatus
+}
+
+// MintedCredStatus is one minted credential's finding.
+type MintedCredStatus struct {
+	Name   string
+	Kind   string // "github-app" | "oauth2"
+	State  Status // OK=authorized/configured, Warn=unauthorized/could-not-verify
+	Detail string // text after the glyph, incl. the authorize hint when unauthorized
 }
 
 // CASection is the live CA-trust finding. Detail is the text after the glyph.
@@ -124,6 +141,15 @@ func Render(r Report, sty *style.Styler) string {
 
 	b.WriteString("\n" + sty.Header("Credential:") + "\n")
 	line(&b, stateGlyph(r.Cred.State, sty), r.Cred.Detail)
+
+	// Minted credentials: only shown for a project that declares one, so it is
+	// additive (a project without minted credentials renders exactly as before).
+	if len(r.Minted.Creds) > 0 {
+		b.WriteString("\n" + sty.Header("Minted credentials:") + "\n")
+		for _, mc := range r.Minted.Creds {
+			line(&b, stateGlyph(mc.State, sty), fmt.Sprintf("%s ", mc.Name)+sty.Dim("("+mc.Kind+")")+" — "+mc.Detail)
+		}
+	}
 
 	b.WriteString("\n" + sty.Header("Proxy (this project):") + "\n")
 	renderProxy(&b, r.Proxy, sty)

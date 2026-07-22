@@ -33,7 +33,13 @@ func newCredentialCmd(app *App) *cobra.Command {
 			"credential and its header shape, list shows what is configured (never a value), and\n" +
 			"remove deletes one. Bind a credential to a host with 'allow <host> --inject <name>'.",
 	}
-	cmd.AddCommand(newCredentialAddCmd(app), newCredentialListCmd(app), newCredentialRemoveCmd(app))
+	cmd.AddCommand(
+		newCredentialAddCmd(app),
+		newCredentialAddGitHubAppCmd(app),
+		newCredentialAddOAuth2Cmd(app),
+		newCredentialListCmd(app),
+		newCredentialRemoveCmd(app),
+	)
 	return cmd
 }
 
@@ -182,12 +188,27 @@ func runCredentialList(app *App, dir string) error {
 	sort.Strings(names)
 
 	w := tabwriter.NewWriter(app.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSOURCE\tHEADER\tSHAPE\tUSERNAME")
+	fmt.Fprintln(w, "NAME\tKIND\tREFERENCE\tHEADER\tSHAPE\tUSERNAME")
 	for _, name := range names {
 		c := cfg.Credentials[name]
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", name, c.Source, c.Header, c.Template, dash(c.Username))
+		kind, ref := credentialKindAndRef(c)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", name, kind, ref, c.Header, c.Template, dash(c.Username))
 	}
 	return w.Flush()
+}
+
+// credentialKindAndRef returns the display kind (static / github-app / oauth2) and the
+// relevant secret *reference* (source / key / refresh_token) for a credential — never
+// a resolved value.
+func credentialKindAndRef(c config.Credential) (kind, ref string) {
+	switch {
+	case c.GitHubApp != nil:
+		return "github-app", c.GitHubApp.Key
+	case c.OAuth2 != nil:
+		return "oauth2", c.OAuth2.RefreshToken
+	default:
+		return "static", c.Source
+	}
 }
 
 func dash(s string) string {

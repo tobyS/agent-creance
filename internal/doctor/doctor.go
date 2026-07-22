@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/tobyS/agent-creance/internal/config"
 	"github.com/tobyS/agent-creance/internal/cred"
 	"github.com/tobyS/agent-creance/internal/prereq"
 	"github.com/tobyS/agent-creance/internal/proxy"
@@ -45,6 +47,7 @@ func (c *Checker) Run(ctx context.Context, fix bool) (Report, error) {
 	r.Missing = prereq.MissingInstructions(r.Version)
 	r.CA = c.checkCA(ctx)
 	r.Cred = c.checkCred()
+	r.Minted = c.checkMintedCreds()
 	r.Proxy = c.checkProxy(fix)
 	r.Exposed = c.checkExposed(ctx)
 	r.FS = c.checkFS()
@@ -98,6 +101,89 @@ func (c *Checker) checkCred() CredSection {
 		// than silently becoming actionable.
 		return CredSection{State: StatusWarn, Detail: "credential state unknown"}
 	}
+}
+
+// projectConfigFile is the per-project source config doctor loads to enumerate minted
+// credentials. Mirrors cli.configFile; kept local so the doctor package needs no
+// cli import.
+const projectConfigFile = ".agent-creance.yaml"
+
+// checkMintedCreds reports the authorization state of the project's minted credentials
+// (AC-0069a) without prompting: a keychain:// reference is checked for existence
+// (no secret read, no ACL prompt); an op:// reference is reported "configured"
+// (resolving it would prompt Touch ID, which doctor must never do); an env://
+// reference is checked against the environment. An unauthorized credential is a
+// warning with the actionable next step — never a hard problem (it never changes the
+// exit code), consistent with the broker-down advisory. A project with no minted
+// credentials (or no loadable config) yields an empty section, which Render omits.
+func (c *Checker) checkMintedCreds() MintedCredSection {
+	cfg, err := config.NewLoader(c.FS, c.Paths).Load(projectConfigFile)
+	if err != nil {
+		return MintedCredSection{} // no/invalid config → nothing to report here
+	}
+	names := make([]string, 0, len(cfg.Credentials))
+	for name, cr := range cfg.Credentials {
+		if cr.IsMinted() {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	var out []MintedCredStatus
+	for _, name := range names {
+		cr := cfg.Credentials[name]
+		switch {
+		case cr.GitHubApp != nil:
+			out = append(out, c.checkMintedRef(name, "github-app", cr.GitHubApp.Key))
+		case cr.OAuth2 != nil:
+			out = append(out, c.checkMintedRef(name, "oauth2", cr.OAuth2.RefreshToken))
+		}
+	}
+	return MintedCredSection{Creds: out}
+}
+
+// checkMintedRef checks one minted credential's secret reference without prompting.
+func (c *Checker) checkMintedRef(name, kind, ref string) MintedCredStatus {
+	authHint := "run `agent-creance credential authorize " + name + "`"
+	switch {
+	case strings.HasPrefix(ref, "keychain://"):
+		service, account := parseKeychainRef(strings.TrimPrefix(ref, "keychain://"))
+		found, err := c.Keychain.HasGenericPassword(service, account)
+		switch {
+		case errors.Is(err, sysdep.ErrKeychainLocked):
+			return MintedCredStatus{name, kind, StatusWarn, "could not verify (keychain locked; unlock and re-run)"}
+		case err != nil:
+			return MintedCredStatus{name, kind, StatusWarn, "could not verify (" + err.Error() + ")"}
+		case !found && kind == "oauth2":
+			return MintedCredStatus{name, kind, StatusWarn, "not authorized yet — " + authHint}
+		case !found:
+			return MintedCredStatus{name, kind, StatusWarn, "app private key not found in the keychain — check the github_app key reference"}
+		default:
+			return MintedCredStatus{name, kind, StatusOK, "authorized"}
+		}
+	case strings.HasPrefix(ref, "op://"):
+		// Resolving op:// would prompt Touch ID; report configured without prompting.
+		return MintedCredStatus{name, kind, StatusOK, "configured (op:// — unlockable at run)"}
+	case strings.HasPrefix(ref, "env://"):
+		envName := strings.TrimPrefix(ref, "env://")
+		if c.Paths.Getenv(envName) == "" {
+			hint := authHint
+			if kind == "github-app" {
+				hint = "set the app-key environment variable"
+			}
+			return MintedCredStatus{name, kind, StatusWarn, "not authorized (" + ref + " is unset) — " + hint}
+		}
+		return MintedCredStatus{name, kind, StatusOK, "authorized"}
+	default:
+		return MintedCredStatus{name, kind, StatusWarn, "unrecognized reference " + ref}
+	}
+}
+
+// parseKeychainRef splits "service[/account]" (the part after keychain://) into its
+// service and optional account, mirroring the SecretResolver's parsing.
+func parseKeychainRef(rest string) (service, account string) {
+	service, account, _ = strings.Cut(rest, "/")
+	return service, account
 }
 
 // checkProxy inspects the current project's proxy.lock and, when fix is set, cleans

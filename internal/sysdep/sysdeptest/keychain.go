@@ -74,6 +74,19 @@ func (f *FakeKeychain) FindGenericPassword(service, account string) ([]byte, err
 	return nil, sysdep.ErrItemNotFound
 }
 
+func (f *FakeKeychain) HasGenericPassword(service, account string) (bool, error) {
+	f.Lookups = append(f.Lookups, KeychainQuery{Service: service, Account: account})
+	if f.Locked {
+		return false, sysdep.ErrKeychainLocked
+	}
+	key := keychainKey(service, account)
+	if err, ok := f.Errs[key]; ok {
+		return false, err
+	}
+	_, ok := f.Items[key]
+	return ok, nil
+}
+
 func (f *FakeKeychain) FindCertificate(commonName string) ([]byte, error) {
 	f.CertLookups = append(f.CertLookups, commonName)
 	if f.Locked {

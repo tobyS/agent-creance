@@ -31,9 +31,12 @@ type jsonReport struct {
 	Prerequisites []jsonPrereq `json:"prerequisites"`
 	CA            jsonSection  `json:"ca"`
 	Credential    jsonSection  `json:"credential"`
-	Proxy         jsonProxy    `json:"proxy"`
-	Exposed       jsonExposed  `json:"exposed_services"`
-	Filesystem    jsonFS       `json:"filesystem"`
+	// MintedCredentials is omitted for a project with no minted credentials, so the
+	// existing --json schema is unchanged for every non-minting project (AC-0069a).
+	MintedCredentials []jsonMintedCred `json:"minted_credentials,omitempty"`
+	Proxy             jsonProxy        `json:"proxy"`
+	Exposed           jsonExposed      `json:"exposed_services"`
+	Filesystem        jsonFS           `json:"filesystem"`
 	// Actionable mirrors Report.Actionable() — the labels that drive the non-zero
 	// exit. Always present (empty array, not null, when healthy).
 	Actionable []string `json:"actionable"`
@@ -48,6 +51,13 @@ type jsonPrereq struct {
 }
 
 type jsonSection struct {
+	State  string `json:"state"`
+	Detail string `json:"detail"`
+}
+
+type jsonMintedCred struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
 	State  string `json:"state"`
 	Detail string `json:"detail"`
 }
@@ -90,13 +100,14 @@ type jsonFSWarning struct {
 // verdict is unchanged (the caller still acts on Report.Actionable()).
 func RenderJSON(r Report) (string, error) {
 	out := jsonReport{
-		Prerequisites: make([]jsonPrereq, 0, len(r.Version)),
-		CA:            jsonSection{State: r.CA.State.String(), Detail: r.CA.Detail},
-		Credential:    jsonSection{State: r.Cred.State.String(), Detail: r.Cred.Detail},
-		Proxy:         proxyJSON(r.Proxy),
-		Exposed:       exposedJSON(r.Exposed),
-		Filesystem:    fsJSON(r.FS),
-		Actionable:    r.Actionable(),
+		Prerequisites:     make([]jsonPrereq, 0, len(r.Version)),
+		CA:                jsonSection{State: r.CA.State.String(), Detail: r.CA.Detail},
+		Credential:        jsonSection{State: r.Cred.State.String(), Detail: r.Cred.Detail},
+		MintedCredentials: mintedJSON(r.Minted),
+		Proxy:             proxyJSON(r.Proxy),
+		Exposed:           exposedJSON(r.Exposed),
+		Filesystem:        fsJSON(r.FS),
+		Actionable:        r.Actionable(),
 	}
 	if out.Actionable == nil {
 		out.Actionable = []string{}
@@ -138,6 +149,19 @@ func proxyJSON(sec ProxySection) jsonProxy {
 		out.State = "running"
 	default:
 		out.State = "down"
+	}
+	return out
+}
+
+// mintedJSON returns nil for a project with no minted credentials, so the omitempty
+// field drops out and existing --json output is unchanged.
+func mintedJSON(sec MintedCredSection) []jsonMintedCred {
+	if len(sec.Creds) == 0 {
+		return nil
+	}
+	out := make([]jsonMintedCred, 0, len(sec.Creds))
+	for _, mc := range sec.Creds {
+		out = append(out, jsonMintedCred{Name: mc.Name, Kind: mc.Kind, State: mc.State.String(), Detail: mc.Detail})
 	}
 	return out
 }
