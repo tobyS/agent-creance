@@ -3,7 +3,7 @@
 **Status:** Open
 **Estimated Complexity:** High
 **Created:** 2026-06-29
-**Updated:** 2026-07-12
+**Updated:** 2026-07-22
 
 > Sub-ticket of **AC-0069** (Credential injection, Phase 2). **Deferred** — no
 > near-term agent-tooling need beyond GitHub (per the discussion audits).
@@ -71,9 +71,20 @@ injected credentials are short-lived and auto-refreshed.
 
 ## Implementation Plan
 
-(Filled when planned.)
+`thoughts/shared/plans/2026-07-22-AC-0069a-minted-short-lived-tokens.md` (6 phases).
 
 ## Notes & Updates
+
+### 2026-07-22
+Planned (`/tce:plan`) now that AC-0069b (the broker) is Done. Confirmed with the
+user: **both** flows in this ticket (GitHub App + OAuth2/Drive); minting internals
+hand-rolled through a new `sysdep.HTTPClient` seam with `golang-jwt/jwt/v5` for
+RS256 signing only (no ghinstallation/x-oauth2); **build `credential authorize`**
+(RFC 8252 loopback + PKCE) plus a **cage-start check** that verifies each minted
+credential is authorized and warns actionably if not; six phases; single repo per
+GitHub App credential. The broker is the refresh-loop owner (`Store.Set` +
+`server.go` `expired`→472 already implement decision 3); the Python enforcer is
+untouched (it fetches a token by name and renders the existing shape).
 
 ### 2026-07-12
 Planning round started (`/tce:plan`) against the 2026-07-11 research; **paused
