@@ -39,6 +39,10 @@ type App struct {
 	Paths sysdep.PathResolver
 	Clock sysdep.Clock
 	HTTP  sysdep.HTTPGetter
+	// HTTPClient is the general-purpose HTTP seam (POST/GET/DELETE) the credential
+	// broker uses to mint and refresh short-lived tokens (AC-0069a). Distinct from the
+	// GET-only HTTP getter above, which the policy compiler's registry client uses.
+	HTTPClient sysdep.HTTPClient
 	// Keychain reads the Anthropic OAuth credential item; internal/cred uses it
 	// to detect credential availability before a caged run (its consumers, the
 	// run/doctor preconditions, land in later phases).
@@ -215,17 +219,18 @@ func newRootCmd(app *App) *cobra.Command {
 // runs it in-process).
 func Main() int {
 	app := &App{
-		Commander: sysdep.ExecCommander{},
-		Stdout:    os.Stdout,
-		Stderr:    os.Stderr,
-		Stdin:     os.Stdin,
-		Terminal:  sysdep.OSTerminal{},
-		Tested:    buildinfo.TestedVersions,
-		FS:        sysdep.OSFileSystem{},
-		Paths:     sysdep.OSPathResolver{},
-		Clock:     sysdep.OSClock{},
-		HTTP:      sysdep.OSHTTPGetter{},
-		Keychain:  sysdep.OSKeychain{},
+		Commander:  sysdep.ExecCommander{},
+		Stdout:     os.Stdout,
+		Stderr:     os.Stderr,
+		Stdin:      os.Stdin,
+		Terminal:   sysdep.OSTerminal{},
+		Tested:     buildinfo.TestedVersions,
+		FS:         sysdep.OSFileSystem{},
+		Paths:      sysdep.OSPathResolver{},
+		Clock:      sysdep.OSClock{},
+		HTTP:       sysdep.OSHTTPGetter{},
+		HTTPClient: sysdep.OSHTTPClient{},
+		Keychain:   sysdep.OSKeychain{},
 		SecretResolver: sysdep.OSSecretResolver{
 			Commander: sysdep.ExecCommander{},
 			Keychain:  sysdep.OSKeychain{},

@@ -6,14 +6,20 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tobyS/agent-creance/internal/broker"
+	"github.com/tobyS/agent-creance/internal/mint"
 	"github.com/tobyS/agent-creance/internal/sysdep"
 )
+
+// revokeTimeout bounds the best-effort teardown revocation of minted GitHub tokens,
+// so a slow or dead GitHub cannot wedge broker shutdown.
+const revokeTimeout = 5 * time.Second
 
 // brokerSockPerm is the socket's mode, and the whole access control: 0600 in a
 // 0700 state dir the cage never mounts. A peer-credential check would add nothing
@@ -53,7 +59,10 @@ func newBrokerCmd(app *App) *cobra.Command {
 }
 
 // runBroker reads the resolved credentials from the inherited descriptor, serves
-// them on the socket until signalled, and wipes them on the way out.
+// them on the socket until signalled, and wipes them on the way out. Static
+// credentials are Set once; minted credentials (AC-0069a) get a per-credential
+// refresh goroutine that mints the first token and re-mints before expiry, and are
+// best-effort-revoked on shutdown.
 func runBroker(ctx context.Context, app *App, sock string) error {
 	// Before anything touches a secret: a core dump would spill every token this
 	// process holds straight onto disk.
@@ -68,8 +77,22 @@ func runBroker(ctx context.Context, app *App, sock string) error {
 	// every lookup misses, and the enforcer answers 472 per request — the same
 	// fail-closed-per-request rule that governs an unresolvable credential. Refusing
 	// to start would instead take down the whole cage.
-	if err := loadSecrets(store, sysdep.SecretFD); err != nil {
+	payload, err := loadPayload(sysdep.SecretFD)
+	if err != nil {
 		fmt.Fprintf(app.Stderr, "warning: read injection payload: %v\n", err)
+	}
+
+	// Custody static tokens immediately; collect the minters so the refreshers can be
+	// started after the socket is listening.
+	minters := map[string]mint.Minter{}
+	for name, spec := range payload {
+		if spec.Kind == broker.KindStatic {
+			store.Set(name, []byte(spec.Token), time.Time{})
+			continue
+		}
+		if m, ok := broker.MinterFor(spec, app.HTTPClient, app.Clock); ok {
+			minters[name] = m
+		}
 	}
 
 	ln, err := app.UnixSocket.Listen(sock, brokerSockPerm)
@@ -84,50 +107,95 @@ func runBroker(ctx context.Context, app *App, sock string) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	// Serve returns when the context is cancelled; the deferred Wipe then zeroes and
-	// unlocks every custodied token before the process image goes away.
-	if err := broker.NewServer(store, app.Clock).Serve(ctx, ln); err != nil {
-		return fmt.Errorf("broker: serve: %w", err)
+	// Start one refresh goroutine per minted credential. The refresher does not block
+	// startup on the first mint — a minted credential answers 472 (unknown_credential)
+	// for the brief window until its first mint lands.
+	var wg sync.WaitGroup
+	refresher := broker.NewRefresher(store, app.Clock, app.Sleeper, func(msg string) {
+		fmt.Fprintf(app.Stderr, "warning: %s\n", msg)
+	})
+	for name, m := range minters {
+		wg.Add(1)
+		go func(name string, m mint.Minter) {
+			defer wg.Done()
+			refresher.Run(ctx, name, m, marginsFor(name, payload))
+		}(name, m)
+	}
+
+	// Serve returns when the context is cancelled. The refreshers stop on the same
+	// cancellation; join them before revoking and wiping.
+	serveErr := broker.NewServer(store, app.Clock).Serve(ctx, ln)
+	stop()
+	wg.Wait()
+
+	// Best-effort teardown revocation of minted GitHub tokens, before the deferred
+	// Wipe zeroes the store. A revoke failure is swallowed — the token expires on its
+	// own within the hour regardless.
+	revokeMinted(app, minters, store, payload)
+
+	if serveErr != nil {
+		return fmt.Errorf("broker: serve: %w", serveErr)
 	}
 	return nil
 }
 
-// loadSecrets reads the flat {credential-name: raw-token} JSON the proxy lifecycle
-// wrote to the inherited descriptor and custodies each entry.
+// marginsFor picks the refresh margins for a credential by its kind.
+func marginsFor(name string, payload broker.Payload) broker.Margins {
+	if payload[name].Kind == broker.KindOAuth2 {
+		return broker.OAuth2Margins
+	}
+	return broker.GitHubMargins
+}
+
+// revokeMinted asks each minter to revoke its currently-served token (GitHub tokens
+// are revocable; OAuth2 is a nil-op). It reads the current token from the store, so a
+// credential that never minted successfully is skipped. Bounded by revokeTimeout.
+func revokeMinted(app *App, minters map[string]mint.Minter, store *broker.Store, payload broker.Payload) {
+	for name, m := range minters {
+		if payload[name].Kind != broker.KindGitHubApp {
+			continue // OAuth2 revoke is a nil-op; skip the store read and timeout
+		}
+		token, _, ok := store.Get(name)
+		if !ok {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
+		if err := m.Revoke(ctx, string(token)); err != nil {
+			fmt.Fprintf(app.Stderr, "warning: revoke minted credential %q on shutdown: %v\n", name, err)
+		}
+		cancel()
+	}
+}
+
+// loadPayload reads the JSON broker.Payload the proxy lifecycle wrote to the inherited
+// descriptor.
 //
 // The descriptor is the same one-shot, write-then-EOF channel Phase 1 used to hand
-// secrets to the Python addon (AC-0068c) — it just terminates in Go now. It stays
-// the delivery mechanism for the same reason it was chosen then: unlike argv (which
-// `ps` shows) or the environment (which any same-uid process can read via
-// KERN_PROCARGS2), a pipe leaks nothing.
-//
-// Statically resolved references (op://, keychain://, env://) do not expire, so
-// they are custodied with a zero expiry. Minted tokens (AC-0069a) will arrive with
-// a real one.
-func loadSecrets(store *broker.Store, fd int) error {
+// secrets to the Python addon (AC-0068c) — it just terminates in Go now. It stays the
+// delivery mechanism for the same reason it was chosen then: unlike argv (which `ps`
+// shows) or the environment (which any same-uid process can read via KERN_PROCARGS2),
+// a pipe leaks nothing.
+func loadPayload(fd int) (broker.Payload, error) {
 	f := os.NewFile(uintptr(fd), "creance-secrets")
 	if f == nil {
-		return fmt.Errorf("no descriptor %d", fd)
+		return nil, fmt.Errorf("no descriptor %d", fd)
 	}
 	defer f.Close()
 
-	var payload map[string]string
+	var payload broker.Payload
 	if err := json.NewDecoder(f).Decode(&payload); err != nil {
 		// Never interpolate the payload into the error — only the failure kind. An
 		// error string ends up in the parent's stderr, which is not where a token
 		// should be.
-		return fmt.Errorf("decode: %w", err)
+		return nil, fmt.Errorf("decode: %w", err)
 	}
-
-	for name, token := range payload {
-		store.Set(name, []byte(token), time.Time{})
-	}
-	return nil
+	return payload, nil
 }
 
-// A caveat worth stating rather than hiding: decoding into map[string]string leaves
-// the tokens in Go strings, which cannot be wiped, so those copies live until the
-// GC reclaims them. The custodied []byte is the one that gets mlocked and zeroed.
+// A caveat worth stating rather than hiding: decoding the payload leaves the tokens
+// (and minted-credential key material) in Go strings, which cannot be wiped, so those
+// copies live until the GC reclaims them. The custodied []byte is the one that gets
+// mlocked and zeroed.
 // That is the honest bound of this design — see sysdep.Memory for why chasing every
 // derived copy is not achievable in Go anyway, and why TTL and scope, not memory
 // hygiene, are what actually limit a leaked token.

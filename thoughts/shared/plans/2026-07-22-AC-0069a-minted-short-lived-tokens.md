@@ -404,7 +404,7 @@ through `sysdep.HTTPClient`.
 ### Implementation log
 
 - **Status**: ✅ Complete
-- **Commit**: _pending_
+- **Commit**: `50acb80` feat(AC-0069a): add host-side minting engine behind seams
 - **Did**: New `sysdep.HTTPClient` (POST/GET/DELETE via `Do`) + `OSHTTPClient` +
   `sysdeptest.FakeHTTPClient` (records method/url/headers/body, scripts by
   "METHOD URL"). New `internal/mint` package: `Minter` interface; `mint/githubapp`
@@ -520,21 +520,21 @@ in `Main` (`:216-249`). The broker command already receives `App`.
 
 #### Automated Verification:
 
-- [ ] `make test` passes; `make lint` passes
-- [ ] Refresher tests (fake minter + `FakeClock`/`FakeSleeper`): initial mint sets
+- [x] `make test` passes; `make lint` passes
+- [x] Refresher tests (fake minter + `FakeClock`/`FakeSleeper`): initial mint sets
       the token; a scheduled re-mint before expiry swaps it in `Store` with no gap;
       a failing re-mint leaves the old token until expiry, after which `Server`
       answers `expired`; the loop retries and self-heals; `ctx` cancel stops it
       without wall-clock delay (assert `Sleeper` calls, per
       `lifecycle_test.go:378-394`)
-- [ ] Payload round-trip: a static, a `github_app`, and an `oauth2` spec marshal
+- [x] Payload round-trip: a static, a `github_app`, and an `oauth2` spec marshal
       through fd-3 JSON and load into the right minter/store entry
-- [ ] `inject.go` builder tests: static path unchanged; minted paths resolve key
+- [x] `inject.go` builder tests: static path unchanged; minted paths resolve key
       material and carry non-secret params; a resolve failure warns-and-omits; an
       OAuth2 `ErrSecretNotFound` warn contains the authorize hint
-- [ ] Broker teardown test (fake minter): SIGTERM revokes minted GitHub tokens
+- [x] Broker teardown test (fake minter): SIGTERM revokes minted GitHub tokens
       best-effort, then wipes; a static-only broker revokes nothing
-- [ ] The token never appears in any warn/error string (existing hygiene assertion,
+- [x] The token never appears in any warn/error string (existing hygiene assertion,
       extended to minted specs)
 
 #### Manual Verification:
@@ -542,6 +542,25 @@ in `Main` (`:216-249`). The broker command already receives `App`.
 - [ ] `agent-creance run` with a real minted GitHub credential: the broker mints on
       startup and an injected request authenticates (deferred to Phase 6 for the
       real-key run; hermetic paths covered here)
+
+### Implementation log
+
+- **Status**: ✅ Complete
+- **Commit**: _pending_
+- **Did**: New `broker.Payload`/`CredentialSpec` (structured fd-3 spec) + `MinterFor`
+  factory; `broker.Refresher` (per-credential goroutine: mint→Set, re-mint at
+  expiry−margin+jitter, stale-then-472 on failure, backoff self-heal, rotate-persist
+  hook). `resolveInjectionSecrets` now builds a `broker.Payload` (static/github_app/
+  oauth2), resolving key material spawn-side; OAuth2 `ErrSecretNotFound` → authorize
+  hint. `runBroker` loads the payload, Sets static, starts refreshers, and
+  best-effort-revokes minted GitHub tokens before Wipe. `App.HTTPClient` wired.
+- **Issues**: Existing `inject_test.go` decoded the payload as `map[string]string`;
+  updated to `broker.Payload`. `mint.New(broker.CredentialSpec)` factory (Phase 2
+  deviation) landed here as `broker.MinterFor`. Jitter uses math/rand/v2; tests pass
+  Jitter:0 for determinism.
+- **Verification**: ✅ make test, ✅ make lint, ✅ make test-enforcer (161 passed)
+
+---
 
 ---
 
