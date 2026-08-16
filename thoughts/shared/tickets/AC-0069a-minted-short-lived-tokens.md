@@ -1,9 +1,13 @@
 # AC-0069a: Minted short-lived tokens — GitHub App installation + OAuth2 refresh
 
-**Status:** In Progress
+**Status:** Rejected
 **Estimated Complexity:** High
 **Created:** 2026-06-29
-**Updated:** 2026-07-22
+**Updated:** 2026-08-16
+
+> **Rejected 2026-08-16:** the agent-creance project was abandoned in favour of
+> [nono](https://nono.sh). Work on this ticket was left partially implemented
+> and unverified; no further work will be done here.
 
 > Sub-ticket of **AC-0069** (Credential injection, Phase 2). **Deferred** — no
 > near-term agent-tooling need beyond GitHub (per the discussion audits).

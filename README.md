@@ -1,15 +1,40 @@
 # agent-creance
 
+> [!CAUTION]
+> ## Unmaintained — abandoned, never finished
+>
+> **This project is dead.** It never reached v0.1, it is not maintained, and no
+> further work will happen on it. All remaining tickets have been closed as
+> rejected.
+>
+> It was a nice experiment and the author learned a lot building it — about
+> macOS sandboxing, TLS-terminating egress filters, and how much of agent
+> isolation is really about the boundary you *can't* see into. It was abandoned
+> in favour of **[nono](https://nono.sh)**, which solves the same problem
+> properly.
+>
+> **Known-broken:** on hosts running `agent-safehouse` 0.11.0 the appended
+> network deny-baseline is not enforced, so a caged agent can open arbitrary
+> outbound connections and bypass the egress filter entirely. That defect will
+> never be fixed. **Do not rely on this project for isolation or security.**
+>
+> **Use at your own risk.** Any code you take from here is used entirely at your
+> own risk. It is provided "as is", without warranty or condition of any kind,
+> express or implied, and without any support, maintenance, or security fixes.
+> The author accepts no liability for any damage arising from its use. See the
+> [Apache-2.0 license](#license) for the full disclaimer.
+
 A single command to start a coding agent (Claude Code or any other) inside an
 isolated, egress-filtered cage on macOS — composed from
 [agent-safehouse](https://agent-safehouse.dev/) (filesystem + process isolation)
 and [mitmproxy](https://mitmproxy.org/) (TLS-terminating egress allowlist),
 configured by one `.agent-creance.yaml` file.
 
-> **Status:** early development (pre-v0.1), under active development. The v0.1
-> core is implemented: `setup`, `init`, and `run` work end to end, along with the
-> egress-policy commands (`allow`/`deny`/`policy`/`import`), `doctor`, `status`,
-> and `logs`. The full design lives in [`docs/design.md`](docs/design.md).
+Everything below describes the project as it stood when work stopped, and is
+kept for reference only. The v0.1 core was implemented — `setup`, `init`, and
+`run` worked end to end, along with the egress-policy commands
+(`allow`/`deny`/`policy`/`import`), `doctor`, `status`, and `logs`. The full
+design lives in [`docs/design.md`](docs/design.md).
 
 ## Requirements
 

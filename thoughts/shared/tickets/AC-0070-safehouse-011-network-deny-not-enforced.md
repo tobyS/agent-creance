@@ -1,9 +1,14 @@
 # AC-0070: agent-safehouse 0.11.0 does not enforce the appended network deny-baseline — the cage's egress guarantee is void
 
-**Status:** Open
+**Status:** Rejected
 **Estimated Complexity:** High
 **Created:** 2026-07-13
-**Updated:** 2026-07-13
+**Updated:** 2026-08-16
+
+> **Rejected 2026-08-16:** the agent-creance project was abandoned in favour of
+> [nono](https://nono.sh). This security-critical defect is therefore **never
+> fixed** — the cage's egress guarantee stays void on affected hosts. Do not
+> rely on this project for isolation.
 
 > **Security-critical.** On a host running agent-safehouse **0.11.0** (tested-against:
 > **0.10.1**), the caged agent can open arbitrary outbound connections — raw TCP to

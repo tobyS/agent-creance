@@ -1,9 +1,12 @@
 # AC-0071: Time-boxed research window — temporary arbitrary-GET egress + research skill
 
-**Status:** Open
+**Status:** Rejected
 **Estimated Complexity:** Large
 **Created:** 2026-07-22
-**Updated:** 2026-07-22
+**Updated:** 2026-08-16
+
+> **Rejected 2026-08-16:** the agent-creance project was abandoned in favour of
+> [nono](https://nono.sh). No further work will be done here.
 
 ## Problem Statement
 

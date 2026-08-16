@@ -1,10 +1,13 @@
 # AC-0046: Revisit config isolation — restore a config cage without breaking auth
 
-**Status:** Open
+**Status:** Rejected
 **Estimated Complexity:** Large
 **Maturity:** Skeleton — to be detailed in a dedicated session
 **Created:** 2026-06-12
-**Updated:** 2026-06-12
+**Updated:** 2026-08-16
+
+> **Rejected 2026-08-16:** the agent-creance project was abandoned in favour of
+> [nono](https://nono.sh). No further work will be done here.
 
 > **Skeleton ticket.** Records the deliberate v0.1 scope cut and what a future
 > version must solve. The desired outcome, scope, and acceptance criteria need
